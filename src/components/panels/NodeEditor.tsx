@@ -210,7 +210,7 @@ function UseCaseEditor({
       <div>
         <div className="text-xs font-medium text-gray-500 mb-1">角色 (Actor)</div>
         <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded">
-          <span className="text-sm mr-1">🧑</span>
+          <span className="text-xs text-gray-400 mr-1">角色</span>
           <input
             className="flex-1 text-sm bg-transparent focus:outline-none"
             value={state.actorLabel}
@@ -264,7 +264,7 @@ function UseCaseEditor({
               }}
               onDragEnd={() => setDragIdx(null)}
             >
-              <span className="text-xs text-gray-300 mr-1 cursor-grab">⠿</span>
+              <span className="text-xs text-gray-300 mr-1 cursor-grab select-none">⋮⋮</span>
               {editingId === uc.id ? (
                 <InlineEdit
                   value={uc.label}
@@ -282,7 +282,7 @@ function UseCaseEditor({
                   className="flex-1"
                 />
               ) : (
-                <span className="flex-1">⭕ {uc.label}</span>
+                <span className="flex-1">{uc.label}</span>
               )}
               <button
                 onClick={() => removeUseCase(uc.id)}
@@ -449,7 +449,7 @@ function TreeNodeRow({
         style={{ marginLeft: depth * 16 }}
       >
         <span className="text-xs text-gray-400">
-          {depth === 0 ? '📁' : depth === 1 ? '📂' : '📄'}
+          {depth === 0 ? '根' : depth === 1 ? '模块' : '功能'}
         </span>
 
         {isEditing ? (
@@ -621,7 +621,7 @@ function EntityEditor({
               }}
               onDragEnd={() => setDragIdx(null)}
             >
-              <span className="text-xs text-gray-300 mr-1 cursor-grab">⠿</span>
+              <span className="text-xs text-gray-300 mr-1 cursor-grab select-none">⋮⋮</span>
               {editingId === a.id ? (
                 <InlineEdit
                   value={a.label}
@@ -639,7 +639,7 @@ function EntityEditor({
                   className="flex-1"
                 />
               ) : (
-                <span className="flex-1">⭕ {a.label}</span>
+                <span className="flex-1">{a.label}</span>
               )}
               <button
                 onClick={() => removeAttr(a.id)}

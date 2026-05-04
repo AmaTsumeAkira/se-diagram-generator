@@ -253,8 +253,8 @@ function App() {
           <span className="w-px h-5 bg-gray-300 mx-1" />
 
           {/* Import / Export */}
-          <button onClick={handleImportJson} className="px-2 py-1 text-xs border rounded hover:bg-gray-50" title="导入 JSON">📥</button>
-          <button onClick={handleExportJson} className="px-2 py-1 text-xs border rounded hover:bg-gray-50" title="导出 JSON">📤</button>
+          <button onClick={handleImportJson} className="px-2 py-1 text-xs border rounded hover:bg-gray-50" title="导入 JSON 配置">导入</button>
+          <button onClick={handleExportJson} className="px-2 py-1 text-xs border rounded hover:bg-gray-50" title="导出 JSON 配置">导出</button>
 
           {/* Export PNG */}
           <button onClick={handleExportPng} disabled={exporting} className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800 disabled:opacity-50">
