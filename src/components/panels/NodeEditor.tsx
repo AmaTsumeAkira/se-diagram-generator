@@ -387,18 +387,19 @@ const typeColors: Record<number, string> = {
   0: 'text-blue-700 bg-blue-50 border-blue-200',
   1: 'text-emerald-700 bg-emerald-50 border-emerald-200',
 }
-const typeLabels: Record<number, string> = { 0: '根', 1: '模块', 2: '功能' }
 
 function TreeNodeRow({ node, depth, editingId, onStartEdit, onAddChild, onDelete, onRename, onTab }: {
   node: TreeNode; depth: number; editingId: string | null
   onStartEdit: (id: string) => void; onAddChild: (pid: string, label: string) => void
   onDelete: (id: string) => void; onRename: (id: string, label: string) => void; onTab: (id: string) => void
 }) {
+  const { t } = useTranslation()
   const [adding, setAdding] = useState(false)
   const [childLabel, setChildLabel] = useState('')
   const isEditing = editingId === node.id
   const wrap = depth === 1
   const tc = typeColors[depth] || 'text-gray-500 bg-gray-100 border-gray-200'
+  const lbl = depth === 0 ? t('tree.root') : depth === 1 ? t('tree.module') : t('tree.func')
 
   const confirmAdd = () => {
     const label = childLabel.trim()
@@ -411,7 +412,7 @@ function TreeNodeRow({ node, depth, editingId, onStartEdit, onAddChild, onDelete
     <>
       <div className="flex items-center gap-1.5 py-1 px-2 rounded hover:bg-gray-100/70 group" style={{ marginLeft: depth >= 2 ? 0 : depth * 16 }}>
         <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${tc}`}>
-          {typeLabels[depth] || '功能'}
+          {lbl}
         </span>
         {isEditing ? (
           <InlineEdit value={node.label} className="flex-1"
@@ -422,7 +423,7 @@ function TreeNodeRow({ node, depth, editingId, onStartEdit, onAddChild, onDelete
           <span className={`flex-1 text-sm truncate cursor-default ${depth === 0 ? 'font-semibold' : ''}`}
             onDoubleClick={() => onStartEdit(node.id)}>{node.label}</span>
         )}
-        <button onClick={() => setAdding(!adding)} className="text-gray-400 hover:text-black text-sm px-1 opacity-0 group-hover:opacity-100 transition-opacity" title="添加子节点">+</button>
+        <button onClick={() => setAdding(!adding)} className="text-gray-400 hover:text-black text-sm px-1 opacity-0 group-hover:opacity-100 transition-opacity" title={t('tree.addChild')}>+</button>
         {depth > 0 && (
           <button onClick={() => onDelete(node.id)} className="text-gray-400 hover:text-red-500 text-sm px-1 opacity-0 group-hover:opacity-100 transition-opacity" title="删除">×</button>
         )}
