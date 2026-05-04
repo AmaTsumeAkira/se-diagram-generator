@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 // ====== Types ======
 
@@ -28,7 +28,7 @@ interface Props {
   useCase?: UseCaseState
   tree?: TreeNode
   entity?: EntityState
-  onChange: (json: string) => void
+  onApply: (json: string) => void
 }
 
 // ====== ID generator ======
@@ -69,31 +69,9 @@ function entityToJson(state: EntityState): string {
   return JSON.stringify({ nodes, edges }, null, 2)
 }
 
-// ====== Debounce hook ======
-
-function useDebouncedChange(state: any, toJson: (s: any) => string, onChange: (json: string) => void) {
-  const onChangeRef = useRef(onChange)
-  onChangeRef.current = onChange
-  const toJsonRef = useRef(toJson)
-  toJsonRef.current = toJson
-  const skipRef = useRef(true)
-
-  useEffect(() => {
-    // 跳过首次挂载，避免与 configVersion 重挂载形成反馈环
-    if (skipRef.current) {
-      skipRef.current = false
-      return
-    }
-    const timer = setTimeout(() => {
-      onChangeRef.current(toJsonRef.current(state))
-    }, 250)
-    return () => clearTimeout(timer)
-  }, [state])
-}
-
 // ====== Main ======
 
-export default function NodeEditor({ type, useCase, tree, entity, onChange }: Props) {
+export default function NodeEditor({ type, useCase, tree, entity, onApply }: Props) {
   return (
     <div className="w-[420px] shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col h-full">
       <div className="px-4 py-3 border-b border-gray-200 bg-white">
@@ -102,12 +80,12 @@ export default function NodeEditor({ type, useCase, tree, entity, onChange }: Pr
           {type === 'structure' && '功能结构图 - 节点编辑'}
           {type === 'entity' && '实体属性图 - 节点编辑'}
         </h2>
-        <p className="text-xs text-gray-500 mt-0.5">双击编辑 · Enter 保存 · Tab 下一个 · 末尾 Tab 新建 · 实时更新</p>
+        <p className="text-xs text-gray-500 mt-0.5">双击编辑 · Enter 保存 · Tab 下一个 · 末尾 Tab 新建</p>
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-3">
-        {type === 'usecase' && useCase && <UseCaseEditor state={useCase} onChange={onChange} />}
-        {type === 'structure' && tree && <TreeEditor root={tree} onChange={onChange} />}
-        {type === 'entity' && entity && <EntityEditor state={entity} onChange={onChange} />}
+        {type === 'usecase' && useCase && <UseCaseEditor state={useCase} onApply={onApply} />}
+        {type === 'structure' && tree && <TreeEditor root={tree} onApply={onApply} />}
+        {type === 'entity' && entity && <EntityEditor state={entity} onApply={onApply} />}
       </div>
       <div className="px-3 py-2 border-t border-gray-200 bg-white text-[10px] text-gray-400 text-center">
         &copy; 2026 软件工程图生成器 v1.0 &nbsp;|&nbsp;
@@ -149,14 +127,12 @@ function InlineEdit({
 
 // ====== Use Case Editor ======
 
-function UseCaseEditor({ state: initial, onChange }: { state: UseCaseState; onChange: (json: string) => void }) {
+function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApply: (json: string) => void }) {
   const [state, setState] = useState<UseCaseState>(initial)
   const [newLabel, setNewLabel] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [focusedIdx, setFocusedIdx] = useState<number | null>(null)
   const [dragIdx, setDragIdx] = useState<number | null>(null)
-
-  useDebouncedChange(state, useCaseToJson, onChange)
 
   const addUseCase = () => {
     const label = newLabel.trim()
@@ -234,6 +210,11 @@ function UseCaseEditor({ state: initial, onChange }: { state: UseCaseState; onCh
           )}
         </div>
       </div>
+
+      <button onClick={() => onApply(useCaseToJson(state))}
+        className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800 mt-4">
+        应用修改
+      </button>
     </div>
   )
 }
@@ -253,11 +234,9 @@ function getSiblingGroups(node: TreeNode, groups: Map<string, string[]>) {
   node.children.forEach((c) => getSiblingGroups(c, groups))
 }
 
-function TreeEditor({ root: initialRoot, onChange }: { root: TreeNode; onChange: (json: string) => void }) {
+function TreeEditor({ root: initialRoot, onApply }: { root: TreeNode; onApply: (json: string) => void }) {
   const [root, setRoot] = useState<TreeNode>(initialRoot)
   const [editingId, setEditingId] = useState<string | null>(null)
-
-  useDebouncedChange(root, treeToJson, onChange)
 
   const handleAddChild = (parentId: string, label: string) => {
     setRoot((prev) => updateTreeNode(prev, parentId, (node) => ({ ...node, children: [...node.children, { id: uid(), label, vertical: false, children: [] }] })))
@@ -289,6 +268,10 @@ function TreeEditor({ root: initialRoot, onChange }: { root: TreeNode; onChange:
     <div>
       <TreeNodeRow node={root} depth={0} editingId={editingId} onStartEdit={setEditingId}
         onAddChild={handleAddChild} onDelete={handleDelete} onRename={handleRename} onTab={handleTabFrom} />
+      <button onClick={() => onApply(treeToJson(root))}
+        className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800 mt-4">
+        应用修改
+      </button>
     </div>
   )
 }
@@ -345,14 +328,12 @@ function TreeNodeRow({ node, depth, editingId, onStartEdit, onAddChild, onDelete
 
 // ====== Entity Editor ======
 
-function EntityEditor({ state: initial, onChange }: { state: EntityState; onChange: (json: string) => void }) {
+function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply: (json: string) => void }) {
   const [state, setState] = useState<EntityState>(initial)
   const [newAttrLabel, setNewAttrLabel] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [focusedIdx, setFocusedIdx] = useState<number | null>(null)
   const [dragIdx, setDragIdx] = useState<number | null>(null)
-
-  useDebouncedChange(state, entityToJson, onChange)
 
   const addAttr = () => {
     const label = newAttrLabel.trim()
@@ -423,6 +404,11 @@ function EntityEditor({ state: initial, onChange }: { state: EntityState; onChan
           )}
         </div>
       </div>
+
+      <button onClick={() => onApply(entityToJson(state))}
+        className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800 mt-4">
+        应用修改
+      </button>
     </div>
   )
 }
