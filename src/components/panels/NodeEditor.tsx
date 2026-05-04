@@ -210,7 +210,8 @@ function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApp
       </button>
 
       {showImport && (
-        <QuickImport title="快速导入用例" example="管理员 业主管理 维修人员管理 公寓设施管理\n业主 个人中心 报修服务 维修评价"
+        <QuickImport title="快速导入用例" example={`管理员 业主管理 维修人员管理 公寓设施管理
+业主 个人中心 报修服务 维修评价`}
           onClose={() => setShowImport(false)}
           onImport={(lines) => {
             lines.forEach((words) => {
@@ -499,7 +500,8 @@ function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply
       </button>
 
       {showImport && (
-        <QuickImport title="快速导入实体" example="用户 用户ID 用户名 密码 手机号 角色\n维修人员 员工ID 姓名 技能类型 联系电话 当前状态"
+        <QuickImport title="快速导入实体" example={`用户 用户ID 用户名 密码 手机号 角色
+维修人员 员工ID 姓名 技能类型 联系电话 当前状态`}
           onClose={() => setShowImport(false)}
           onImport={(lines) => {
             lines.forEach((words) => {
