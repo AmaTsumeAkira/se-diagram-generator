@@ -90,7 +90,7 @@ export default function NodeEditor({ type, useCase, tree, entity, onApply }: Pro
           {type === 'structure' && '功能结构图 - 节点编辑'}
           {type === 'entity' && '实体属性图 - 节点编辑'}
         </h2>
-        <p className="text-xs text-gray-500 mt-0.5">双击元素可编辑，Enter 保存，Tab 切换下一个</p>
+        <p className="text-xs text-gray-500 mt-0.5">双击编辑 · Enter 保存 · Tab 下一个 · 末尾 Tab 新建</p>
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {type === 'usecase' && useCase && <UseCaseEditor state={useCase} onApply={onApply} />}
@@ -239,8 +239,17 @@ function UseCaseEditor({
                     setEditingId(null)
                   }}
                   onTab={() => {
-                    const nextIdx = i + 1 < state.useCases.length ? i + 1 : 0
-                    setEditingId(state.useCases[nextIdx].id)
+                    if (i + 1 < state.useCases.length) {
+                      setEditingId(state.useCases[i + 1].id)
+                    } else {
+                      // 末尾 Tab → 新建空白行
+                      const newId = uid()
+                      setState((s) => ({
+                        ...s,
+                        useCases: [...s.useCases, { id: newId, label: '' }],
+                      }))
+                      setTimeout(() => setEditingId(newId), 0)
+                    }
                   }}
                   className="flex-1"
                 />
@@ -256,9 +265,6 @@ function UseCaseEditor({
               </button>
             </div>
           ))}
-          {state.useCases.length === 0 && (
-            <div className="text-xs text-gray-400 text-center py-2">暂无用例，请添加</div>
-          )}
         </div>
       </div>
 
@@ -328,12 +334,22 @@ function TreeEditor({
   getSiblingGroups(root, siblingGroups)
 
   const handleTabFrom = (nodeId: string) => {
-    // Find which sibling group this node belongs to
-    for (const [, siblings] of siblingGroups) {
+    for (const [parentId, siblings] of siblingGroups) {
       const idx = siblings.indexOf(nodeId)
       if (idx !== -1) {
-        const next = siblings[(idx + 1) % siblings.length]
-        setEditingId(next)
+        if (idx + 1 < siblings.length) {
+          setEditingId(siblings[idx + 1])
+        } else {
+          // 末尾 Tab → 在父节点下新建空白兄弟节点
+          const newId = uid()
+          setRoot((prev) =>
+            updateTreeNode(prev, parentId, (node) => ({
+              ...node,
+              children: [...node.children, { id: newId, label: '', vertical: false, children: [] }],
+            }))
+          )
+          setTimeout(() => setEditingId(newId), 0)
+        }
         return
       }
     }
@@ -551,8 +567,16 @@ function EntityEditor({
                   value={a.label}
                   onSave={(v) => { renameAttr(a.id, v); setEditingId(null) }}
                   onTab={() => {
-                    const nextIdx = i + 1 < state.attributes.length ? i + 1 : 0
-                    setEditingId(state.attributes[nextIdx].id)
+                    if (i + 1 < state.attributes.length) {
+                      setEditingId(state.attributes[i + 1].id)
+                    } else {
+                      const newId = uid()
+                      setState((s) => ({
+                        ...s,
+                        attributes: [...s.attributes, { id: newId, label: '' }],
+                      }))
+                      setTimeout(() => setEditingId(newId), 0)
+                    }
                   }}
                   className="flex-1"
                 />
