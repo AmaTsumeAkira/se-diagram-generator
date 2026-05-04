@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 700" width="100%" height="100%">
+  <style>
+    /* 定义全局样式，确保干净统一 */
+    .shape { fill: #ffffff; stroke: #000000; stroke-width: 1.5; }
+    .line { fill: none; stroke: #000000; stroke-width: 1.2; }
+    .txt { font-family: 'Segoe UI', sans-serif; font-size: 14px; fill: #000; text-anchor: middle; dominant-baseline: middle; }
+    .title { font-family: 'Segoe UI', sans-serif; font-size: 16px; font-weight: bold; fill: #000; text-anchor: middle; }
+  </style>
+
+  <!-- ================= 上半部分：用户实体属性图 (10个节点，完美36度等距环绕) ================= -->
+  <g transform="translate(0, 0)">
+    <!-- 1. 绘制底层连接线 (从中心 350,180 辐射至四周计算好的坐标) -->
+    <line class="line" x1="350" y1="180" x2="530" y2="180" /> <!-- 入住时间 (0度) -->
+    <line class="line" x1="350" y1="180" x2="495" y2="244" /> <!-- 房产地址 (36度) -->
+    <line class="line" x1="350" y1="180" x2="405" y2="284" /> <!-- 添加时间 (72度) -->
+    <line class="line" x1="350" y1="180" x2="295" y2="284" /> <!-- 用户名 (108度) -->
+    <line class="line" x1="350" y1="180" x2="205" y2="244" /> <!-- 姓名 (144度) -->
+    <line class="line" x1="350" y1="180" x2="170" y2="180" /> <!-- 性别 (180度) -->
+    <line class="line" x1="350" y1="180" x2="205" y2="116" /> <!-- 手机 (216度) -->
+    <line class="line" x1="350" y1="180" x2="295" y2="76" />  <!-- 身份证 (252度) -->
+    <line class="line" x1="350" y1="180" x2="405" y2="76" />  <!-- 头像 (288度) -->
+    <line class="line" x1="350" y1="180" x2="495" y2="116" /> <!-- 备注 (324度) -->
+
+    <!-- 2. 绘制外围椭圆及文字 (覆盖在线条上方) -->
+    <g>
+      <ellipse class="shape" cx="530" cy="180" rx="45" ry="18" /><text class="txt" x="530" y="180">入住时间</text>
+      <ellipse class="shape" cx="495" cy="244" rx="45" ry="18" /><text class="txt" x="495" y="244">房产地址</text>
+      <ellipse class="shape" cx="405" cy="284" rx="45" ry="18" /><text class="txt" x="405" y="284">添加时间</text>
+      <ellipse class="shape" cx="295" cy="284" rx="45" ry="18" /><text class="txt" x="295" y="284">用户名</text>
+      <ellipse class="shape" cx="205" cy="244" rx="45" ry="18" /><text class="txt" x="205" y="244">姓名</text>
+      <ellipse class="shape" cx="170" cy="180" rx="45" ry="18" /><text class="txt" x="170" y="180">性别</text>
+      <ellipse class="shape" cx="205" cy="116" rx="45" ry="18" /><text class="txt" x="205" y="116">手机</text>
+      <ellipse class="shape" cx="295" cy="76" rx="45" ry="18" /><text class="txt" x="295" y="76">身份证</text>
+      <ellipse class="shape" cx="405" cy="76" rx="45" ry="18" /><text class="txt" x="405" y="76">头像</text>
+      <ellipse class="shape" cx="495" cy="116" rx="45" ry="18" /><text class="txt" x="495" y="116">备注</text>
+    </g>
+
+    <!-- 3. 绘制中心矩形及文字 (压盖在所有线条的中心发散点上) -->
+    <rect class="shape" x="305" y="162" width="90" height="36" />
+    <text class="txt" x="350" y="180">用户</text>
+
+    <!-- 标题 -->
+    <text class="title" x="350" y="340">图4.6 用户信息实体属性图</text>
+  </g>
+
+  <!-- ================= 下半部分：维修人员实体属性图 (7个节点，完美正七边形环绕) ================= -->
+  <g transform="translate(0, 360)">
+    <!-- 1. 绘制底层连接线 (从中心 350,150 辐射至四周计算好的坐标) -->
+    <line class="line" x1="350" y1="150" x2="350" y2="60" />  <!-- 邮箱 (顶部, -90度) -->
+    <line class="line" x1="350" y1="150" x2="482" y2="94" />  <!-- 照片 (-38.6度) -->
+    <line class="line" x1="350" y1="150" x2="515" y2="170" /> <!-- 专业技能 (12.8度) -->
+    <line class="line" x1="350" y1="150" x2="423" y2="231" /> <!-- 添加时间 (64.3度) -->
+    <line class="line" x1="350" y1="150" x2="277" y2="231" /> <!-- 账号 (115.7度) -->
+    <line class="line" x1="350" y1="150" x2="185" y2="170" /> <!-- 名字 (167.1度) -->
+    <line class="line" x1="350" y1="150" x2="218" y2="94" />  <!-- 电话 (218.6度) -->
+
+    <!-- 2. 绘制外围椭圆及文字 -->
+    <g>
+      <ellipse class="shape" cx="350" cy="60" rx="45" ry="18" /><text class="txt" x="350" y="60">邮箱</text>
+      <ellipse class="shape" cx="482" cy="94" rx="45" ry="18" /><text class="txt" x="482" y="94">照片</text>
+      <ellipse class="shape" cx="515" cy="170" rx="45" ry="18" /><text class="txt" x="515" y="170">专业技能</text>
+      <ellipse class="shape" cx="423" cy="231" rx="45" ry="18" /><text class="txt" x="423" y="231">添加时间</text>
+      <ellipse class="shape" cx="277" cy="231" rx="45" ry="18" /><text class="txt" x="277" y="231">账号</text>
+      <ellipse class="shape" cx="185" cy="170" rx="45" ry="18" /><text class="txt" x="185" y="170">名字</text>
+      <ellipse class="shape" cx="218" cy="94" rx="45" ry="18" /><text class="txt" x="218" y="94">电话</text>
+    </g>
+
+    <!-- 3. 绘制中心矩形及文字 -->
+    <rect class="shape" x="305" y="132" width="90" height="36" />
+    <text class="txt" x="350" y="150">维修人员</text>
+    
+    <!-- 标题 -->
+    <text class="title" x="350" y="300">图4.7 维修人员实体属性图</text>
+  </g>
+</svg>
