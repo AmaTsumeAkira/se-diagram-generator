@@ -338,7 +338,7 @@ function App() {
       </div>
 
       {/* Export Modal */}
-      {showExport && <ExportModal active={active} flowRef={flowRef} onClose={() => setShowExport(false)} />}
+      {showExport && <ExportModal active={active} config={configs[active]} flowRef={flowRef} onClose={() => setShowExport(false)} />}
 
       {/* Shortcut Help Modal */}
       {showShortcuts && (
