@@ -190,7 +190,7 @@ function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApp
               onDragStart={() => setDragIdx(i)} onDragOver={(e) => e.preventDefault()}
               onDrop={() => { if (dragIdx !== null && dragIdx !== i) moveUseCase(dragIdx, i) }}
               onDragEnd={() => setDragIdx(null)}>
-              <span className="text-xs text-gray-300 mr-1 cursor-grab select-none">&vellip;&vellip;</span>
+              <span className="text-xs text-gray-300 mr-1 cursor-grab select-none">⋮⋮</span>
               {editingId === uc.id ? (
                 <InlineEdit value={uc.label} className="flex-1"
                   onSave={(v) => { renameUseCase(uc.id, v); setEditingId(null) }}
@@ -384,7 +384,7 @@ function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply
               onDragStart={() => setDragIdx(i)} onDragOver={(e) => e.preventDefault()}
               onDrop={() => { if (dragIdx !== null && dragIdx !== i) moveAttr(dragIdx, i) }}
               onDragEnd={() => setDragIdx(null)}>
-              <span className="text-xs text-gray-300 mr-1 cursor-grab select-none">&vellip;&vellip;</span>
+              <span className="text-xs text-gray-300 mr-1 cursor-grab select-none">⋮⋮</span>
               {editingId === a.id ? (
                 <InlineEdit value={a.label} className="flex-1"
                   onSave={(v) => { renameAttr(a.id, v); setEditingId(null) }}
