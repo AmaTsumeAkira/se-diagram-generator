@@ -316,6 +316,7 @@ function getSiblingGroups(node: TreeNode, groups: Map<string, string[]>) {
 function TreeEditor({ root: initialRoot, onApply }: { root: TreeNode; onApply: (json: string) => void }) {
   const [root, setRoot] = useState<TreeNode>(initialRoot)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [showImport, setShowImport] = useState(false)
 
   const handleAddChild = (parentId: string, label: string) => {
     setRoot((prev) => updateTreeNode(prev, parentId, (node) => ({ ...node, children: [...node.children, { id: uid(), label, vertical: false, children: [] }] })))
@@ -345,12 +346,39 @@ function TreeEditor({ root: initialRoot, onApply }: { root: TreeNode; onApply: (
 
   return (
     <div>
+      <button onClick={() => setShowImport(true)}
+        className="w-full py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 text-gray-500 mb-3">
+        快速导入
+      </button>
+
       <TreeNodeRow node={root} depth={0} editingId={editingId} onStartEdit={setEditingId}
         onAddChild={handleAddChild} onDelete={handleDelete} onRename={handleRename} onTab={handleTabFrom} />
       <button onClick={() => onApply(treeToJson(root))}
         className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800 mt-4">
         应用修改
       </button>
+
+      {showImport && (
+        <QuickImport title="快速导入结构" example={`公寓报修管理系统
+管理员 业主管理 维修人员管理 公寓设施管理 报修服务管理 维修服务评价 修改密码
+业主 个人中心 报修服务 维修评价 修改密码
+维修人员 个人资料管理 报修服务订单 维修评价 修改密码`}
+          onClose={() => setShowImport(false)}
+          onImport={(lines) => {
+            if (lines.length < 1) return
+            const rootLabel = lines[0][0] || '系统'
+            const children: TreeNode[] = []
+            lines.slice(1).forEach((words) => {
+              if (words.length < 1) return
+              children.push({
+                id: uid(), label: words[0], vertical: false,
+                children: words.slice(1).map((w) => ({ id: uid(), label: w, vertical: true, children: [] })),
+              })
+            })
+            setRoot({ id: uid(), label: rootLabel, vertical: false, children })
+            setShowImport(false)
+          }} />
+      )}
     </div>
   )
 }
