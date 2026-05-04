@@ -8,32 +8,34 @@ function ActorNode({ data }: NodeProps<Node<DiagramNodeData>>) {
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <div style={{ width: 55, height: 125, position: 'relative' }}>
         <svg
-          viewBox="0 0 60 130"
+          viewBox="0 0 55 125"
           width="55"
           height="125"
           fill="none"
           stroke="#000"
           strokeWidth="1.5"
         >
-          <circle cx="30" cy="12" r="10" />
-          <line x1="30" y1="22" x2="30" y2="70" />
-          {/* 双臂对称: x1=0 到 x2=60，以身体 x=30 为中心，等长 30 单位 */}
-          <line x1="0" y1="42" x2="60" y2="42" />
-          <line x1="30" y1="70" x2="12" y2="105" />
-          <line x1="30" y1="70" x2="48" y2="105" />
+          <circle cx="27" cy="12" r="10" />
+          <line x1="27" y1="22" x2="27" y2="68" />
+          {/* 双臂对称，y=40 精准对应 Handle top=40，1:1 无换算误差 */}
+          <line x1="0" y1="40" x2="55" y2="40" />
+          <line x1="27" y1="68" x2="10" y2="102" />
+          <line x1="27" y1="68" x2="44" y2="102" />
         </svg>
+        {/* SVG viewBox h=125 1:1映射渲染高度 → arm y=40 = Handle top=40 */}
         <Handle
           type="source"
           position={Position.Right}
           id="arm"
           style={{
-            top: '40.4px',
+            top: 40,
             width: 0,
             height: 0,
             minWidth: 0,
             minHeight: 0,
             border: 'none',
             background: 'transparent',
+            transform: 'none',
             visibility: 'hidden',
           }}
         />
