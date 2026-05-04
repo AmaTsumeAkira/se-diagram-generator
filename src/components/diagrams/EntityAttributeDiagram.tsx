@@ -66,6 +66,7 @@ export default function EntityAttributeDiagram({
       edges.map((e) => ({
         ...e,
         type: 'straight' as const,
+        sourceHandle: 'c',
         targetHandle: 'c',
         style: { stroke: '#000', strokeWidth: 1.2 },
         zIndex: 0,

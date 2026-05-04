@@ -4,8 +4,10 @@ import type { NodeProps, Node } from '@xyflow/react'
 import type { DiagramNodeData } from '../../types/diagram'
 
 /**
- * E-R 图中心实体矩形节点 — 四边 Handle，用于向四周属性辐射连线
- * zIndex 由 EntityAttributeDiagram 统一设为 20，覆盖在所有连线上方
+ * E-R 图中心实体矩形节点
+ * 中心 Handle (id="c") 使连线从矩形正中心辐射而出
+ * 矩形 zIndex=20 覆盖在连线上方，线条被白色背景遮挡，
+ * 视觉上呈现为从矩形边框精准伸出
  */
 function EntityNode({ data }: NodeProps<Node<DiagramNodeData>>) {
   return (
@@ -22,10 +24,13 @@ function EntityNode({ data }: NodeProps<Node<DiagramNodeData>>) {
         position: 'relative',
       }}
     >
-      <Handle type="source" position={Position.Top} id="ts" style={{ visibility: 'hidden' }} />
-      <Handle type="source" position={Position.Right} id="rs" style={{ visibility: 'hidden' }} />
-      <Handle type="source" position={Position.Bottom} id="bs" style={{ visibility: 'hidden' }} />
-      <Handle type="source" position={Position.Left} id="ls" style={{ visibility: 'hidden' }} />
+      {/* 中心辐射源：连线从此点发出 */}
+      <Handle
+        type="source"
+        position={Position.Left}
+        id="c"
+        style={{ top: '50%', left: '50%', visibility: 'hidden' }}
+      />
       <span>{data.label}</span>
     </div>
   )
