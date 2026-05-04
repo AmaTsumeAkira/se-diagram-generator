@@ -301,9 +301,9 @@ function App() {
           <button onClick={redo} disabled={!canRedo} className="px-2 py-1 text-xs border rounded disabled:opacity-30 hover:bg-gray-50" title="Ctrl+Y">重做</button>
           <span className="w-px h-5 bg-gray-300 mx-1" />
           <button onClick={handleImportJson} className="px-2 py-1 text-xs border rounded hover:bg-gray-50">导入</button>
-          <button onClick={handleExportJson} className="px-2 py-1 text-xs border rounded hover:bg-gray-50">导出</button>
+          <button onClick={handleExportJson} className="px-2 py-1 text-xs border rounded hover:bg-gray-50">导出图片</button>
           <button onClick={() => setShowExport(true)} className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">
-            导出
+            导出图片
           </button>
           <button onClick={handleReset} className="px-2 py-1 text-xs text-red-400 border border-red-200 rounded hover:bg-red-50 ml-1" title="重置所有图表">重置</button>
           <button onClick={() => setShowShortcuts(true)} className="px-2 py-1 text-xs text-gray-400 border rounded hover:bg-gray-50 ml-1" title="快捷键">?</button>
