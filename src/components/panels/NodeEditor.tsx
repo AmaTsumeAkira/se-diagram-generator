@@ -233,10 +233,10 @@ function ActorSection({ actor, editingId, setEditingId, onRename, onRemove, onAd
         </div>
         <div className="space-y-1">
           {actor.useCases.map((uc, i) => (
-            <div key={uc.id} draggable tabIndex={0}
+            <div key={uc.id} draggable={editingId !== uc.id} tabIndex={0}
               className={`flex items-center justify-between px-2 py-1 bg-gray-50 border rounded text-sm cursor-default transition-colors ${focusedIdx === i ? 'border-black ring-1 ring-black' : 'border-gray-200'} ${dragIdx === i ? 'opacity-40' : ''}`}
               onDoubleClick={() => setEditingId(uc.id)}
-              onDragStart={() => setDragIdx(i)} onDragOver={(e) => e.preventDefault()}
+              onDragStart={() => { if (editingId === uc.id) return; setDragIdx(i) }} onDragOver={(e) => e.preventDefault()}
               onDrop={() => { if (dragIdx !== null && dragIdx !== i) onMoveUc(dragIdx, i); setDragIdx(null) }}
               onDragEnd={() => setDragIdx(null)}
               onFocus={() => setFocusedIdx(i)} onBlur={() => setFocusedIdx(null)}
@@ -437,7 +437,7 @@ function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply
         </div>
         <div className="space-y-1">
           {state.attributes.map((a, i) => (
-            <div key={a.id} draggable tabIndex={0}
+            <div key={a.id} draggable={editingId !== a.id} tabIndex={0}
               className={`flex items-center justify-between px-3 py-1.5 bg-white border rounded text-sm cursor-default transition-colors ${focusedIdx === i ? 'border-black ring-1 ring-black' : 'border-gray-200'} ${dragIdx === i ? 'opacity-40' : ''}`}
               onDoubleClick={() => setEditingId(a.id)}
               onFocus={() => setFocusedIdx(i)} onBlur={() => setFocusedIdx(null)}
@@ -445,7 +445,7 @@ function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply
                 if ((e.key === 'Delete' || e.key === 'Backspace') && editingId !== a.id) removeAttr(a.id)
                 if (e.key === 'Enter') setEditingId(a.id)
               }}
-              onDragStart={() => setDragIdx(i)} onDragOver={(e) => e.preventDefault()}
+              onDragStart={() => { if (editingId === a.id) return; setDragIdx(i) }} onDragOver={(e) => e.preventDefault()}
               onDrop={() => { if (dragIdx !== null && dragIdx !== i) moveAttr(dragIdx, i) }}
               onDragEnd={() => setDragIdx(null)}>
               <span className="text-xs text-gray-300 mr-1 cursor-grab select-none">⋮⋮</span>
