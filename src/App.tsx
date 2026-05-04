@@ -179,15 +179,57 @@ function App() {
   const handleExportPng = useCallback(async () => {
     const el = flowRef.current?.querySelector('.react-flow') as HTMLElement | null
     if (!el) return
+
+    // 计算所有节点的包围盒
+    const nodeEls = el.querySelectorAll('.react-flow__node')
+    if (nodeEls.length === 0) return
+
+    const flowRect = el.getBoundingClientRect()
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    nodeEls.forEach((node) => {
+      const r = node.getBoundingClientRect()
+      minX = Math.min(minX, r.left - flowRect.left)
+      minY = Math.min(minY, r.top - flowRect.top)
+      maxX = Math.max(maxX, r.right - flowRect.left)
+      maxY = Math.max(maxY, r.bottom - flowRect.top)
+    })
+
+    const padding = 40
+    const scale = 2
+    const w = maxX - minX + padding * 2
+    const h = maxY - minY + padding * 2
+
     // 隐藏背景格点
     const bg = el.querySelector('.react-flow__background') as HTMLElement | null
     if (bg) bg.style.display = 'none'
+
     setExporting(true)
     try {
-      const dataUrl = await toPng(el, { backgroundColor: '#ffffff' })
+      const dataUrl = await toPng(el, { backgroundColor: '#ffffff', pixelRatio: scale })
+
+      // 裁剪到内容区域
+      const img = new Image()
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve()
+        img.onerror = () => reject(new Error('Image load failed'))
+        img.src = dataUrl
+      })
+
+      const canvas = document.createElement('canvas')
+      canvas.width = w * scale
+      canvas.height = h * scale
+      const ctx = canvas.getContext('2d')!
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(
+        img,
+        (minX - padding) * scale, (minY - padding) * scale, w * scale, h * scale,
+        0, 0, w * scale, h * scale,
+      )
+
       const a = document.createElement('a')
       a.download = `diagram-${active}-${Date.now()}.png`
-      a.href = dataUrl
+      a.href = canvas.toDataURL('image/png')
       a.click()
     } catch (e) {
       console.error('Export failed', e)
