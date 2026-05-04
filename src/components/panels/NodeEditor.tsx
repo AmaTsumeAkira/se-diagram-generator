@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useVercount } from '@vercount/react'
 
 // ====== Types ======
 
@@ -86,6 +87,7 @@ function entityToJson(state: EntityState): string {
 
 export default function NodeEditor({ type, useCase, tree, entity, onApply }: Props) {
   const { t } = useTranslation()
+  const { sitePv, siteUv } = useVercount()
   const titleKey = type === 'usecase' ? 'editor.usecaseTitle' : type === 'structure' ? 'editor.structureTitle' : 'editor.entityTitle'
   return (
     <div className="w-[420px] shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col h-full">
@@ -99,6 +101,7 @@ export default function NodeEditor({ type, useCase, tree, entity, onApply }: Pro
         {type === 'entity' && entity && <EntityEditor state={entity} onApply={onApply} />}
       </div>
       <div className="px-3 py-2 border-t border-gray-200 bg-white text-[10px] text-gray-400 text-center">
+        <div className="mb-1">PV {sitePv} &nbsp; UV {siteUv}</div>
         {t('footer.copyright')} &nbsp;|&nbsp;
         <a href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600">{t('footer.icp')}</a>
       </div>
