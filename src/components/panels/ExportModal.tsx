@@ -112,9 +112,11 @@ export default function ExportModal({ active, config, flowRef, onClose }: Props)
     const a = document.createElement('a'); a.download = `${name}.png`; a.href = url; a.click()
   }
 
+  const splitCols = Math.ceil(Math.sqrt(splitUrls.length))
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl w-[880px] max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-lg shadow-xl w-[96vw] max-w-[1400px] max-h-[94vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
           <div className="flex items-center gap-3">
             <h3 className="text-sm font-semibold">导出图片</h3>
@@ -132,19 +134,25 @@ export default function ExportModal({ active, config, flowRef, onClose }: Props)
 
           {!loading && (
             <div className="flex gap-4">
-              <div className="flex-1 min-w-0">
+              {/* 左：全图 */}
+              <div className="flex-[2] min-w-0">
                 <p className="text-xs text-gray-500 mb-2 text-center font-medium">全图</p>
                 {fullUrl && <img src={fullUrl} alt="全图" className="w-full border border-gray-200 rounded" />}
               </div>
+
               <div className="w-px bg-gray-200 shrink-0" />
-              <div className="flex-1 min-w-0 space-y-2">
-                <p className="text-xs text-gray-500 text-center font-medium">分图 ({splitUrls.length})</p>
-                {splitUrls.map((url, i) => (
-                  <div key={i}>
-                    <img src={url} alt={splitLabels[i]} className="w-full border border-gray-200 rounded" />
-                    <p className="text-[10px] text-gray-400 mt-0.5 text-center">{splitLabels[i]}</p>
-                  </div>
-                ))}
+
+              {/* 右：分图网格 */}
+              <div className="flex-[3] min-w-0">
+                <p className="text-xs text-gray-500 mb-2 text-center font-medium">分图 ({splitUrls.length})</p>
+                <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${splitCols}, 1fr)` }}>
+                  {splitUrls.map((url, i) => (
+                    <div key={i}>
+                      <img src={url} alt={splitLabels[i]} className="w-full border border-gray-200 rounded" />
+                      <p className="text-[10px] text-gray-400 mt-0.5 text-center">{splitLabels[i]}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
