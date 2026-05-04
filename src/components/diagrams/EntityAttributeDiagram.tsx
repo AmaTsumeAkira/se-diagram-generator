@@ -48,6 +48,15 @@ export default function EntityAttributeDiagram({ groups }: Props) {
         const cy = baseY + cyOff
         const n = g.attributes.length
 
+        // 根据该组最长属性文字计算椭圆宽度
+        const maxW = g.attributes.reduce((m, a) => {
+          const s = a.data.label as string
+          let w = 0; for (const ch of s) w += ch.charCodeAt(0) > 127 ? 14 : 8
+          return Math.max(m, w)
+        }, 0)
+        const dynRx = Math.max(45, Math.ceil(maxW / 2) + 14)
+        const dynRy = 18
+
         const a = 100 + n * 10
         const b = Math.round(a * 0.55)
 
@@ -55,9 +64,8 @@ export default function EntityAttributeDiagram({ groups }: Props) {
           const angle = -Math.PI / 2 + (2 * Math.PI * i) / n
           const nodeCx = cx + a * Math.cos(angle)
           const nodeCy = cy + b * Math.sin(angle)
-          const rx = (attr.data.rx as number) ?? 45
-          const ry = (attr.data.ry as number) ?? 18
-          return { ...attr, position: { x: nodeCx - rx, y: nodeCy - ry }, zIndex: 10 }
+          attr.data = { ...attr.data, rx: dynRx, ry: dynRy }
+          return { ...attr, position: { x: nodeCx - dynRx, y: nodeCy - dynRy }, zIndex: 10 }
         })
 
         const entityNode = { ...g.entity, position: { x: cx - 45, y: cy - 18 }, zIndex: 20 }
