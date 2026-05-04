@@ -183,6 +183,8 @@ function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApp
     }))
   }
 
+  const [showImport, setShowImport] = useState(false)
+
   return (
     <div className="space-y-4">
       {state.actors.map((actor) => (
@@ -193,14 +195,34 @@ function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApp
           onMoveUc={(from, to) => moveUseCase(actor.id, from, to)} />
       ))}
 
-      <button onClick={addActor} className="w-full py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
-        + 添加角色
-      </button>
+      <div className="flex gap-2">
+        <button onClick={addActor} className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
+          + 添加角色
+        </button>
+        <button onClick={() => setShowImport(true)} className="px-3 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 text-gray-500">
+          快速导入
+        </button>
+      </div>
 
       <button onClick={() => onApply(useCaseToJson(state))}
         className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
         应用修改
       </button>
+
+      {showImport && (
+        <QuickImport title="快速导入用例" example="管理员 业主管理 维修人员管理 公寓设施管理\n业主 个人中心 报修服务 维修评价"
+          onClose={() => setShowImport(false)}
+          onImport={(lines) => {
+            lines.forEach((words) => {
+              if (words.length >= 1) {
+                const actorId = uid(); const actorLabel = words[0]
+                const useCases = words.slice(1).map((w) => ({ id: uid(), label: w }))
+                setState((s) => ({ actors: [...s.actors, { id: actorId, label: actorLabel, useCases }] }))
+              }
+            })
+            setShowImport(false)
+          }} />
+      )}
     </div>
   )
 }
@@ -404,6 +426,7 @@ function TreeNodeRow({ node, depth, editingId, onStartEdit, onAddChild, onDelete
 function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply: (json: string) => void }) {
   const [state, setState] = useState<EntityState>(initial)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [showImport, setShowImport] = useState(false)
 
   const addEntity = () => {
     setState((s) => ({ entities: [...s.entities, { id: uid(), label: '新实体', attributes: [] }] }))
@@ -461,14 +484,70 @@ function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply
         </div>
       ))}
 
-      <button onClick={addEntity} className="w-full py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
-        + 添加实体
-      </button>
+      <div className="flex gap-2">
+        <button onClick={addEntity} className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
+          + 添加实体
+        </button>
+        <button onClick={() => setShowImport(true)} className="px-3 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 text-gray-500">
+          快速导入
+        </button>
+      </div>
 
       <button onClick={() => onApply(entityToJson(state))}
         className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
         应用修改
       </button>
+
+      {showImport && (
+        <QuickImport title="快速导入实体" example="用户 用户ID 用户名 密码 手机号 角色\n维修人员 员工ID 姓名 技能类型 联系电话 当前状态"
+          onClose={() => setShowImport(false)}
+          onImport={(lines) => {
+            lines.forEach((words) => {
+              if (words.length >= 1) {
+                const entId = uid(); const entLabel = words[0]
+                const attrs = words.slice(1).map((w) => ({ id: uid(), label: w }))
+                setState((s) => ({ entities: [...s.entities, { id: entId, label: entLabel, attributes: attrs }] }))
+              }
+            })
+            setShowImport(false)
+          }} />
+      )}
+    </div>
+  )
+}
+
+// ====== Quick Import ======
+
+function QuickImport({ title, example, onClose, onImport }: {
+  title: string; example: string; onClose: () => void
+  onImport: (lines: string[][]) => void
+}) {
+  const [text, setText] = useState('')
+
+  const handleImport = () => {
+    const lines = text.trim().split('\n').filter(Boolean).map((line) => line.trim().split(/\s+/))
+    if (lines.length > 0) onImport(lines)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-xl p-5 w-[420px]" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold">{title}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-black text-lg leading-none">×</button>
+        </div>
+        <p className="text-xs text-gray-500 mb-2">每行一个角色/实体，空格分隔：第一个词为名称，后续为元素</p>
+        <textarea className="w-full h-28 text-xs font-mono border border-gray-300 rounded p-2 mb-2 focus:outline-none focus:ring-1 focus:ring-black"
+          placeholder={`示例:\n${example}`} value={text}
+          onChange={(e) => setText(e.target.value)} />
+        <div className="text-[10px] text-gray-400 mb-3 bg-gray-50 rounded p-2">
+          示例格式：<br/>{example.split('\n').join('<br/>')}
+        </div>
+        <div className="flex gap-2">
+          <button onClick={handleImport} className="flex-1 py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">导入</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100">取消</button>
+        </div>
+      </div>
     </div>
   )
 }
