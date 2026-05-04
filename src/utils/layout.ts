@@ -200,11 +200,9 @@ export function layoutTreeStructure(
     return { ...(nd || n), position: pos }
   })
 
-  // 统一 step edge offset：所有边用相同 offset，水平段对齐在同一高度
   const styledEdges = edges.map((e) => ({
     ...e,
     type: 'step' as const,
-    pathOptions: { offset: o.levelVSpacing / 2 } as { offset?: number },
     style: { stroke: '#000', strokeWidth: 1 },
   }))
 
