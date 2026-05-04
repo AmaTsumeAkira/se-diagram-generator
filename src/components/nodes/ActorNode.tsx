@@ -17,18 +17,17 @@ function ActorNode({ data }: NodeProps<Node<DiagramNodeData>>) {
         >
           <circle cx="30" cy="12" r="10" />
           <line x1="30" y1="22" x2="30" y2="70" />
-          {/* 右臂延伸到 viewBox 右边缘 x=60，在渲染后精准抵达 55px 宽度末端 */}
-          <line x1="10" y1="42" x2="60" y2="42" />
+          {/* 双臂对称: x1=0 到 x2=60，以身体 x=30 为中心，等长 30 单位 */}
+          <line x1="0" y1="42" x2="60" y2="42" />
           <line x1="30" y1="70" x2="12" y2="105" />
           <line x1="30" y1="70" x2="48" y2="105" />
         </svg>
-        {/* Handle 精确放在 SVG 容器右边缘、手臂高度 (40px)，像素级紧贴 */}
         <Handle
           type="source"
           position={Position.Right}
           id="arm"
           style={{
-            top: 40,
+            top: '40.4px',
             width: 0,
             height: 0,
             minWidth: 0,
