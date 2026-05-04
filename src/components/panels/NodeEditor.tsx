@@ -166,7 +166,14 @@ function UseCaseEditor({
       <div>
         <div className="text-xs font-medium text-gray-500 mb-1">角色 (Actor)</div>
         <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded">
-          <span className="text-sm">🧑 {state.actorLabel}</span>
+          <span className="text-sm mr-1">🧑</span>
+          <input
+            className="flex-1 text-sm bg-transparent focus:outline-none"
+            value={state.actorLabel}
+            onChange={(e) =>
+              setState((s) => ({ ...s, actorLabel: e.target.value }))
+            }
+          />
         </div>
       </div>
 
