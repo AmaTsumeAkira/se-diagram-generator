@@ -25,10 +25,15 @@ interface Props {
 export default function EntityAttributeDiagram({ groups }: Props) {
   const positionedNodes = useMemo(() => {
     const cols = Math.ceil(Math.sqrt(groups.length))
-    const cellW = 400
-    const cellH = 400
-    const cxOff = 200
-    const cyOff = 220
+
+    // 根据所有实体中最大属性数计算轨道半径和单元格尺寸
+    const maxN = Math.max(...groups.map((g) => g.attributes.length), 1)
+    const orbitA = 100 + maxN * 10
+    const orbitB = Math.round(orbitA * 0.55)
+    const cellW = orbitA * 2 + 100
+    const cellH = orbitB * 2 + 180
+    const cxOff = cellW / 2
+    const cyOff = orbitB + 50
 
     const rows: EntityGroup[][] = []
     for (let i = 0; i < groups.length; i += cols) rows.push(groups.slice(i, i + cols))
