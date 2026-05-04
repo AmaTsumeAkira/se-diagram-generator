@@ -276,6 +276,12 @@ function TreeEditor({ root: initialRoot, onApply }: { root: TreeNode; onApply: (
   )
 }
 
+const typeColors: Record<number, string> = {
+  0: 'text-blue-700 bg-blue-50 border-blue-200',
+  1: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+}
+const typeLabels: Record<number, string> = { 0: '根', 1: '模块', 2: '功能' }
+
 function TreeNodeRow({ node, depth, editingId, onStartEdit, onAddChild, onDelete, onRename, onTab }: {
   node: TreeNode; depth: number; editingId: string | null
   onStartEdit: (id: string) => void; onAddChild: (pid: string, label: string) => void
@@ -284,6 +290,8 @@ function TreeNodeRow({ node, depth, editingId, onStartEdit, onAddChild, onDelete
   const [adding, setAdding] = useState(false)
   const [childLabel, setChildLabel] = useState('')
   const isEditing = editingId === node.id
+  const wrap = depth === 1
+  const tc = typeColors[depth] || 'text-gray-500 bg-gray-100 border-gray-200'
 
   const confirmAdd = () => {
     const label = childLabel.trim()
@@ -292,17 +300,20 @@ function TreeNodeRow({ node, depth, editingId, onStartEdit, onAddChild, onDelete
     setChildLabel(''); setAdding(false)
   }
 
-  return (
-    <div>
-      <div className="flex items-center gap-1 py-1 px-2 rounded hover:bg-gray-100 group" style={{ marginLeft: depth * 16 }}>
-        <span className="text-xs text-gray-400">{depth === 0 ? '根' : depth === 1 ? '模块' : '功能'}</span>
+  const row = (
+    <>
+      <div className="flex items-center gap-1.5 py-1 px-2 rounded hover:bg-gray-100/70 group" style={{ marginLeft: depth >= 2 ? 0 : depth * 16 }}>
+        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${tc}`}>
+          {typeLabels[depth] || '功能'}
+        </span>
         {isEditing ? (
           <InlineEdit value={node.label} className="flex-1"
             onSave={(v) => { onRename(node.id, v); onStartEdit('') }}
             onDelete={() => { onDelete(node.id); onStartEdit('') }}
             onTab={() => onTab(node.id)} />
         ) : (
-          <span className="flex-1 text-sm truncate cursor-default" onDoubleClick={() => onStartEdit(node.id)}>{node.label}</span>
+          <span className={`flex-1 text-sm truncate cursor-default ${depth === 0 ? 'font-semibold' : ''}`}
+            onDoubleClick={() => onStartEdit(node.id)}>{node.label}</span>
         )}
         <button onClick={() => setAdding(!adding)} className="text-gray-400 hover:text-black text-sm px-1 opacity-0 group-hover:opacity-100 transition-opacity" title="添加子节点">+</button>
         {depth > 0 && (
@@ -310,7 +321,7 @@ function TreeNodeRow({ node, depth, editingId, onStartEdit, onAddChild, onDelete
         )}
       </div>
       {adding && (
-        <div className="flex gap-1 my-1" style={{ marginLeft: (depth + 1) * 16 }}>
+        <div className="flex gap-1 my-1" style={{ marginLeft: depth >= 2 ? 16 : (depth + 1) * 16 }}>
           <input autoFocus className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-black"
             placeholder={depth < 1 ? '模块名称...' : '功能名称...'} value={childLabel}
             onChange={(e) => setChildLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') confirmAdd(); if (e.key === 'Escape') { setAdding(false); setChildLabel('') } }} />
@@ -318,12 +329,18 @@ function TreeNodeRow({ node, depth, editingId, onStartEdit, onAddChild, onDelete
           <button onClick={() => { setAdding(false); setChildLabel('') }} className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100">取消</button>
         </div>
       )}
-      {node.children.map((child) => (
-        <TreeNodeRow key={child.id} node={child} depth={depth + 1} editingId={editingId}
-          onStartEdit={onStartEdit} onAddChild={onAddChild} onDelete={onDelete} onRename={onRename} onTab={onTab} />
-      ))}
-    </div>
+      {node.children.length > 0 && (
+        <div className={wrap ? 'ml-6 mt-1 border border-gray-200 rounded-lg p-2 pb-0.5' : ''}>
+          {node.children.map((child) => (
+            <TreeNodeRow key={child.id} node={child} depth={depth + 1} editingId={editingId}
+              onStartEdit={onStartEdit} onAddChild={onAddChild} onDelete={onDelete} onRename={onRename} onTab={onTab} />
+          ))}
+        </div>
+      )}
+    </>
   )
+
+  return row
 }
 
 // ====== Entity Editor ======
