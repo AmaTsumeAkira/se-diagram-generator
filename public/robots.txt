@@ -1,3 +1,3 @@
 User-agent: *
 Allow: /
-Sitemap: https://amatsumeakira.github.io/se-diagram-generator/sitemap.xml
+Sitemap: https://lct.fromakira.cn/sitemap.xml

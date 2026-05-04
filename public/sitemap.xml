@@ -2,9 +2,9 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
-    <loc>https://amatsumeakira.github.io/se-diagram-generator/</loc>
-    <xhtml:link rel="alternate" hreflang="zh" href="https://amatsumeakira.github.io/se-diagram-generator/"/>
-    <xhtml:link rel="alternate" hreflang="en" href="https://amatsumeakira.github.io/se-diagram-generator/"/>
+    <loc>https://lct.fromakira.cn/</loc>
+    <xhtml:link rel="alternate" hreflang="zh" href="https://lct.fromakira.cn/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://lct.fromakira.cn/"/>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>

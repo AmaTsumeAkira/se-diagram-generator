@@ -4,7 +4,8 @@
 
 ## 在线访问
 
-**[amatsumeakira.github.io/se-diagram-generator](https://amatsumeakira.github.io/se-diagram-generator/)**
+- **[lct.fromakira.cn](https://lct.fromakira.cn/)** （腾讯云 Pages）
+- **[amatsumeakira.github.io/se-diagram-generator](https://amatsumeakira.github.io/se-diagram-generator/)** （GitHub Pages 备用）
 
 ## 功能特性
 
