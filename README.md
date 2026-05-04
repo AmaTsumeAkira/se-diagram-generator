@@ -1,73 +1,34 @@
-# React + TypeScript + Vite
+# 软件工程图生成器
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+在线软件工程图表绘制工具，支持**用例图**、**系统功能结构图**、**E-R 实体属性图**三种类型，可视化编辑，一键导出 PNG。
 
-Currently, two official plugins are available:
+## 在线访问
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+🔗 **[amatumeakira.github.io/se-diagram-generator](https://amatumeakira.github.io/se-diagram-generator/)**
 
-## React Compiler
+## 功能特性
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **用例图** — 多角色火柴人 + 椭圆用例，网格布局，箭头精准连接
+- **功能结构图** — 树状直角层级结构，根/模块/功能三色标签，模块外框包裹
+- **实体属性图** — 椭圆极坐标系放射布局，多实体网格排列
+- **可视化编辑** — 双击编辑、拖拽排序、Tab 快速新建、Delete 快捷删除
+- **撤销/重做** — Ctrl+Z / Ctrl+Y 全链路同步
+- **快速导入** — 空格分隔文本，一行一个角色/实体，批量创建
+- **导出图片** — 全图/分图裁剪导出，复制模式适配论文插图
+- **导入/导出数据** — JSON 完整配置 + Markdown 快速格式
+- **本地持久化** — localStorage 自动保存，刷新不丢失
 
-## Expanding the ESLint configuration
+## 本地运行
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 技术栈
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+React 19 + TypeScript + Vite + @xyflow/react + dagre + Tailwind CSS
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## 许可证
+
+MIT
