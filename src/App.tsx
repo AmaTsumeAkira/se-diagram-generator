@@ -6,6 +6,7 @@ import StructureDiagram from './components/diagrams/StructureDiagram'
 import EntityAttributeDiagram from './components/diagrams/EntityAttributeDiagram'
 import NodeEditor from './components/panels/NodeEditor'
 import ExportModal from './components/panels/ExportModal'
+import ExportDataModal from './components/panels/ExportDataModal'
 import { useUndoRedo } from './hooks/useUndoRedo'
 import type { DiagramNodeData } from './types/diagram'
 import type { UseCaseState, TreeNode, EntityState } from './components/panels/NodeEditor'
@@ -248,6 +249,7 @@ function App() {
 
   // ====== Export ======
   const [showExport, setShowExport] = useState(false)
+  const [showDataExport, setShowDataExport] = useState(false)
 
   // ====== Reset ======
   const handleReset = () => {
@@ -256,28 +258,68 @@ function App() {
     pushConfigs(initialConfigs)
   }
 
-  // ====== Import / Export JSON ======
-  const handleExportJson = () => {
-    const json = configsToJson(configs)
-    const blob = new Blob([json], { type: 'application/json' })
-    const a = document.createElement('a')
-    a.download = `diagram-configs-${Date.now()}.json`
-    a.href = URL.createObjectURL(blob)
-    a.click()
-    URL.revokeObjectURL(a.href)
+  // ====== Import ======
+  const parseQuickFormat = (text: string, type: DiagramType) => {
+    const lines = text.trim().split('\n').filter(Boolean).map((l) => l.trim().split(/\s+/))
+    if (lines.length === 0) return null
+
+    if (type === 'structure') {
+      const rootLabel = lines[0][0] || '系统'
+      const nodes: any[] = [{ id: 'root', type: 'rectangle', label: rootLabel }]
+      const edges: any[] = []
+      lines.slice(1).forEach((words, mi) => {
+        if (words.length < 1) return
+        const modId = `m${mi}`; const modLabel = words[0]
+        nodes.push({ id: modId, type: 'rectangle', label: modLabel })
+        edges.push({ id: `e_root_${modId}`, source: 'root', target: modId })
+        words.slice(1).forEach((w, fi) => {
+          const fId = `${modId}_f${fi}`
+          nodes.push({ id: fId, type: 'rectangle', label: w, vertical: true })
+          edges.push({ id: `e_${modId}_${fId}`, source: modId, target: fId })
+        })
+      })
+      return { nodes, edges }
+    }
+
+    const sourceType = type === 'usecase' ? 'actor' : 'rectangle'
+    const targetType = type === 'usecase' ? 'usecase' : 'ellipse'
+    const nodes: any[] = []; const edges: any[] = []
+    lines.forEach((words, ai) => {
+      if (words.length < 1) return
+      const srcId = `s${ai}`; const srcLabel = words[0]
+      nodes.push({ id: srcId, type: sourceType, label: srcLabel, ...(type === 'usecase' ? {} : {}) })
+      words.slice(1).forEach((w, ti) => {
+        const tId = `${srcId}_t${ti}`
+        nodes.push({ id: tId, type: targetType, label: w, ...(type === 'usecase' ? { rx: 60, ry: 15 } : { rx: 45, ry: 18 }) })
+        edges.push({ id: `e_${srcId}_${ti}`, source: srcId, target: tId })
+      })
+    })
+    return { nodes, edges }
   }
 
-  const handleImportJson = () => {
+  const handleImport = () => {
     const input = document.createElement('input')
-    input.type = 'file'; input.accept = '.json'
+    input.type = 'file'; input.accept = '.json,.txt,.md'
     input.onchange = (e: any) => {
       const file = e.target?.files?.[0]
       if (!file) return
       const reader = new FileReader()
       reader.onload = () => {
-        const restored = jsonToConfigs(reader.result as string)
-        if (restored) pushConfigs(restored)
-        else alert('JSON 格式不正确')
+        const text = reader.result as string
+        // JSON
+        if (text.trim().startsWith('{')) {
+          const restored = jsonToConfigs(text)
+          if (restored) pushConfigs(restored)
+          else alert('JSON 格式不正确')
+          return
+        }
+        // Quick format - import for current diagram type
+        const result = parseQuickFormat(text, active)
+        if (result) {
+          pushConfigs({ ...configs, [active]: result })
+        } else {
+          alert('快速导入格式不正确')
+        }
       }
       reader.readAsText(file)
     }
@@ -300,8 +342,8 @@ function App() {
           <button onClick={undo} disabled={!canUndo} className="px-2 py-1 text-xs border rounded disabled:opacity-30 hover:bg-gray-50" title="Ctrl+Z">撤销</button>
           <button onClick={redo} disabled={!canRedo} className="px-2 py-1 text-xs border rounded disabled:opacity-30 hover:bg-gray-50" title="Ctrl+Y">重做</button>
           <span className="w-px h-5 bg-gray-300 mx-1" />
-          <button onClick={handleImportJson} className="px-2 py-1 text-xs border rounded hover:bg-gray-50">导入</button>
-          <button onClick={handleExportJson} className="px-2 py-1 text-xs border rounded hover:bg-gray-50">导出 JSON</button>
+          <button onClick={handleImport} className="px-2 py-1 text-xs border rounded hover:bg-gray-50">导入</button>
+          <button onClick={() => setShowDataExport(true)} className="px-2 py-1 text-xs border rounded hover:bg-gray-50">导出数据</button>
           <button onClick={() => setShowExport(true)} className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">
             导出图片
           </button>
@@ -339,6 +381,7 @@ function App() {
 
       {/* Export Modal */}
       {showExport && <ExportModal active={active} config={configs[active]} flowRef={flowRef} onClose={() => setShowExport(false)} />}
+      {showDataExport && <ExportDataModal configs={configs} onClose={() => setShowDataExport(false)} />}
 
       {/* Shortcut Help Modal */}
       {showShortcuts && (
