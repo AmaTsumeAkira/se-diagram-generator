@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://amatsumeakira.github.io/se-diagram-generator/sitemap.xml
