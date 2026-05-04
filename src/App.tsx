@@ -35,6 +35,7 @@ function parseConfigJson(text: string): { nodes: Node<DiagramNodeData>[]; edges:
       rx: n.rx as number | undefined,
       ry: n.ry as number | undefined,
       vertical: n.vertical as boolean | undefined,
+      nodeH: n.nodeH as number | undefined,
     },
     position: { x: 0, y: 0 },
   }))

@@ -126,6 +126,16 @@ export function layoutTreeStructure(
   const maxLevel = Math.max(...levelNodes.keys())
   const nodeMap = new Map(nodes.map((n) => [n.id, { ...n, data: { ...n.data } }]))
 
+  // 根据功能节点最长文字动态计算竖排矩形高度（每字≈16px，下限50px）
+  let funcMaxChars = 0
+  for (let lv = 2; lv <= maxLevel; lv++) {
+    (levelNodes.get(lv) || []).forEach((id) => {
+      const nd = nodeMap.get(id)
+      if (nd) funcMaxChars = Math.max(funcMaxChars, String(nd.data.label || '').length)
+    })
+  }
+  if (funcMaxChars > 0) o.lv3H = Math.max(50, funcMaxChars * 16 + 8)
+
   const positioned = new Map<string, { x: number; y: number }>()
 
   // 计算子树宽度 (叶子用 lv3W，其它用 lv2W)
@@ -184,7 +194,7 @@ export function layoutTreeStructure(
       childIds.forEach((cid, j) => {
         const x = startX + j * (o.lv3W + o.lv3Gap)
         const nd = nodeMap.get(cid)
-        if (nd) nd.data = { ...nd.data, vertical: true }
+        if (nd) nd.data = { ...nd.data, vertical: true, nodeH: o.lv3H }
         positioned.set(cid, {
           x,
           y: lv === 2 ? o.lv3Y : o.lv3Y + (lv - 2) * (o.lv3H + o.levelVSpacing),

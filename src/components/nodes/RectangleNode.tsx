@@ -9,11 +9,13 @@ import type { DiagramNodeData } from '../../types/diagram'
 function RectangleNode({ data }: NodeProps<Node<DiagramNodeData>>) {
   const vertical = data.vertical as boolean
 
+  const vh = (data.nodeH as number) || 110
+
   if (vertical) {
     return (
       <div
         style={{
-          width: 20, height: 110,
+          width: 20, height: vh,
           border: '1px solid #000', background: '#fff',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           position: 'relative',
