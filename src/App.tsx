@@ -247,9 +247,10 @@ function App() {
     })
   }, [configs.entity])
 
-  // ====== Export ======
+  // ====== Modal state ======
   const [showExport, setShowExport] = useState(false)
   const [showDataExport, setShowDataExport] = useState(false)
+  const [pendingImport, setPendingImport] = useState<ConfigMap | null>(null)
 
   // ====== Reset ======
   const handleReset = () => {
@@ -308,17 +309,15 @@ function App() {
       if (!file) return
       const reader = new FileReader()
       reader.onload = () => {
-        if (!window.confirm('导入将清空所有现有数据，确定继续吗？')) return
         const text = reader.result as string
+        let importConfigs: ConfigMap | null = null
         // JSON
         if (text.trim().startsWith('{')) {
-          const restored = jsonToConfigs(text)
-          if (restored) pushConfigs(restored)
-          else alert('JSON 格式不正确')
-          return
+          importConfigs = jsonToConfigs(text)
+          if (!importConfigs) { alert('JSON 格式不正确'); return }
         }
-        // MD format: multiple sections with # headers
-        if (text.includes('\n# ') || text.startsWith('# ')) {
+        // MD format
+        else if (text.includes('\n# ') || text.startsWith('# ')) {
           const sections = text.split(/(?=^# )/m)
           const newConfigs: Record<string, any> = { usecase: emptyConfig, structure: emptyConfig, entity: emptyConfig }
           let hasData = false
@@ -332,17 +331,16 @@ function App() {
             const result = parseQuickFormat(body, type)
             if (result) { newConfigs[type] = result; hasData = true }
           })
-          if (hasData) pushConfigs(newConfigs as ConfigMap)
-          else alert('未识别到有效数据')
-          return
+          if (hasData) importConfigs = newConfigs as ConfigMap
+          else { alert('未识别到有效数据'); return }
         }
-        // Plain quick format - import for current diagram type, others empty
-        const result = parseQuickFormat(text, active)
-        if (result) {
-          pushConfigs({ usecase: emptyConfig, structure: emptyConfig, entity: emptyConfig, [active]: result })
-        } else {
-          alert('快速导入格式不正确')
+        // Plain quick format
+        else {
+          const result = parseQuickFormat(text, active)
+          if (result) importConfigs = { usecase: emptyConfig, structure: emptyConfig, entity: emptyConfig, [active]: result }
+          else { alert('快速导入格式不正确'); return }
         }
+        setPendingImport(importConfigs)
       }
       reader.readAsText(file)
     }
@@ -405,6 +403,24 @@ function App() {
       {/* Export Modal */}
       {showExport && <ExportModal active={active} config={configs[active]} flowRef={flowRef} onClose={() => setShowExport(false)} />}
       {showDataExport && <ExportDataModal configs={configs} onClose={() => setShowDataExport(false)} />}
+
+      {/* Import confirm modal */}
+      {pendingImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-80">
+            <p className="text-sm mb-4">导入将清空所有现有数据，确定继续吗？</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setPendingImport(null)}
+                className="px-4 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50">取消</button>
+              <button onClick={() => {
+                pushConfigs(pendingImport)
+                setPendingImport(null)
+              }}
+                className="px-4 py-1.5 text-sm bg-black text-white rounded hover:bg-gray-800">确定</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Shortcut Help Modal */}
       {showShortcuts && (
