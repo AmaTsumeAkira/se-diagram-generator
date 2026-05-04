@@ -26,27 +26,32 @@ interface Props {
 export default function UseCaseDiagram({ groups }: Props) {
   const positionedNodes = useMemo(() => {
     const actorX = 40
-    const actorH = 140
-    const firstY = 60
     const colStartX = 260
     const colWidth = 180
     const ucSpacing = 50
+    const ucMinH = 30
 
     const result: Node<DiagramNodeData>[] = []
+    let y = 40
 
     groups.forEach((g, gi) => {
-      const actorY = firstY + gi * actorH
+      const ucCount = Math.max(g.useCases.length, 1)
+      const ucBlockH = (ucCount - 1) * ucSpacing + ucMinH
+      const actorY = y + ucBlockH / 2 - 70
+
       result.push({ ...g.actor, position: { x: actorX, y: actorY } })
 
       const colCx = colStartX + gi * colWidth
       const totalH = (g.useCases.length - 1) * ucSpacing
-      const startY = actorY + 70 - totalH / 2
+      const startY = y + ucBlockH / 2 - totalH / 2
 
       g.useCases.forEach((uc, ui) => {
         const rx = (uc.data.rx as number) ?? 60
         const ry = (uc.data.ry as number) ?? 15
         result.push({ ...uc, position: { x: colCx - rx, y: startY + ui * ucSpacing - ry } })
       })
+
+      y += ucBlockH + 40
     })
 
     return result
