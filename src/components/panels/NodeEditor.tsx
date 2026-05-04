@@ -187,14 +187,6 @@ function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApp
 
   return (
     <div className="space-y-4">
-      {state.actors.map((actor) => (
-        <ActorSection key={actor.id} actor={actor} editingId={editingId} setEditingId={setEditingId}
-          onRename={(l) => renameActor(actor.id, l)} onRemove={() => removeActor(actor.id)}
-          onAddUc={(id, l) => addUseCase(actor.id, id, l)} onRemoveUc={(id) => removeUseCase(actor.id, id)}
-          onRenameUc={(id, l) => renameUseCase(actor.id, id, l)}
-          onMoveUc={(from, to) => moveUseCase(actor.id, from, to)} />
-      ))}
-
       <div className="flex gap-2">
         <button onClick={addActor} className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
           + 添加角色
@@ -203,6 +195,14 @@ function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApp
           快速导入
         </button>
       </div>
+
+      {state.actors.map((actor) => (
+        <ActorSection key={actor.id} actor={actor} editingId={editingId} setEditingId={setEditingId}
+          onRename={(l) => renameActor(actor.id, l)} onRemove={() => removeActor(actor.id)}
+          onAddUc={(id, l) => addUseCase(actor.id, id, l)} onRemoveUc={(id) => removeUseCase(actor.id, id)}
+          onRenameUc={(id, l) => renameUseCase(actor.id, id, l)}
+          onMoveUc={(from, to) => moveUseCase(actor.id, from, to)} />
+      ))}
 
       <button onClick={() => onApply(useCaseToJson(state))}
         className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
@@ -468,6 +468,15 @@ function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply
 
   return (
     <div className="space-y-4">
+      <div className="flex gap-2">
+        <button onClick={addEntity} className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
+          + 添加实体
+        </button>
+        <button onClick={() => setShowImport(true)} className="px-3 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 text-gray-500">
+          快速导入
+        </button>
+      </div>
+
       {state.entities.map((ent) => (
         <div key={ent.id} className="border border-gray-200 rounded-lg bg-white">
           <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
@@ -484,15 +493,6 @@ function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply
           </div>
         </div>
       ))}
-
-      <div className="flex gap-2">
-        <button onClick={addEntity} className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
-          + 添加实体
-        </button>
-        <button onClick={() => setShowImport(true)} className="px-3 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 text-gray-500">
-          快速导入
-        </button>
-      </div>
 
       <button onClick={() => onApply(entityToJson(state))}
         className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
