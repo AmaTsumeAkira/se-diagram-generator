@@ -25,14 +25,8 @@ interface Props {
 
 export default function UseCaseDiagram({ groups }: Props) {
   const positionedNodes = useMemo(() => {
-    // 根据所有用例中的最长文字动态计算椭圆宽度
-    const allLabels = groups.flatMap((g) => g.useCases.map((uc) => uc.data.label as string))
-    const maxWidth = allLabels.reduce((m, s) => {
-      let w = 0
-      for (const ch of s) w += ch.charCodeAt(0) > 127 ? 14 : 8
-      return Math.max(m, w)
-    }, 0)
-    const dynRx = Math.max(55, Math.ceil(maxWidth / 2) + 18)
+    // 估算文字宽度：中文≈14px，英文≈8px
+    const textW = (s: string) => { let w = 0; for (const ch of s) w += ch.charCodeAt(0) > 127 ? 14 : 8; return w }
 
     const cols = Math.ceil(Math.sqrt(groups.length))
     const actorOff = 40
@@ -69,8 +63,10 @@ export default function UseCaseDiagram({ groups }: Props) {
 
         result.push({ ...g.actor, position: { x: cx + actorOff, y: actorY } })
 
+        const maxW = g.useCases.reduce((m, uc) => Math.max(m, textW(uc.data.label as string)), 0)
+        const rx = Math.max(55, Math.ceil(maxW / 2) + 18)
+
         g.useCases.forEach((uc, ui) => {
-          const rx = dynRx
           const ry = (uc.data.ry as number) ?? 15
           uc.data = { ...uc.data, rx, ry }
           result.push({ ...uc, position: { x: cx + ucOff - rx, y: startY + ui * ucSpacing - ry } })
