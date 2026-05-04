@@ -151,6 +151,15 @@ function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApp
       actors: s.actors.map((a) => a.id === actorId ? { ...a, useCases: [...a.useCases, { id, label }] } : a),
     }))
   }
+  const moveUseCase = (actorId: string, from: number, to: number) => {
+    setState((s) => ({
+      actors: s.actors.map((a) => {
+        if (a.id !== actorId) return a
+        const arr = [...a.useCases]; const [item] = arr.splice(from, 1); arr.splice(to, 0, item)
+        return { ...a, useCases: arr }
+      }),
+    }))
+  }
   const removeUseCase = (actorId: string, ucId: string) => {
     setState((s) => ({
       actors: s.actors.map((a) => a.id === actorId ? { ...a, useCases: a.useCases.filter((uc) => uc.id !== ucId) } : a),
@@ -171,7 +180,8 @@ function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApp
         <ActorSection key={actor.id} actor={actor} editingId={editingId} setEditingId={setEditingId}
           onRename={(l) => renameActor(actor.id, l)} onRemove={() => removeActor(actor.id)}
           onAddUc={(id, l) => addUseCase(actor.id, id, l)} onRemoveUc={(id) => removeUseCase(actor.id, id)}
-          onRenameUc={(id, l) => renameUseCase(actor.id, id, l)} />
+          onRenameUc={(id, l) => renameUseCase(actor.id, id, l)}
+          onMoveUc={(from, to) => moveUseCase(actor.id, from, to)} />
       ))}
 
       <button onClick={addActor} className="w-full py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
@@ -186,11 +196,13 @@ function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApp
   )
 }
 
-function ActorSection({ actor, editingId, setEditingId, onRename, onRemove, onAddUc, onRemoveUc, onRenameUc }: {
+function ActorSection({ actor, editingId, setEditingId, onRename, onRemove, onAddUc, onRemoveUc, onRenameUc, onMoveUc }: {
   actor: UseCaseState['actors'][number]
   editingId: string | null; setEditingId: (id: string | null) => void
   onRename: (label: string) => void; onRemove: () => void
-  onAddUc: (id: string, label: string) => void; onRemoveUc: (id: string) => void; onRenameUc: (id: string, label: string) => void
+  onAddUc: (id: string, label: string) => void; onRemoveUc: (id: string) => void
+  onRenameUc: (id: string, label: string) => void
+  onMoveUc: (from: number, to: number) => void
 }) {
   const [newLabel, setNewLabel] = useState('')
   const [focusedIdx, setFocusedIdx] = useState<number | null>(null)
@@ -201,12 +213,6 @@ function ActorSection({ actor, editingId, setEditingId, onRename, onRemove, onAd
     if (!label) return
     onAddUc(uid(), label)
     setNewLabel('')
-  }
-
-  const move = (from: number, to: number) => {
-    // Moving handled via direct state mutation through parent...
-    // For simplicity we skip drag-to-reorder for now in multi-actor mode
-    setDragIdx(null)
   }
 
   return (
@@ -227,14 +233,18 @@ function ActorSection({ actor, editingId, setEditingId, onRename, onRemove, onAd
         </div>
         <div className="space-y-1">
           {actor.useCases.map((uc, i) => (
-            <div key={uc.id} tabIndex={0}
-              className={`flex items-center justify-between px-2 py-1 bg-gray-50 border rounded text-sm cursor-default transition-colors ${focusedIdx === i ? 'border-black ring-1 ring-black' : 'border-gray-200'}`}
+            <div key={uc.id} draggable tabIndex={0}
+              className={`flex items-center justify-between px-2 py-1 bg-gray-50 border rounded text-sm cursor-default transition-colors ${focusedIdx === i ? 'border-black ring-1 ring-black' : 'border-gray-200'} ${dragIdx === i ? 'opacity-40' : ''}`}
               onDoubleClick={() => setEditingId(uc.id)}
+              onDragStart={() => setDragIdx(i)} onDragOver={(e) => e.preventDefault()}
+              onDrop={() => { if (dragIdx !== null && dragIdx !== i) onMoveUc(dragIdx, i); setDragIdx(null) }}
+              onDragEnd={() => setDragIdx(null)}
               onFocus={() => setFocusedIdx(i)} onBlur={() => setFocusedIdx(null)}
               onKeyDown={(e) => {
                 if ((e.key === 'Delete' || e.key === 'Backspace') && editingId !== uc.id) onRemoveUc(uc.id)
                 if (e.key === 'Enter') setEditingId(uc.id)
               }}>
+              <span className="text-xs text-gray-300 mr-1 cursor-grab select-none">⋮⋮</span>
               {editingId === uc.id ? (
                 <InlineEdit value={uc.label} className="flex-1"
                   onSave={(v) => { onRenameUc(uc.id, v); setEditingId(null) }}
