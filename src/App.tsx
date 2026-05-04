@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ReactFlowProvider } from '@xyflow/react'
 import type { Edge, Node } from '@xyflow/react'
 import UseCaseDiagram from './components/diagrams/UseCaseDiagram'
@@ -11,16 +12,13 @@ import { useUndoRedo } from './hooks/useUndoRedo'
 import type { DiagramNodeData } from './types/diagram'
 import type { UseCaseState, TreeNode, EntityState } from './components/panels/NodeEditor'
 import { useCasePresets, structureNodes, structureEdges, userEntityPreset } from './data/mockData'
+import i18n from './i18n'
 
 type DiagramType = 'usecase' | 'structure' | 'entity'
 
 const LS_KEY = 'diagram-editor-configs'
 
-const tabs: { key: DiagramType; label: string }[] = [
-  { key: 'usecase', label: '用例图' },
-  { key: 'structure', label: '功能结构图' },
-  { key: 'entity', label: '实体属性图' },
-]
+const tabKeys: DiagramType[] = ['usecase', 'structure', 'entity']
 
 // ====== JSON ↔ config ======
 
@@ -159,25 +157,15 @@ function loadConfigs(): ConfigMap {
 
 // ====== Shortcut Help ======
 
-const shortcuts = [
-  { keys: 'Ctrl+Z', desc: '撤销' },
-  { keys: 'Ctrl+Y', desc: '重做' },
-  { keys: '双击元素', desc: '编辑名称' },
-  { keys: 'Enter', desc: '保存编辑' },
-  { keys: 'Tab', desc: '保存并跳转下一个' },
-  { keys: 'Tab(末尾)', desc: '新建空白元素' },
-  { keys: 'Delete', desc: '删除选中元素' },
-  { keys: '拖拽 ⠿', desc: '列表排序' },
-  { keys: '?', desc: '显示/隐藏快捷键' },
-]
-
 // ====== App ======
 
 function App() {
+  const { t } = useTranslation()
   const [active, setActive] = useState<DiagramType>('usecase')
   const [configVersion, setConfigVersion] = useState(0)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const flowRef = useRef<HTMLDivElement>(null)
+  const toggleLang = () => { const next = i18n.language === 'zh' ? 'en' : 'zh'; i18n.changeLanguage(next); localStorage.setItem('lang', next) }
 
   const { present: configs, push: pushConfigs, undo, redo, canUndo, canRedo } = useUndoRedo<ConfigMap>(loadConfigs())
 
@@ -254,7 +242,7 @@ function App() {
 
   // ====== Reset ======
   const handleReset = () => {
-    if (!window.confirm('确定要重置所有图表为初始状态吗？此操作不可撤销。')) return
+    if (!window.confirm(t('reset.confirm'))) return
     localStorage.removeItem(LS_KEY)
     pushConfigs(initialConfigs)
   }
@@ -314,7 +302,7 @@ function App() {
         // JSON
         if (text.trim().startsWith('{')) {
           importConfigs = jsonToConfigs(text)
-          if (!importConfigs) { alert('JSON 格式不正确'); return }
+          if (!importConfigs) { alert(t('import.jsonError')); return }
         }
         // MD format
         else if (text.includes('\n# ') || text.startsWith('# ')) {
@@ -332,13 +320,13 @@ function App() {
             if (result) { newConfigs[type] = result; hasData = true }
           })
           if (hasData) importConfigs = newConfigs as ConfigMap
-          else { alert('未识别到有效数据'); return }
+          else { alert(t('import.mdError')); return }
         }
         // Plain quick format
         else {
           const result = parseQuickFormat(text, active)
           if (result) importConfigs = { usecase: emptyConfig, structure: emptyConfig, entity: emptyConfig, [active]: result }
-          else { alert('快速导入格式不正确'); return }
+          else { alert(t('import.quickError')); return }
         }
         setPendingImport(importConfigs)
       }
@@ -351,25 +339,24 @@ function App() {
     <div className="h-screen flex flex-col">
       {/* Top Navigation */}
       <header className="flex items-center gap-1 px-4 py-2 border-b border-gray-200 bg-white shrink-0">
-        <h1 className="text-base font-bold mr-4">软件工程图生成器</h1>
-        {tabs.map((tab) => (
-          <button key={tab.key} onClick={() => setActive(tab.key)}
-            className={`px-3 py-1 rounded text-sm font-medium transition-colors ${active === tab.key ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
-            {tab.label}
+        <h1 className="text-base font-bold mr-4">{t('app.title')}</h1>
+        {tabKeys.map((key) => (
+          <button key={key} onClick={() => setActive(key)}
+            className={`px-3 py-1 rounded text-sm font-medium transition-colors ${active === key ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+            {t(`app.${key}`)}
           </button>
         ))}
 
         <div className="ml-auto flex items-center gap-1">
-          <button onClick={undo} disabled={!canUndo} className="px-2 py-1 text-xs border rounded disabled:opacity-30 hover:bg-gray-50" title="Ctrl+Z">撤销</button>
-          <button onClick={redo} disabled={!canRedo} className="px-2 py-1 text-xs border rounded disabled:opacity-30 hover:bg-gray-50" title="Ctrl+Y">重做</button>
+          <button onClick={undo} disabled={!canUndo} className="px-2 py-1 text-xs border rounded disabled:opacity-30 hover:bg-gray-50" title="Ctrl+Z">{t('toolbar.undo')}</button>
+          <button onClick={redo} disabled={!canRedo} className="px-2 py-1 text-xs border rounded disabled:opacity-30 hover:bg-gray-50" title="Ctrl+Y">{t('toolbar.redo')}</button>
           <span className="w-px h-5 bg-gray-300 mx-1" />
-          <button onClick={handleImport} className="px-2 py-1 text-xs border rounded hover:bg-gray-50">导入</button>
-          <button onClick={() => setShowDataExport(true)} className="px-2 py-1 text-xs border rounded hover:bg-gray-50">导出数据</button>
-          <button onClick={() => setShowExport(true)} className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">
-            导出图片
-          </button>
-          <button onClick={handleReset} className="px-2 py-1 text-xs text-red-400 border border-red-200 rounded hover:bg-red-50 ml-1" title="重置所有图表">重置</button>
-          <button onClick={() => setShowShortcuts(true)} className="px-2 py-1 text-xs text-gray-400 border rounded hover:bg-gray-50 ml-1" title="快捷键">?</button>
+          <button onClick={handleImport} className="px-2 py-1 text-xs border rounded hover:bg-gray-50">{t('toolbar.import')}</button>
+          <button onClick={() => setShowDataExport(true)} className="px-2 py-1 text-xs border rounded hover:bg-gray-50">{t('toolbar.exportData')}</button>
+          <button onClick={() => setShowExport(true)} className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">{t('toolbar.exportImage')}</button>
+          <button onClick={handleReset} className="px-2 py-1 text-xs text-red-400 border border-red-200 rounded hover:bg-red-50 ml-1">{t('toolbar.reset')}</button>
+          <button onClick={() => setShowShortcuts(true)} className="px-2 py-1 text-xs text-gray-400 border rounded hover:bg-gray-50 ml-1" title={t('toolbar.shortcuts')}>?</button>
+          <button onClick={toggleLang} className="px-2 py-1 text-xs border rounded hover:bg-gray-50 ml-1">{t('toolbar.lang')}</button>
         </div>
       </header>
 
@@ -385,7 +372,7 @@ function App() {
               <UseCaseDiagram groups={useCaseGroups} />
             )}
             {active === 'usecase' && useCaseGroups.length === 0 && (
-              <div className="flex items-center justify-center h-full text-gray-400">请添加角色节点</div>
+              <div className="flex items-center justify-center h-full text-gray-400">{t('editor.addActor')}</div>
             )}
             {active === 'structure' && (
               <StructureDiagram nodes={configs.structure.nodes} edges={configs.structure.edges} />
@@ -408,15 +395,12 @@ function App() {
       {pendingImport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
           <div className="bg-white rounded-lg shadow-xl p-6 w-80">
-            <p className="text-sm mb-4">导入将清空所有现有数据，确定继续吗？</p>
+            <p className="text-sm mb-4">{t('import.confirmTitle')}</p>
             <div className="flex gap-2 justify-end">
               <button onClick={() => setPendingImport(null)}
-                className="px-4 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50">取消</button>
-              <button onClick={() => {
-                pushConfigs(pendingImport)
-                setPendingImport(null)
-              }}
-                className="px-4 py-1.5 text-sm bg-black text-white rounded hover:bg-gray-800">确定</button>
+                className="px-4 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50">{t('import.cancel')}</button>
+              <button onClick={() => { pushConfigs(pendingImport); setPendingImport(null) }}
+                className="px-4 py-1.5 text-sm bg-black text-white rounded hover:bg-gray-800">{t('import.confirm')}</button>
             </div>
           </div>
         </div>
@@ -427,11 +411,11 @@ function App() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowShortcuts(false)}>
           <div className="bg-white rounded-lg shadow-xl p-6 min-w-[320px]" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold">键盘快捷键</h3>
+              <h3 className="text-sm font-semibold">{t('shortcuts.title')}</h3>
               <button onClick={() => setShowShortcuts(false)} className="text-gray-400 hover:text-black text-lg leading-none">×</button>
             </div>
             <div className="space-y-2">
-              {shortcuts.map((s) => (
+              {(t('shortcuts.list', { returnObjects: true }) as { keys: string; desc: string }[]).map((s) => (
                 <div key={s.keys} className="flex items-center justify-between text-sm">
                   <span className="text-gray-500">{s.desc}</span>
                   <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-300 rounded text-xs font-mono text-gray-700">{s.keys}</kbd>

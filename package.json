@@ -14,9 +14,11 @@
     "@xyflow/react": "^12.10.2",
     "dagre": "^0.8.5",
     "html-to-image": "^1.11.13",
+    "i18next": "^26.0.8",
     "lucide-react": "^1.14.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
+    "react-i18next": "^17.0.6",
     "tailwindcss": "^4.2.4"
   },
   "devDependencies": {

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 
 // ====== Types ======
 
@@ -84,15 +85,13 @@ function entityToJson(state: EntityState): string {
 // ====== Main ======
 
 export default function NodeEditor({ type, useCase, tree, entity, onApply }: Props) {
+  const { t } = useTranslation()
+  const titleKey = type === 'usecase' ? 'editor.usecaseTitle' : type === 'structure' ? 'editor.structureTitle' : 'editor.entityTitle'
   return (
     <div className="w-[420px] shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col h-full">
       <div className="px-4 py-3 border-b border-gray-200 bg-white">
-        <h2 className="text-sm font-semibold">
-          {type === 'usecase' && '用例图 - 节点编辑'}
-          {type === 'structure' && '功能结构图 - 节点编辑'}
-          {type === 'entity' && '实体属性图 - 节点编辑'}
-        </h2>
-        <p className="text-xs text-gray-500 mt-0.5">双击编辑 · Enter 保存 · Tab 下一个 · 末尾 Tab 新建</p>
+        <h2 className="text-sm font-semibold">{t(titleKey)}</h2>
+        <p className="text-xs text-gray-500 mt-0.5">{t('editor.hint')}</p>
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {type === 'usecase' && useCase && <UseCaseEditor state={useCase} onApply={onApply} />}
@@ -100,8 +99,8 @@ export default function NodeEditor({ type, useCase, tree, entity, onApply }: Pro
         {type === 'entity' && entity && <EntityEditor state={entity} onApply={onApply} />}
       </div>
       <div className="px-3 py-2 border-t border-gray-200 bg-white text-[10px] text-gray-400 text-center">
-        &copy; 2026 软件工程图生成器 v1.0 &nbsp;|&nbsp;
-        <a href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600">陕ICP备20011108号-2</a>
+        {t('footer.copyright')} &nbsp;|&nbsp;
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600">{t('footer.icp')}</a>
       </div>
     </div>
   )
@@ -143,11 +142,12 @@ function InlineEdit({
 // ====== Use Case Editor ======
 
 function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApply: (json: string) => void }) {
+  const { t } = useTranslation()
   const [state, setState] = useState<UseCaseState>(initial)
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const addActor = () => {
-    setState((s) => ({ actors: [...s.actors, { id: uid(), label: '新角色', useCases: [] }] }))
+    setState((s) => ({ actors: [...s.actors, { id: uid(), label: t('editor.newActor'), useCases: [] }] }))
   }
   const removeActor = (actorId: string) => {
     setState((s) => ({ actors: s.actors.filter((a) => a.id !== actorId) }))
@@ -189,10 +189,10 @@ function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApp
     <div className="space-y-4">
       <div className="flex gap-2">
         <button onClick={addActor} className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
-          + 添加角色
+          {t('editor.addActor')}
         </button>
         <button onClick={() => setShowImport(true)} className="px-3 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 text-gray-500">
-          快速导入
+          {t('editor.quickImport')}
         </button>
       </div>
 
@@ -206,11 +206,11 @@ function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApp
 
       <button onClick={() => onApply(useCaseToJson(state))}
         className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
-        应用修改
+        {t('editor.apply')}
       </button>
 
       {showImport && (
-        <QuickImport title="快速导入用例" example={`管理员 业主管理 维修人员管理 公寓设施管理
+        <QuickImport title="{t('editor.quickImport')}用例" example={`管理员 业主管理 维修人员管理 公寓设施管理
 业主 个人中心 报修服务 维修评价`}
           onClose={() => setShowImport(false)}
           onImport={(lines) => {
@@ -348,18 +348,18 @@ function TreeEditor({ root: initialRoot, onApply }: { root: TreeNode; onApply: (
     <div>
       <button onClick={() => setShowImport(true)}
         className="w-full py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 text-gray-500 mb-3">
-        快速导入
+        {t('editor.quickImport')}
       </button>
 
       <TreeNodeRow node={root} depth={0} editingId={editingId} onStartEdit={setEditingId}
         onAddChild={handleAddChild} onDelete={handleDelete} onRename={handleRename} onTab={handleTabFrom} />
       <button onClick={() => onApply(treeToJson(root))}
         className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800 mt-4">
-        应用修改
+        {t('editor.apply')}
       </button>
 
       {showImport && (
-        <QuickImport title="快速导入结构" example={`公寓报修管理系统
+        <QuickImport title="{t('editor.quickImport')}结构" example={`公寓报修管理系统
 管理员 业主管理 维修人员管理 公寓设施管理 报修服务管理 维修服务评价 修改密码
 业主 个人中心 报修服务 维修评价 修改密码
 维修人员 个人资料管理 报修服务订单 维修评价 修改密码`}
@@ -501,7 +501,7 @@ function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply
           + 添加实体
         </button>
         <button onClick={() => setShowImport(true)} className="px-3 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 text-gray-500">
-          快速导入
+          {t('editor.quickImport')}
         </button>
       </div>
 
@@ -524,11 +524,11 @@ function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply
 
       <button onClick={() => onApply(entityToJson(state))}
         className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
-        应用修改
+        {t('editor.apply')}
       </button>
 
       {showImport && (
-        <QuickImport title="快速导入实体" example={`用户 用户ID 用户名 密码 手机号 角色
+        <QuickImport title="{t('editor.quickImport')}实体" example={`用户 用户ID 用户名 密码 手机号 角色
 维修人员 员工ID 姓名 技能类型 联系电话 当前状态`}
           onClose={() => setShowImport(false)}
           onImport={(lines) => {
