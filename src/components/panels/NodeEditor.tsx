@@ -541,7 +541,7 @@ function QuickImport({ title, example, onClose, onImport }: {
           placeholder={`示例:\n${example}`} value={text}
           onChange={(e) => setText(e.target.value)} />
         <div className="text-[10px] text-gray-400 mb-3 bg-gray-50 rounded p-2">
-          示例格式：<br/>{example.split('\n').join('<br/>')}
+          示例格式：{example.split('\n').map((line, i) => <span key={i}>{i > 0 && <br />}{line}</span>)}
         </div>
         <div className="flex gap-2">
           <button onClick={handleImport} className="flex-1 py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">导入</button>
