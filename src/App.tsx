@@ -265,16 +265,16 @@ function App() {
 
     if (type === 'structure') {
       const rootLabel = lines[0][0] || '系统'
-      const nodes: any[] = [{ id: 'root', type: 'rectangle', label: rootLabel }]
-      const edges: any[] = []
+      const nodes: Node<DiagramNodeData>[] = [{ id: 'root', type: 'rectangle', data: { label: rootLabel }, position: { x: 0, y: 0 } }]
+      const edges: Edge[] = []
       lines.slice(1).forEach((words, mi) => {
         if (words.length < 1) return
         const modId = `m${mi}`; const modLabel = words[0]
-        nodes.push({ id: modId, type: 'rectangle', label: modLabel })
+        nodes.push({ id: modId, type: 'rectangle', data: { label: modLabel }, position: { x: 0, y: 0 } })
         edges.push({ id: `e_root_${modId}`, source: 'root', target: modId })
         words.slice(1).forEach((w, fi) => {
           const fId = `${modId}_f${fi}`
-          nodes.push({ id: fId, type: 'rectangle', label: w, vertical: true })
+          nodes.push({ id: fId, type: 'rectangle', data: { label: w, vertical: true }, position: { x: 0, y: 0 } })
           edges.push({ id: `e_${modId}_${fId}`, source: modId, target: fId })
         })
       })
@@ -283,14 +283,14 @@ function App() {
 
     const sourceType = type === 'usecase' ? 'actor' : 'rectangle'
     const targetType = type === 'usecase' ? 'usecase' : 'ellipse'
-    const nodes: any[] = []; const edges: any[] = []
+    const nodes: Node<DiagramNodeData>[] = []; const edges: Edge[] = []
     lines.forEach((words, ai) => {
       if (words.length < 1) return
       const srcId = `s${ai}`; const srcLabel = words[0]
-      nodes.push({ id: srcId, type: sourceType, label: srcLabel, ...(type === 'usecase' ? {} : {}) })
+      nodes.push({ id: srcId, type: sourceType, data: { label: srcLabel }, position: { x: 0, y: 0 } })
       words.slice(1).forEach((w, ti) => {
         const tId = `${srcId}_t${ti}`
-        nodes.push({ id: tId, type: targetType, label: w, ...(type === 'usecase' ? { rx: 60, ry: 15 } : { rx: 45, ry: 18 }) })
+        nodes.push({ id: tId, type: targetType, data: { label: w, rx: type === 'usecase' ? 60 : 45, ry: type === 'usecase' ? 15 : 18 }, position: { x: 0, y: 0 } })
         edges.push({ id: `e_${srcId}_${ti}`, source: srcId, target: tId })
       })
     })
