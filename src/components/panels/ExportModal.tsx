@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { toPng } from 'html-to-image'
 import type { Node, Edge } from '@xyflow/react'
-import type { DiagramNodeData } from '../types/diagram'
+import type { DiagramNodeData } from '../../types/diagram'
 
 interface Props {
   active: string

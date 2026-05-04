@@ -515,7 +515,7 @@ function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply
             <button onClick={() => removeEntity(ent.id)} className="text-gray-400 hover:text-red-500 text-sm ml-1" title="删除实体">×</button>
           </div>
           <div className="px-3 py-2">
-            <AttrList entId={ent.id} attributes={ent.attributes} editingId={editingId} setEditingId={setEditingId}
+            <AttrList attributes={ent.attributes} editingId={editingId} setEditingId={setEditingId}
               onAdd={(id, l) => addAttr(ent.id, id, l)} onRemove={(id) => removeAttr(ent.id, id)}
               onRename={(id, l) => renameAttr(ent.id, id, l)} onMove={(f, t) => moveAttr(ent.id, f, t)} />
           </div>
@@ -582,8 +582,8 @@ function QuickImport({ title, example, onClose, onImport }: {
   )
 }
 
-function AttrList({ entId, attributes, editingId, setEditingId, onAdd, onRemove, onRename, onMove }: {
-  entId: string; attributes: { id: string; label: string }[]
+function AttrList({ attributes, editingId, setEditingId, onAdd, onRemove, onRename, onMove }: {
+  attributes: { id: string; label: string }[]
   editingId: string | null; setEditingId: (id: string | null) => void
   onAdd: (id: string, label: string) => void; onRemove: (id: string) => void
   onRename: (id: string, label: string) => void; onMove: (from: number, to: number) => void

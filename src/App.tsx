@@ -179,7 +179,7 @@ function App() {
   const [showShortcuts, setShowShortcuts] = useState(false)
   const flowRef = useRef<HTMLDivElement>(null)
 
-  const { present: configs, push: pushConfigs, undo, redo, canUndo, canRedo } = useUndoRedo<ConfigMap>(loadConfigs)
+  const { present: configs, push: pushConfigs, undo, redo, canUndo, canRedo } = useUndoRedo<ConfigMap>(loadConfigs())
 
   // Persist to localStorage
   useEffect(() => {

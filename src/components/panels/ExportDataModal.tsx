@@ -1,5 +1,5 @@
 import type { Node, Edge } from '@xyflow/react'
-import type { DiagramNodeData } from '../types/diagram'
+import type { DiagramNodeData } from '../../types/diagram'
 
 interface Props {
   configs: Record<string, { nodes: Node<DiagramNodeData>[]; edges: Edge[] }>
