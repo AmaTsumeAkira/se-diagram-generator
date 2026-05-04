@@ -101,6 +101,11 @@ export default {
   reset: {
     confirm: 'Reset all diagrams to initial state? This cannot be undone.',
   },
+  stats: {
+    sitePv: 'Site PV',
+    pagePv: 'Page PV',
+    siteUv: 'Site UV',
+  },
   footer: {
     copyright: '© 2026 SE Diagram Generator v1.0',
     icp: '陕ICP备20011108号-2',

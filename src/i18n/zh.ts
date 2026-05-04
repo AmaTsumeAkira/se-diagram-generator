@@ -101,6 +101,11 @@ export default {
   reset: {
     confirm: '确定要重置所有图表为初始状态吗？此操作不可撤销。',
   },
+  stats: {
+    sitePv: '全站浏览量',
+    pagePv: '本页浏览',
+    siteUv: '独立访客',
+  },
   footer: {
     copyright: '© 2026 软件工程图生成器 v1.0',
     icp: '陕ICP备20011108号-2',
