@@ -25,31 +25,49 @@ interface Props {
 
 export default function UseCaseDiagram({ groups }: Props) {
   const positionedNodes = useMemo(() => {
-    const actorX = 40
-    const ucCenterX = 280
-    const ucSpacing = 50
+    const cols = Math.ceil(Math.sqrt(groups.length))
+    const actorOff = 40
+    const ucOff = 280
+    const cellW = 380
+    const ucSpacing = 48
     const ucMinH = 30
+    const rowGap = 50
+
+    // 按行分组
+    const rows: ActorGroup[][] = []
+    for (let i = 0; i < groups.length; i += cols) {
+      rows.push(groups.slice(i, i + cols))
+    }
+
+    // 每行高度 = 该行最多用例数的块高度
+    const rowHeights = rows.map((row) => {
+      const maxUc = Math.max(...row.map((g) => g.useCases.length), 1)
+      return (maxUc - 1) * ucSpacing + ucMinH + rowGap
+    })
 
     const result: Node<DiagramNodeData>[] = []
     let y = 40
 
-    groups.forEach((g) => {
-      const ucCount = Math.max(g.useCases.length, 1)
-      const ucBlockH = (ucCount - 1) * ucSpacing + ucMinH
-      const actorY = y + ucBlockH / 2 - 70
+    rows.forEach((row, ri) => {
+      const rowH = rowHeights[ri]
+      const blockH = rowH - rowGap
 
-      result.push({ ...g.actor, position: { x: actorX, y: actorY } })
+      row.forEach((g, ci) => {
+        const cx = ci * cellW
+        const totalH = (g.useCases.length - 1) * ucSpacing
+        const actorY = y + blockH / 2 - 70
+        const startY = y + blockH / 2 - totalH / 2
 
-      const totalH = (g.useCases.length - 1) * ucSpacing
-      const startY = y + ucBlockH / 2 - totalH / 2
+        result.push({ ...g.actor, position: { x: cx + actorOff, y: actorY } })
 
-      g.useCases.forEach((uc, ui) => {
-        const rx = (uc.data.rx as number) ?? 60
-        const ry = (uc.data.ry as number) ?? 15
-        result.push({ ...uc, position: { x: ucCenterX - rx, y: startY + ui * ucSpacing - ry } })
+        g.useCases.forEach((uc, ui) => {
+          const rx = (uc.data.rx as number) ?? 60
+          const ry = (uc.data.ry as number) ?? 15
+          result.push({ ...uc, position: { x: cx + ucOff - rx, y: startY + ui * ucSpacing - ry } })
+        })
       })
 
-      y += ucBlockH + 40
+      y += rowH
     })
 
     return result
