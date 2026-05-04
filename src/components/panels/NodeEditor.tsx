@@ -97,6 +97,11 @@ export default function NodeEditor({ type, useCase, tree, entity, onApply }: Pro
         {type === 'structure' && tree && <TreeEditor root={tree} onApply={onApply} />}
         {type === 'entity' && entity && <EntityEditor state={entity} onApply={onApply} />}
       </div>
+      <div className="px-3 py-2 border-t border-gray-200 bg-white text-[10px] text-gray-400 leading-relaxed">
+        <div>软件工程图生成器 v1.0</div>
+        <div>© 2026 版权所有</div>
+        <div>ICP 备 2026000001 号</div>
+      </div>
     </div>
   )
 }

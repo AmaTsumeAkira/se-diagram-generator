@@ -179,6 +179,9 @@ function App() {
   const handleExportPng = useCallback(async () => {
     const el = flowRef.current?.querySelector('.react-flow') as HTMLElement | null
     if (!el) return
+    // 隐藏背景格点
+    const bg = el.querySelector('.react-flow__background') as HTMLElement | null
+    if (bg) bg.style.display = 'none'
     setExporting(true)
     try {
       const dataUrl = await toPng(el, { backgroundColor: '#ffffff' })
@@ -189,6 +192,7 @@ function App() {
     } catch (e) {
       console.error('Export failed', e)
     } finally {
+      if (bg) bg.style.display = ''
       setExporting(false)
     }
   }, [active])
