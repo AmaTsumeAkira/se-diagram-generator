@@ -1,10 +1,12 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
 import type { Edge, Node } from '@xyflow/react'
+import { toPng } from 'html-to-image'
 import UseCaseDiagram from './components/diagrams/UseCaseDiagram'
 import StructureDiagram from './components/diagrams/StructureDiagram'
 import EntityAttributeDiagram from './components/diagrams/EntityAttributeDiagram'
 import NodeEditor from './components/panels/NodeEditor'
+import { useUndoRedo } from './hooks/useUndoRedo'
 import type { DiagramNodeData } from './types/diagram'
 import type { UseCaseState, TreeNode, EntityState } from './components/panels/NodeEditor'
 import {
@@ -16,138 +18,141 @@ import {
 
 type DiagramType = 'usecase' | 'structure' | 'entity'
 
+const LS_KEY = 'diagram-editor-configs'
+
 const tabs: { key: DiagramType; label: string }[] = [
   { key: 'usecase', label: '用例图' },
   { key: 'structure', label: '功能结构图' },
   { key: 'entity', label: '实体属性图' },
 ]
 
-// ====== JSON → React Flow config ======
+// ====== JSON ↔ config ======
 
-function parseConfigJson(text: string): { nodes: Node<DiagramNodeData>[]; edges: Edge[] } | { error: string } {
-  try {
-    const data = JSON.parse(text)
-    if (!data.nodes || !Array.isArray(data.nodes)) return { error: '缺少 nodes 数组' }
-    if (!data.edges || !Array.isArray(data.edges)) return { error: '缺少 edges 数组' }
+export type ConfigMap = Record<DiagramType, { nodes: Node<DiagramNodeData>[]; edges: Edge[] }>
 
-    const nodes: Node<DiagramNodeData>[] = data.nodes.map((n: any) => ({
-      id: String(n.id),
-      type: n.type ?? 'rectangle',
-      data: {
-        label: String(n.label ?? n.id),
-        rx: n.rx as number | undefined,
-        ry: n.ry as number | undefined,
-        vertical: n.vertical as boolean | undefined,
-      },
-      position: { x: 0, y: 0 },
-    }))
-
-    const edges: Edge[] = data.edges.map((e: any, i: number) => ({
-      id: e.id ?? `edge_${i}`,
-      source: String(e.source),
-      target: String(e.target),
-    }))
-
-    return { nodes, edges }
-  } catch (e) {
-    return { error: (e as Error).message }
-  }
+function parseConfigJson(text: string): { nodes: Node<DiagramNodeData>[]; edges: Edge[] } {
+  const data = JSON.parse(text)
+  const nodes: Node<DiagramNodeData>[] = (data.nodes || []).map((n: any) => ({
+    id: String(n.id),
+    type: n.type ?? 'rectangle',
+    data: {
+      label: String(n.label ?? n.id),
+      rx: n.rx as number | undefined,
+      ry: n.ry as number | undefined,
+      vertical: n.vertical as boolean | undefined,
+    },
+    position: { x: 0, y: 0 },
+  }))
+  const edges: Edge[] = (data.edges || []).map((e: any, i: number) => ({
+    id: e.id ?? `edge_${i}`,
+    source: String(e.source),
+    target: String(e.target),
+  }))
+  return { nodes, edges }
 }
 
-// ====== Initial data builders ======
-
-function buildInitialUseCase(): UseCaseState {
-  const p = useCasePresets.admin
-  return {
-    actorId: p.actor.id,
-    actorLabel: p.actor.data.label as string,
-    useCases: p.useCases.map((uc) => ({
-      id: uc.id,
-      label: uc.data.label as string,
-    })),
-  }
-}
-
-function buildInitialTree(): TreeNode {
-  // Build tree from structure data
-  const childrenMap = new Map<string, string[]>()
-  structureEdges.forEach((e) => {
-    const list = childrenMap.get(e.source) || []
-    list.push(e.target)
-    childrenMap.set(e.source, list)
-  })
-
-  const nodeMap = new Map(structureNodes.map((n) => [n.id, n]))
-
-  function build(id: string, depth: number): TreeNode {
-    const node = nodeMap.get(id)
-    const kids = childrenMap.get(id) || []
-    return {
-      id,
-      label: (node?.data.label as string) ?? id,
-      vertical: depth >= 2,
-      children: kids.map((k) => build(k, depth + 1)),
+function configsToJson(configs: ConfigMap): string {
+  const flat: Record<string, any> = {}
+  for (const key of Object.keys(configs)) {
+    const cfg = configs[key as DiagramType]
+    flat[key] = {
+      nodes: cfg.nodes.map((n) => ({ id: n.id, type: n.type, label: n.data.label, rx: n.data.rx, ry: n.data.ry, vertical: n.data.vertical })),
+      edges: cfg.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
     }
   }
-
-  const rootId = structureNodes.find((n) => !structureEdges.some((e) => e.target === n.id))?.id
-  return build(rootId ?? 'root', 0)
+  return JSON.stringify(flat, null, 2)
 }
 
-function buildInitialEntity(): EntityState {
-  return {
-    entityId: userEntityPreset.entity.id,
-    entityLabel: userEntityPreset.entity.data.label as string,
-    attributes: userEntityPreset.attributes.map((a) => ({
-      id: a.id,
-      label: a.data.label as string,
-    })),
+function jsonToConfigs(json: string): ConfigMap | null {
+  try {
+    const flat = JSON.parse(json)
+    const configs: any = {}
+    for (const key of ['usecase', 'structure', 'entity']) {
+      if (flat[key]) {
+        configs[key] = parseConfigJson(JSON.stringify(flat[key]))
+      }
+    }
+    return configs as ConfigMap
+  } catch { return null }
+}
+
+const initialConfigs: ConfigMap = {
+  usecase: parseConfigJson(useCasePresets.admin.json),
+  structure: parseConfigJson(
+    JSON.stringify({
+      nodes: structureNodes.map((n) => ({ id: n.id, type: n.type, label: n.data.label, vertical: n.data.vertical })),
+      edges: structureEdges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+    })
+  ),
+  entity: parseConfigJson(
+    JSON.stringify({
+      nodes: [
+        { id: userEntityPreset.entity.id, type: 'rectangle', label: userEntityPreset.entity.data.label },
+        ...userEntityPreset.attributes.map((a) => ({ id: a.id, type: 'ellipse', label: a.data.label, rx: 45, ry: 18 })),
+      ],
+      edges: userEntityPreset.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+    })
+  ),
+}
+
+function loadConfigs(): ConfigMap {
+  try {
+    const raw = localStorage.getItem(LS_KEY)
+    if (raw) {
+      const restored = jsonToConfigs(raw)
+      if (restored?.usecase && restored?.structure && restored?.entity) return restored
+    }
+  } catch { /* ignore */ }
+  return initialConfigs
+}
+
+// ====== Initial editor data ======
+
+function buildUseCase(): UseCaseState {
+  const p = useCasePresets.admin
+  return { actorId: p.actor.id, actorLabel: p.actor.data.label as string, useCases: p.useCases.map((uc) => ({ id: uc.id, label: uc.data.label as string })) }
+}
+
+function buildTree(): TreeNode {
+  const cm = new Map<string, string[]>()
+  structureEdges.forEach((e) => { const l = cm.get(e.source) || []; l.push(e.target); cm.set(e.source, l) })
+  const nm = new Map(structureNodes.map((n) => [n.id, n]))
+  function build(id: string, d: number): TreeNode {
+    const n = nm.get(id)
+    return { id, label: (n?.data.label as string) ?? id, vertical: d >= 2, children: (cm.get(id) || []).map((k) => build(k, d + 1)) }
   }
+  return build(structureNodes.find((n) => !structureEdges.some((e) => e.target === n.id))?.id ?? 'root', 0)
+}
+
+function buildEntity(): EntityState {
+  return { entityId: userEntityPreset.entity.id, entityLabel: userEntityPreset.entity.data.label as string, attributes: userEntityPreset.attributes.map((a) => ({ id: a.id, label: a.data.label as string })) }
 }
 
 // ====== App ======
 
 function App() {
   const [active, setActive] = useState<DiagramType>('usecase')
-  const [applyCount, setApplyCount] = useState(0)
+  const flowRef = useRef<HTMLDivElement>(null)
 
-  // Parsed configs — updated by NodeEditor via onApply
-  const [configs, setConfigs] = useState<Record<DiagramType, { nodes: Node<DiagramNodeData>[]; edges: Edge[] }>>(() => ({
-    usecase: parseConfigJson(useCasePresets.admin.json) as { nodes: Node<DiagramNodeData>[]; edges: Edge[] },
-    structure: parseConfigJson(
-      JSON.stringify({
-        nodes: structureNodes.map((n) => ({
-          id: n.id, type: n.type, label: n.data.label,
-          vertical: n.data.vertical,
-        })),
-        edges: structureEdges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
-      })
-    ) as { nodes: Node<DiagramNodeData>[]; edges: Edge[] },
-    entity: parseConfigJson(
-      JSON.stringify({
-        nodes: [
-          { id: userEntityPreset.entity.id, type: 'rectangle', label: userEntityPreset.entity.data.label },
-          ...userEntityPreset.attributes.map((a) => ({
-            id: a.id, type: 'ellipse', label: a.data.label, rx: 45, ry: 18,
-          })),
-        ],
-        edges: userEntityPreset.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
-      })
-    ) as { nodes: Node<DiagramNodeData>[]; edges: Edge[] },
-  }))
+  // Undo/Redo over configs
+  const { present: configs, push: pushConfigs, undo, redo, canUndo, canRedo } = useUndoRedo<ConfigMap>(loadConfigs)
 
-  // NodeEditor → JSON → parse → configs
+  // Persist to localStorage
+  useEffect(() => {
+    localStorage.setItem(LS_KEY, configsToJson(configs))
+  }, [configs])
+
   const handleApply = useCallback(
     (json: string) => {
-      const result = parseConfigJson(json)
-      if ('error' in result) return
-      setConfigs((prev) => ({ ...prev, [active]: result }))
-      setApplyCount((c) => c + 1)
+      try {
+        const result = parseConfigJson(json)
+        pushConfigs({ ...configs, [active]: result })
+      } catch { /* ignore invalid */ }
     },
-    [active]
+    [active, configs, pushConfigs]
   )
 
-  // ====== Derive diagram data from configs ======
+  // ====== Derive diagram data ======
 
   const useCaseData = useMemo(() => {
     const cfg = configs.usecase
@@ -155,25 +160,73 @@ function App() {
     const useCases = cfg.nodes.filter((n) => n.type === 'usecase')
     const actor = actors[0]
     const actorEdges = actor ? cfg.edges.filter((e) => e.source === actor.id) : cfg.edges
-    const connectedUcIds = new Set(actorEdges.map((e) => e.target))
-    const filteredUseCases = useCases.filter((uc) => connectedUcIds.has(uc.id))
-    return { actor: actor ?? null, useCases: filteredUseCases, edges: actorEdges }
+    const ids = new Set(actorEdges.map((e) => e.target))
+    return { actor: actor ?? null, useCases: useCases.filter((uc) => ids.has(uc.id)), edges: actorEdges }
   }, [configs.usecase])
 
   const entityData = useMemo(() => {
     const cfg = configs.entity
     const entity = cfg.nodes.find((n) => n.type === 'rectangle')
     const attributes = cfg.nodes.filter((n) => n.type === 'ellipse')
-    const entityEdges = entity
-      ? cfg.edges.filter((e) => e.source === entity.id || e.target === entity.id)
-      : cfg.edges
+    const eid = entity?.id
+    const entityEdges = eid ? cfg.edges.filter((e) => e.source === eid || e.target === eid) : cfg.edges
     return { entity: entity ?? null, attributes, edges: entityEdges }
   }, [configs.entity])
 
+  // ====== Export image ======
+
+  const [exporting, setExporting] = useState(false)
+  const handleExportPng = useCallback(async () => {
+    const el = flowRef.current?.querySelector('.react-flow') as HTMLElement | null
+    if (!el) return
+    setExporting(true)
+    try {
+      const dataUrl = await toPng(el, { backgroundColor: '#ffffff' })
+      const a = document.createElement('a')
+      a.download = `diagram-${active}-${Date.now()}.png`
+      a.href = dataUrl
+      a.click()
+    } catch (e) {
+      console.error('Export failed', e)
+    } finally {
+      setExporting(false)
+    }
+  }, [active])
+
+  // ====== Import / Export JSON ======
+
+  const handleExportJson = () => {
+    const json = configsToJson(configs)
+    const blob = new Blob([json], { type: 'application/json' })
+    const a = document.createElement('a')
+    a.download = `diagram-configs-${Date.now()}.json`
+    a.href = URL.createObjectURL(blob)
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
+  const handleImportJson = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json'
+    input.onchange = (e: any) => {
+      const file = e.target?.files?.[0]
+      if (!file) return
+      const reader = new FileReader()
+      reader.onload = () => {
+        const restored = jsonToConfigs(reader.result as string)
+        if (restored) pushConfigs(restored)
+        else alert('JSON 格式不正确')
+      }
+      reader.readAsText(file)
+    }
+    input.click()
+  }
+
   // ====== Initial editor states ======
-  const [ucState] = useState(buildInitialUseCase)
-  const [treeState] = useState(buildInitialTree)
-  const [entityState] = useState(buildInitialEntity)
+  const [ucState] = useState(buildUseCase)
+  const [treeState] = useState(buildTree)
+  const [entityState] = useState(buildEntity)
 
   return (
     <div className="h-screen flex flex-col">
@@ -185,64 +238,56 @@ function App() {
             key={tab.key}
             onClick={() => setActive(tab.key)}
             className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-              active === tab.key
-                ? 'bg-black text-white'
-                : 'text-gray-600 hover:bg-gray-100'
+              active === tab.key ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
             {tab.label}
           </button>
         ))}
+
+        <div className="ml-auto flex items-center gap-1">
+          {/* Undo/Redo */}
+          <button onClick={undo} disabled={!canUndo} className="px-2 py-1 text-xs border rounded disabled:opacity-30 hover:bg-gray-50" title="Ctrl+Z">↩</button>
+          <button onClick={redo} disabled={!canRedo} className="px-2 py-1 text-xs border rounded disabled:opacity-30 hover:bg-gray-50" title="Ctrl+Y">↪</button>
+
+          <span className="w-px h-5 bg-gray-300 mx-1" />
+
+          {/* Import / Export */}
+          <button onClick={handleImportJson} className="px-2 py-1 text-xs border rounded hover:bg-gray-50" title="导入 JSON">📥</button>
+          <button onClick={handleExportJson} className="px-2 py-1 text-xs border rounded hover:bg-gray-50" title="导出 JSON">📤</button>
+
+          {/* Export PNG */}
+          <button onClick={handleExportPng} disabled={exporting} className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800 disabled:opacity-50">
+            {exporting ? '导出中...' : '导出 PNG'}
+          </button>
+        </div>
       </header>
 
-      {/* Body: Editor + Preview */}
+      {/* Body */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Node Editor Panel */}
-        {active === 'usecase' && (
-          <NodeEditor type="usecase" useCase={ucState} onApply={handleApply} />
-        )}
-        {active === 'structure' && (
-          <NodeEditor type="structure" tree={treeState} onApply={handleApply} />
-        )}
-        {active === 'entity' && (
-          <NodeEditor type="entity" entity={entityState} onApply={handleApply} />
-        )}
+        {active === 'usecase' && <NodeEditor type="usecase" useCase={ucState} onApply={handleApply} />}
+        {active === 'structure' && <NodeEditor type="structure" tree={treeState} onApply={handleApply} />}
+        {active === 'entity' && <NodeEditor type="entity" entity={entityState} onApply={handleApply} />}
 
-        {/* Diagram Preview */}
-        <div className="flex-1" key={`${active}-${applyCount}`}>
+        <div className="flex-1" ref={flowRef}>
           <ReactFlowProvider>
             {active === 'usecase' && useCaseData.actor && (
-              <UseCaseDiagram
-                actor={useCaseData.actor}
-                useCases={useCaseData.useCases}
-                edges={useCaseData.edges}
-              />
+              <UseCaseDiagram actor={useCaseData.actor} useCases={useCaseData.useCases} edges={useCaseData.edges} />
             )}
             {active === 'usecase' && !useCaseData.actor && (
-              <div className="flex items-center justify-center h-full text-gray-400">
-                请添加一个 type: "actor" 的节点
-              </div>
+              <div className="flex items-center justify-center h-full text-gray-400">请添加 actor 节点</div>
             )}
 
             {active === 'structure' && (
-              <StructureDiagram
-                nodes={configs.structure.nodes}
-                edges={configs.structure.edges}
-              />
+              <StructureDiagram nodes={configs.structure.nodes} edges={configs.structure.edges} />
             )}
 
             {active === 'entity' && entityData.entity && (
-              <EntityAttributeDiagram
-                entity={entityData.entity}
-                attributes={entityData.attributes}
-                edges={entityData.edges}
-                orbitA={entityData.attributes.length >= 10 ? 200 : 165}
-              />
+              <EntityAttributeDiagram entity={entityData.entity} attributes={entityData.attributes} edges={entityData.edges}
+                orbitA={entityData.attributes.length >= 10 ? 200 : 165} />
             )}
             {active === 'entity' && !entityData.entity && (
-              <div className="flex items-center justify-center h-full text-gray-400">
-                请添加一个 type: "rectangle" 的实体节点
-              </div>
+              <div className="flex items-center justify-center h-full text-gray-400">请添加实体节点</div>
             )}
           </ReactFlowProvider>
         </div>

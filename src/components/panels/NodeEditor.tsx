@@ -168,6 +168,8 @@ function UseCaseEditor({
   const [state, setState] = useState<UseCaseState>(initial)
   const [newLabel, setNewLabel] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [focusedIdx, setFocusedIdx] = useState<number | null>(null)
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
 
   const addUseCase = () => {
     const label = newLabel.trim()
@@ -186,6 +188,16 @@ function UseCaseEditor({
       ...s,
       useCases: s.useCases.map((uc) => (uc.id === id ? { ...uc, label } : uc)),
     }))
+  }
+
+  const moveUseCase = (from: number, to: number) => {
+    setState((s) => {
+      const arr = [...s.useCases]
+      const [item] = arr.splice(from, 1)
+      arr.splice(to, 0, item)
+      return { ...s, useCases: arr }
+    })
+    setDragIdx(null)
   }
 
   const handleNewKeyDown = (e: React.KeyboardEvent) => {
@@ -231,9 +243,28 @@ function UseCaseEditor({
           {state.useCases.map((uc, i) => (
             <div
               key={uc.id}
-              className="flex items-center justify-between px-3 py-1.5 bg-white border border-gray-200 rounded text-sm"
+              draggable
+              tabIndex={0}
+              className={`flex items-center justify-between px-3 py-1.5 bg-white border rounded text-sm cursor-default transition-colors ${
+                focusedIdx === i ? 'border-black ring-1 ring-black' : 'border-gray-200'
+              } ${dragIdx === i ? 'opacity-40' : ''}`}
               onDoubleClick={() => setEditingId(uc.id)}
+              onFocus={() => setFocusedIdx(i)}
+              onBlur={() => setFocusedIdx(null)}
+              onKeyDown={(e) => {
+                if (e.key === 'Delete' || e.key === 'Backspace') {
+                  if (editingId !== uc.id) removeUseCase(uc.id)
+                }
+                if (e.key === 'Enter') setEditingId(uc.id)
+              }}
+              onDragStart={() => setDragIdx(i)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => {
+                if (dragIdx !== null && dragIdx !== i) moveUseCase(dragIdx, i)
+              }}
+              onDragEnd={() => setDragIdx(null)}
             >
+              <span className="text-xs text-gray-300 mr-1 cursor-grab">⠿</span>
               {editingId === uc.id ? (
                 <InlineEdit
                   value={uc.label}
@@ -243,19 +274,15 @@ function UseCaseEditor({
                     if (i + 1 < state.useCases.length) {
                       setEditingId(state.useCases[i + 1].id)
                     } else {
-                      // 末尾 Tab → 新建空白行
                       const newId = uid()
-                      setState((s) => ({
-                        ...s,
-                        useCases: [...s.useCases, { id: newId, label: '' }],
-                      }))
+                      setState((s) => ({ ...s, useCases: [...s.useCases, { id: newId, label: '' }] }))
                       setTimeout(() => setEditingId(newId), 0)
                     }
                   }}
                   className="flex-1"
                 />
               ) : (
-                <span className="flex-1 cursor-default">⭕ {uc.label}</span>
+                <span className="flex-1">⭕ {uc.label}</span>
               )}
               <button
                 onClick={() => removeUseCase(uc.id)}
@@ -504,6 +531,8 @@ function EntityEditor({
   const [state, setState] = useState<EntityState>(initial)
   const [newAttrLabel, setNewAttrLabel] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [focusedIdx, setFocusedIdx] = useState<number | null>(null)
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
 
   const addAttr = () => {
     const label = newAttrLabel.trim()
@@ -522,6 +551,16 @@ function EntityEditor({
       ...s,
       attributes: s.attributes.map((a) => (a.id === id ? { ...a, label } : a)),
     }))
+  }
+
+  const moveAttr = (from: number, to: number) => {
+    setState((s) => {
+      const arr = [...s.attributes]
+      const [item] = arr.splice(from, 1)
+      arr.splice(to, 0, item)
+      return { ...s, attributes: arr }
+    })
+    setDragIdx(null)
   }
 
   const handleNewKeyDown = (e: React.KeyboardEvent) => {
@@ -561,9 +600,28 @@ function EntityEditor({
           {state.attributes.map((a, i) => (
             <div
               key={a.id}
-              className="flex items-center justify-between px-3 py-1.5 bg-white border border-gray-200 rounded text-sm"
+              draggable
+              tabIndex={0}
+              className={`flex items-center justify-between px-3 py-1.5 bg-white border rounded text-sm cursor-default transition-colors ${
+                focusedIdx === i ? 'border-black ring-1 ring-black' : 'border-gray-200'
+              } ${dragIdx === i ? 'opacity-40' : ''}`}
               onDoubleClick={() => setEditingId(a.id)}
+              onFocus={() => setFocusedIdx(i)}
+              onBlur={() => setFocusedIdx(null)}
+              onKeyDown={(e) => {
+                if (e.key === 'Delete' || e.key === 'Backspace') {
+                  if (editingId !== a.id) removeAttr(a.id)
+                }
+                if (e.key === 'Enter') setEditingId(a.id)
+              }}
+              onDragStart={() => setDragIdx(i)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => {
+                if (dragIdx !== null && dragIdx !== i) moveAttr(dragIdx, i)
+              }}
+              onDragEnd={() => setDragIdx(null)}
             >
+              <span className="text-xs text-gray-300 mr-1 cursor-grab">⠿</span>
               {editingId === a.id ? (
                 <InlineEdit
                   value={a.label}
@@ -574,17 +632,14 @@ function EntityEditor({
                       setEditingId(state.attributes[i + 1].id)
                     } else {
                       const newId = uid()
-                      setState((s) => ({
-                        ...s,
-                        attributes: [...s.attributes, { id: newId, label: '' }],
-                      }))
+                      setState((s) => ({ ...s, attributes: [...s.attributes, { id: newId, label: '' }] }))
                       setTimeout(() => setEditingId(newId), 0)
                     }
                   }}
                   className="flex-1"
                 />
               ) : (
-                <span className="flex-1 cursor-default">⭕ {a.label}</span>
+                <span className="flex-1">⭕ {a.label}</span>
               )}
               <button
                 onClick={() => removeAttr(a.id)}
