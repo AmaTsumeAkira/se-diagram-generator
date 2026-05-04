@@ -146,9 +146,9 @@ function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApp
   const renameActor = (actorId: string, label: string) => {
     setState((s) => ({ actors: s.actors.map((a) => a.id === actorId ? { ...a, label } : a) }))
   }
-  const addUseCase = (actorId: string, label: string) => {
+  const addUseCase = (actorId: string, id: string, label: string) => {
     setState((s) => ({
-      actors: s.actors.map((a) => a.id === actorId ? { ...a, useCases: [...a.useCases, { id: uid(), label }] } : a),
+      actors: s.actors.map((a) => a.id === actorId ? { ...a, useCases: [...a.useCases, { id, label }] } : a),
     }))
   }
   const removeUseCase = (actorId: string, ucId: string) => {
@@ -170,7 +170,7 @@ function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApp
       {state.actors.map((actor) => (
         <ActorSection key={actor.id} actor={actor} editingId={editingId} setEditingId={setEditingId}
           onRename={(l) => renameActor(actor.id, l)} onRemove={() => removeActor(actor.id)}
-          onAddUc={(l) => addUseCase(actor.id, l)} onRemoveUc={(id) => removeUseCase(actor.id, id)}
+          onAddUc={(id, l) => addUseCase(actor.id, id, l)} onRemoveUc={(id) => removeUseCase(actor.id, id)}
           onRenameUc={(id, l) => renameUseCase(actor.id, id, l)} />
       ))}
 
@@ -190,7 +190,7 @@ function ActorSection({ actor, editingId, setEditingId, onRename, onRemove, onAd
   actor: UseCaseState['actors'][number]
   editingId: string | null; setEditingId: (id: string | null) => void
   onRename: (label: string) => void; onRemove: () => void
-  onAddUc: (label: string) => void; onRemoveUc: (id: string) => void; onRenameUc: (id: string, label: string) => void
+  onAddUc: (id: string, label: string) => void; onRemoveUc: (id: string) => void; onRenameUc: (id: string, label: string) => void
 }) {
   const [newLabel, setNewLabel] = useState('')
   const [focusedIdx, setFocusedIdx] = useState<number | null>(null)
@@ -199,7 +199,7 @@ function ActorSection({ actor, editingId, setEditingId, onRename, onRemove, onAd
   const add = () => {
     const label = newLabel.trim()
     if (!label) return
-    onAddUc(label)
+    onAddUc(uid(), label)
     setNewLabel('')
   }
 
@@ -216,9 +216,7 @@ function ActorSection({ actor, editingId, setEditingId, onRename, onRemove, onAd
         <input className="flex-1 text-sm bg-transparent focus:outline-none font-medium"
           value={actor.label} onChange={(e) => onRename(e.target.value)} />
         <span className="text-xs text-gray-400">({actor.useCases.length})</span>
-        {actor.useCases.length === 0 && (
-          <button onClick={onRemove} className="text-gray-400 hover:text-red-500 text-sm" title="删除角色">×</button>
-        )}
+        <button onClick={onRemove} className="text-gray-400 hover:text-red-500 text-sm ml-1" title="删除角色">×</button>
       </div>
       <div className="px-3 py-2">
         <div className="flex gap-1 mb-2">
@@ -243,7 +241,7 @@ function ActorSection({ actor, editingId, setEditingId, onRename, onRemove, onAd
                   onDelete={() => { onRemoveUc(uc.id); setEditingId(null) }}
                   onTab={() => {
                     if (i + 1 < actor.useCases.length) { setEditingId(actor.useCases[i + 1].id) }
-                    else { const id = uid(); onAddUc(''); setTimeout(() => setEditingId(id), 0) }
+                    else { const id = uid(); onAddUc(id, ''); setTimeout(() => setEditingId(id), 0) }
                   }} />
               ) : (<span className="flex-1">{uc.label}</span>)}
               <button onClick={() => onRemoveUc(uc.id)} className="text-gray-400 hover:text-red-500 text-sm ml-1 shrink-0" title="删除">×</button>

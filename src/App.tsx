@@ -290,6 +290,13 @@ function App() {
     }
   }, [active])
 
+  // ====== Reset ======
+  const handleReset = () => {
+    if (!window.confirm('确定要重置所有图表为初始状态吗？此操作不可撤销。')) return
+    localStorage.removeItem(LS_KEY)
+    pushConfigs(initialConfigs)
+  }
+
   // ====== Import / Export JSON ======
   const handleExportJson = () => {
     const json = configsToJson(configs)
@@ -339,6 +346,7 @@ function App() {
           <button onClick={handleExportPng} disabled={exporting} className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800 disabled:opacity-50">
             {exporting ? '导出中...' : '导出 PNG'}
           </button>
+          <button onClick={handleReset} className="px-2 py-1 text-xs text-red-400 border border-red-200 rounded hover:bg-red-50 ml-1" title="重置所有图表">重置</button>
           <button onClick={() => setShowShortcuts(true)} className="px-2 py-1 text-xs text-gray-400 border rounded hover:bg-gray-50 ml-1" title="快捷键">?</button>
         </div>
       </header>
