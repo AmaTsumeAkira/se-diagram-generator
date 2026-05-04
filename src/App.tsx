@@ -1,11 +1,11 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
 import type { Edge, Node } from '@xyflow/react'
-import { toPng } from 'html-to-image'
 import UseCaseDiagram from './components/diagrams/UseCaseDiagram'
 import StructureDiagram from './components/diagrams/StructureDiagram'
 import EntityAttributeDiagram from './components/diagrams/EntityAttributeDiagram'
 import NodeEditor from './components/panels/NodeEditor'
+import ExportModal from './components/panels/ExportModal'
 import { useUndoRedo } from './hooks/useUndoRedo'
 import type { DiagramNodeData } from './types/diagram'
 import type { UseCaseState, TreeNode, EntityState } from './components/panels/NodeEditor'
@@ -246,58 +246,8 @@ function App() {
     })
   }, [configs.entity])
 
-  // ====== Export image ======
-  const [exporting, setExporting] = useState(false)
-  const handleExportPng = useCallback(async () => {
-    const el = flowRef.current?.querySelector('.react-flow') as HTMLElement | null
-    if (!el) return
-
-    const nodeEls = el.querySelectorAll('.react-flow__node')
-    if (nodeEls.length === 0) return
-
-    const flowRect = el.getBoundingClientRect()
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-    nodeEls.forEach((node) => {
-      const r = node.getBoundingClientRect()
-      minX = Math.min(minX, r.left - flowRect.left)
-      minY = Math.min(minY, r.top - flowRect.top)
-      maxX = Math.max(maxX, r.right - flowRect.left)
-      maxY = Math.max(maxY, r.bottom - flowRect.top)
-    })
-
-    const padding = 40
-    const scale = 2
-    const w = maxX - minX + padding * 2
-    const h = maxY - minY + padding * 2
-
-    const bg = el.querySelector('.react-flow__background') as HTMLElement | null
-    if (bg) bg.style.display = 'none'
-
-    setExporting(true)
-    try {
-      const dataUrl = await toPng(el, { backgroundColor: '#ffffff', pixelRatio: scale })
-      const img = new Image()
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve()
-        img.onerror = () => reject(new Error('Image load failed'))
-        img.src = dataUrl
-      })
-      const canvas = document.createElement('canvas')
-      canvas.width = w * scale; canvas.height = h * scale
-      const ctx = canvas.getContext('2d')!
-      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height)
-      ctx.drawImage(img, (minX - padding) * scale, (minY - padding) * scale, w * scale, h * scale, 0, 0, w * scale, h * scale)
-      const a = document.createElement('a')
-      a.download = `diagram-${active}-${Date.now()}.png`
-      a.href = canvas.toDataURL('image/png')
-      a.click()
-    } catch (e) {
-      console.error('Export failed', e)
-    } finally {
-      if (bg) bg.style.display = ''
-      setExporting(false)
-    }
-  }, [active])
+  // ====== Export ======
+  const [showExport, setShowExport] = useState(false)
 
   // ====== Reset ======
   const handleReset = () => {
@@ -352,8 +302,8 @@ function App() {
           <span className="w-px h-5 bg-gray-300 mx-1" />
           <button onClick={handleImportJson} className="px-2 py-1 text-xs border rounded hover:bg-gray-50">导入</button>
           <button onClick={handleExportJson} className="px-2 py-1 text-xs border rounded hover:bg-gray-50">导出</button>
-          <button onClick={handleExportPng} disabled={exporting} className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800 disabled:opacity-50">
-            {exporting ? '导出中...' : '导出 PNG'}
+          <button onClick={() => setShowExport(true)} className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">
+            导出
           </button>
           <button onClick={handleReset} className="px-2 py-1 text-xs text-red-400 border border-red-200 rounded hover:bg-red-50 ml-1" title="重置所有图表">重置</button>
           <button onClick={() => setShowShortcuts(true)} className="px-2 py-1 text-xs text-gray-400 border rounded hover:bg-gray-50 ml-1" title="快捷键">?</button>
@@ -386,6 +336,9 @@ function App() {
           </ReactFlowProvider>
         </div>
       </div>
+
+      {/* Export Modal */}
+      {showExport && <ExportModal active={active} flowRef={flowRef} onClose={() => setShowExport(false)} />}
 
       {/* Shortcut Help Modal */}
       {showShortcuts && (
