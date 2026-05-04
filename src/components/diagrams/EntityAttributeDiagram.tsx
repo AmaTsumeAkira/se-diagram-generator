@@ -12,79 +12,78 @@ import type { DiagramNodeData } from '../../types/diagram'
 
 const nodeTypes = { rectangle: EntityNode, ellipse: AttributeEllipseNode }
 
-interface Props {
+interface EntityGroup {
   entity: Node<DiagramNodeData>
   attributes: Node<DiagramNodeData>[]
   edges: Edge[]
-  orbitA?: number
-  orbitB?: number
 }
 
-/**
- * 椭圆极坐标系:
- *   x = cx + a * cos(θ)
- *   y = cy + b * sin(θ)
- * 图层: 连线(z=0) → 椭圆属性(z=10) → 中心实体(z=20)
- */
-export default function EntityAttributeDiagram({
-  entity,
-  attributes,
-  edges,
-  orbitA = 200,
-  orbitB = Math.round(orbitA * 0.55),
-}: Props) {
+interface Props {
+  groups: EntityGroup[]
+}
+
+export default function EntityAttributeDiagram({ groups }: Props) {
   const positionedNodes = useMemo(() => {
-    const cx = 350
-    const cy = 250
-    const n = attributes.length
+    const cols = Math.ceil(Math.sqrt(groups.length))
+    const cellW = 400
+    const cellH = 400
+    const cxOff = 200
+    const cyOff = 220
 
-    const attrNodes = attributes.map((attr, i) => {
-      const angle = -Math.PI / 2 + (2 * Math.PI * i) / n
-      const nodeCx = cx + orbitA * Math.cos(angle)
-      const nodeCy = cy + orbitB * Math.sin(angle)
-      const rx = (attr.data.rx as number) ?? 45
-      const ry = (attr.data.ry as number) ?? 18
+    const rows: EntityGroup[][] = []
+    for (let i = 0; i < groups.length; i += cols) rows.push(groups.slice(i, i + cols))
 
-      return {
-        ...attr,
-        position: { x: nodeCx - rx, y: nodeCy - ry },
-        zIndex: 10,
-      }
+    const result: Node<DiagramNodeData>[] = []
+
+    rows.forEach((row, ri) => {
+      row.forEach((g, ci) => {
+        const baseX = ci * cellW
+        const baseY = ri * cellH
+        const cx = baseX + cxOff
+        const cy = baseY + cyOff
+        const n = g.attributes.length
+
+        const a = 100 + n * 10
+        const b = Math.round(a * 0.55)
+
+        const attrNodes = g.attributes.map((attr, i) => {
+          const angle = -Math.PI / 2 + (2 * Math.PI * i) / n
+          const nodeCx = cx + a * Math.cos(angle)
+          const nodeCy = cy + b * Math.sin(angle)
+          const rx = (attr.data.rx as number) ?? 45
+          const ry = (attr.data.ry as number) ?? 18
+          return { ...attr, position: { x: nodeCx - rx, y: nodeCy - ry }, zIndex: 10 }
+        })
+
+        const entityNode = { ...g.entity, position: { x: cx - 45, y: cy - 18 }, zIndex: 20 }
+        result.push(entityNode, ...attrNodes)
+      })
     })
 
-    const entityNode = {
-      ...entity,
-      position: { x: cx - 45, y: cy - 18 },
-      zIndex: 20,
-    }
+    return result
+  }, [groups])
 
-    return [entityNode, ...attrNodes]
-  }, [entity, attributes, orbitA, orbitB])
-
-  const styledEdges = useMemo(
-    () =>
-      edges.map((e) => ({
-        ...e,
-        type: 'straight' as const,
-        sourceHandle: 'c',
-        targetHandle: 'c',
-        style: { stroke: '#000', strokeWidth: 1.2 },
-        zIndex: 0,
-      })),
-    [edges]
-  )
+  const styledEdges = useMemo(() => {
+    const all: Edge[] = []
+    groups.forEach((g) => {
+      g.edges.forEach((e) => {
+        all.push({
+          ...e,
+          type: 'straight' as const,
+          sourceHandle: 'c',
+          targetHandle: 'c',
+          style: { stroke: '#000', strokeWidth: 1.2 },
+          zIndex: 0,
+        })
+      })
+    })
+    return all
+  }, [groups])
 
   return (
-    <ReactFlow
-      nodes={positionedNodes}
-      edges={styledEdges}
-      nodeTypes={nodeTypes}
-      fitView
-      fitViewOptions={{ padding: 0.3 }}
-      nodesDraggable={false}
-      nodesConnectable={false}
-      elementsSelectable={false}
-    >
+    <ReactFlow nodes={positionedNodes} edges={styledEdges} nodeTypes={nodeTypes}
+      fitView fitViewOptions={{ padding: 0.3 }}
+      nodesDraggable={false} nodesConnectable={false} elementsSelectable={false}>
       <Background color="#e5e5e5" gap={20} />
     </ReactFlow>
   )

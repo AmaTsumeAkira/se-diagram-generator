@@ -111,16 +111,19 @@ function configToTreeState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] 
 }
 
 function configToEntityState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): EntityState {
-  const entity = cfg.nodes.find((n) => n.type === 'rectangle')
-  const attributes = cfg.nodes.filter((n) => n.type === 'ellipse')
-  const eid = entity?.id
-  const connectedIds = new Set(cfg.edges.filter((e) => e.source === eid || e.target === eid).map((e) => (e.source === eid ? e.target : e.source)))
+  const entities = cfg.nodes.filter((n) => n.type === 'rectangle')
   return {
-    entityId: eid || 'entity',
-    entityLabel: (entity?.data.label as string) || '实体',
-    attributes: attributes
-      .filter((a) => connectedIds.has(a.id))
-      .map((a) => ({ id: a.id, label: (a.data.label as string) || '' })),
+    entities: entities.map((ent) => {
+      const eid = ent.id
+      const connectedIds = new Set(cfg.edges.filter((e) => e.source === eid).map((e) => e.target))
+      return {
+        id: eid,
+        label: (ent.data.label as string) || '实体',
+        attributes: cfg.nodes
+          .filter((n) => n.type === 'ellipse' && connectedIds.has(n.id))
+          .map((a) => ({ id: a.id, label: (a.data.label as string) || '' })),
+      }
+    }),
   }
 }
 
@@ -228,13 +231,18 @@ function App() {
     })
   }, [configs.usecase])
 
-  const entityData = useMemo(() => {
+  const entityGroups = useMemo(() => {
     const cfg = configs.entity
-    const entity = cfg.nodes.find((n) => n.type === 'rectangle')
-    const attributes = cfg.nodes.filter((n) => n.type === 'ellipse')
-    const eid = entity?.id
-    const entityEdges = eid ? cfg.edges.filter((e) => e.source === eid || e.target === eid) : cfg.edges
-    return { entity: entity ?? null, attributes, edges: entityEdges }
+    const entities = cfg.nodes.filter((n) => n.type === 'rectangle')
+    return entities.map((ent) => {
+      const entEdges = cfg.edges.filter((e) => e.source === ent.id)
+      const ids = new Set(entEdges.map((e) => e.target))
+      return {
+        entity: ent,
+        attributes: cfg.nodes.filter((n) => n.type === 'ellipse' && ids.has(n.id)),
+        edges: entEdges,
+      }
+    })
   }, [configs.entity])
 
   // ====== Export image ======
@@ -368,11 +376,10 @@ function App() {
             {active === 'structure' && (
               <StructureDiagram nodes={configs.structure.nodes} edges={configs.structure.edges} />
             )}
-            {active === 'entity' && entityData.entity && (
-              <EntityAttributeDiagram entity={entityData.entity} attributes={entityData.attributes} edges={entityData.edges}
-                orbitA={entityData.attributes.length >= 10 ? 200 : 165} />
+            {active === 'entity' && entityGroups.length > 0 && (
+              <EntityAttributeDiagram groups={entityGroups} />
             )}
-            {active === 'entity' && !entityData.entity && (
+            {active === 'entity' && entityGroups.length === 0 && (
               <div className="flex items-center justify-center h-full text-gray-400">请添加实体节点</div>
             )}
           </ReactFlowProvider>

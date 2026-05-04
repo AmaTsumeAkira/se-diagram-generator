@@ -18,9 +18,11 @@ export interface TreeNode {
 }
 
 export interface EntityState {
-  entityId: string
-  entityLabel: string
-  attributes: { id: string; label: string }[]
+  entities: {
+    id: string
+    label: string
+    attributes: { id: string; label: string }[]
+  }[]
 }
 
 export type DiagramType = 'usecase' | 'structure' | 'entity'
@@ -67,11 +69,15 @@ function treeToJson(root: TreeNode): string {
 }
 
 function entityToJson(state: EntityState): string {
-  const nodes = [
-    { id: state.entityId, type: 'rectangle', label: state.entityLabel },
-    ...state.attributes.map((a) => ({ id: a.id, type: 'ellipse', label: a.label, rx: 45, ry: 18 })),
-  ]
-  const edges = state.attributes.map((a, i) => ({ id: `e${i}`, source: state.entityId, target: a.id }))
+  const nodes: any[] = []
+  const edges: any[] = []
+  state.entities.forEach((ent) => {
+    nodes.push({ id: ent.id, type: 'rectangle', label: ent.label })
+    ent.attributes.forEach((a, i) => {
+      nodes.push({ id: a.id, type: 'ellipse', label: a.label, rx: 45, ry: 18 })
+      edges.push({ id: `e_${ent.id}_${i}`, source: ent.id, target: a.id })
+    })
+  })
   return JSON.stringify({ nodes, edges }, null, 2)
 }
 
@@ -397,85 +403,131 @@ function TreeNodeRow({ node, depth, editingId, onStartEdit, onAddChild, onDelete
 
 function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply: (json: string) => void }) {
   const [state, setState] = useState<EntityState>(initial)
-  const [newAttrLabel, setNewAttrLabel] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [focusedIdx, setFocusedIdx] = useState<number | null>(null)
-  const [dragIdx, setDragIdx] = useState<number | null>(null)
 
-  const addAttr = () => {
-    const label = newAttrLabel.trim()
-    if (!label) return
-    setState((s) => ({ ...s, attributes: [...s.attributes, { id: uid(), label }] }))
-    setNewAttrLabel('')
+  const addEntity = () => {
+    setState((s) => ({ entities: [...s.entities, { id: uid(), label: '新实体', attributes: [] }] }))
   }
-  const removeAttr = (id: string) => {
-    setState((s) => ({ ...s, attributes: s.attributes.filter((a) => a.id !== id) }))
-    if (editingId === id) setEditingId(null)
+  const removeEntity = (entId: string) => {
+    setState((s) => ({ entities: s.entities.filter((e) => e.id !== entId) }))
   }
-  const renameAttr = (id: string, label: string) => {
-    setState((s) => ({ ...s, attributes: s.attributes.map((a) => (a.id === id ? { ...a, label } : a)) }))
+  const renameEntity = (entId: string, label: string) => {
+    setState((s) => ({ entities: s.entities.map((e) => e.id === entId ? { ...e, label } : e) }))
   }
-  const moveAttr = (from: number, to: number) => {
-    setState((s) => {
-      const arr = [...s.attributes]; const [item] = arr.splice(from, 1); arr.splice(to, 0, item)
-      return { ...s, attributes: arr }
-    })
-    setDragIdx(null)
+  const addAttr = (entId: string, id: string, label: string) => {
+    setState((s) => ({
+      entities: s.entities.map((e) => e.id === entId ? { ...e, attributes: [...e.attributes, { id, label }] } : e),
+    }))
+  }
+  const removeAttr = (entId: string, attrId: string) => {
+    setState((s) => ({
+      entities: s.entities.map((e) => e.id === entId ? { ...e, attributes: e.attributes.filter((a) => a.id !== attrId) } : e),
+    }))
+    if (editingId === attrId) setEditingId(null)
+  }
+  const renameAttr = (entId: string, attrId: string, label: string) => {
+    setState((s) => ({
+      entities: s.entities.map((e) => e.id === entId ? {
+        ...e, attributes: e.attributes.map((a) => a.id === attrId ? { ...a, label } : a),
+      } : e),
+    }))
+  }
+  const moveAttr = (entId: string, from: number, to: number) => {
+    setState((s) => ({
+      entities: s.entities.map((e) => {
+        if (e.id !== entId) return e
+        const arr = [...e.attributes]; const [item] = arr.splice(from, 1); arr.splice(to, 0, item)
+        return { ...e, attributes: arr }
+      }),
+    }))
   }
 
   return (
     <div className="space-y-4">
-      <div>
-        <div className="text-xs font-medium text-gray-500 mb-1">实体 (Entity)</div>
-        <input className="w-full px-3 py-2 text-sm border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-black"
-          value={state.entityLabel} onChange={(e) => setState((s) => ({ ...s, entityLabel: e.target.value }))} />
-      </div>
-      <div>
-        <div className="text-xs font-medium text-gray-500 mb-1">属性 ({state.attributes.length})</div>
-        <div className="flex gap-1 mb-2">
-          <input className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-black"
-            placeholder="输入属性名称..." value={newAttrLabel}
-            onChange={(e) => setNewAttrLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addAttr() }} />
-          <button onClick={addAttr} className="px-3 py-1.5 text-sm bg-black text-white rounded hover:bg-gray-800">添加</button>
+      {state.entities.map((ent) => (
+        <div key={ent.id} className="border border-gray-200 rounded-lg bg-white">
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
+            <span className="text-xs text-gray-400 mr-1">实体</span>
+            <input className="flex-1 text-sm bg-transparent focus:outline-none font-medium"
+              value={ent.label} onChange={(e) => renameEntity(ent.id, e.target.value)} />
+            <span className="text-xs text-gray-400">({ent.attributes.length})</span>
+            <button onClick={() => removeEntity(ent.id)} className="text-gray-400 hover:text-red-500 text-sm ml-1" title="删除实体">×</button>
+          </div>
+          <div className="px-3 py-2">
+            <AttrList entId={ent.id} attributes={ent.attributes} editingId={editingId} setEditingId={setEditingId}
+              onAdd={(id, l) => addAttr(ent.id, id, l)} onRemove={(id) => removeAttr(ent.id, id)}
+              onRename={(id, l) => renameAttr(ent.id, id, l)} onMove={(f, t) => moveAttr(ent.id, f, t)} />
+          </div>
         </div>
-        <div className="space-y-1">
-          {state.attributes.map((a, i) => (
-            <div key={a.id} draggable={editingId !== a.id} tabIndex={0}
-              className={`flex items-center justify-between px-3 py-1.5 bg-white border rounded text-sm cursor-default transition-colors ${focusedIdx === i ? 'border-black ring-1 ring-black' : 'border-gray-200'} ${dragIdx === i ? 'opacity-40' : ''}`}
-              onDoubleClick={() => setEditingId(a.id)}
-              onFocus={() => setFocusedIdx(i)} onBlur={() => setFocusedIdx(null)}
-              onKeyDown={(e) => {
-                if ((e.key === 'Delete' || e.key === 'Backspace') && editingId !== a.id) removeAttr(a.id)
-                if (e.key === 'Enter') setEditingId(a.id)
-              }}
-              onDragStart={() => { if (editingId === a.id) return; setDragIdx(i) }} onDragOver={(e) => e.preventDefault()}
-              onDrop={() => { if (dragIdx !== null && dragIdx !== i) moveAttr(dragIdx, i) }}
-              onDragEnd={() => setDragIdx(null)}>
-              <span className="text-xs text-gray-300 mr-1 cursor-grab select-none">⋮⋮</span>
-              {editingId === a.id ? (
-                <InlineEdit value={a.label} className="flex-1"
-                  onSave={(v) => { renameAttr(a.id, v); setEditingId(null) }}
-                  onDelete={() => { removeAttr(a.id); setEditingId(null) }}
-                  onTab={() => {
-                    if (i + 1 < state.attributes.length) { setEditingId(state.attributes[i + 1].id) }
-                    else { const id = uid(); setState((s) => ({ ...s, attributes: [...s.attributes, { id, label: '' }] })); setTimeout(() => setEditingId(id), 0) }
-                  }} />
-              ) : (<span className="flex-1">{a.label}</span>)}
-              <button onClick={() => removeAttr(a.id)} className="text-gray-400 hover:text-red-500 text-lg leading-none ml-2 shrink-0" title="删除">×</button>
-            </div>
-          ))}
-          {state.attributes.length === 0 && (
-            <div className="text-xs text-gray-400 text-center py-3 px-2 border border-dashed border-gray-300 rounded">
-              尚无属性节点<br />在上方输入框键入名称后按 Enter 添加
-            </div>
-          )}
-        </div>
-      </div>
+      ))}
+
+      <button onClick={addEntity} className="w-full py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
+        + 添加实体
+      </button>
 
       <button onClick={() => onApply(entityToJson(state))}
-        className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800 mt-4">
+        className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
         应用修改
       </button>
+    </div>
+  )
+}
+
+function AttrList({ entId, attributes, editingId, setEditingId, onAdd, onRemove, onRename, onMove }: {
+  entId: string; attributes: { id: string; label: string }[]
+  editingId: string | null; setEditingId: (id: string | null) => void
+  onAdd: (id: string, label: string) => void; onRemove: (id: string) => void
+  onRename: (id: string, label: string) => void; onMove: (from: number, to: number) => void
+}) {
+  const [newLabel, setNewLabel] = useState('')
+  const [focusedIdx, setFocusedIdx] = useState<number | null>(null)
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+
+  const add = () => {
+    const label = newLabel.trim()
+    if (!label) return
+    onAdd(uid(), label)
+    setNewLabel('')
+  }
+
+  return (
+    <div>
+      <div className="flex gap-1 mb-2">
+        <input className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-black"
+          placeholder="添加属性..." value={newLabel}
+          onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add() }} />
+        <button onClick={add} className="px-2 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">添加</button>
+      </div>
+      <div className="space-y-1">
+        {attributes.map((a, i) => (
+          <div key={a.id} draggable={editingId !== a.id} tabIndex={0}
+            className={`flex items-center justify-between px-2 py-1 bg-gray-50 border rounded text-sm cursor-default transition-colors ${focusedIdx === i ? 'border-black ring-1 ring-black' : 'border-gray-200'} ${dragIdx === i ? 'opacity-40' : ''}`}
+            onDoubleClick={() => setEditingId(a.id)}
+            onFocus={() => setFocusedIdx(i)} onBlur={() => setFocusedIdx(null)}
+            onKeyDown={(e) => {
+              if ((e.key === 'Delete' || e.key === 'Backspace') && editingId !== a.id) onRemove(a.id)
+              if (e.key === 'Enter') setEditingId(a.id)
+            }}
+            onDragStart={() => { if (editingId === a.id) return; setDragIdx(i) }} onDragOver={(e) => e.preventDefault()}
+            onDrop={() => { if (dragIdx !== null && dragIdx !== i) onMove(dragIdx, i); setDragIdx(null) }}
+            onDragEnd={() => setDragIdx(null)}>
+            <span className="text-xs text-gray-300 mr-1 cursor-grab select-none">⋮⋮</span>
+            {editingId === a.id ? (
+              <InlineEdit value={a.label} className="flex-1"
+                onSave={(v) => { onRename(a.id, v); setEditingId(null) }}
+                onDelete={() => { onRemove(a.id); setEditingId(null) }}
+                onTab={() => {
+                  if (i + 1 < attributes.length) { setEditingId(attributes[i + 1].id) }
+                  else { const id = uid(); onAdd(id, ''); setTimeout(() => setEditingId(id), 0) }
+                }} />
+            ) : (<span className="flex-1">{a.label}</span>)}
+            <button onClick={() => onRemove(a.id)} className="text-gray-400 hover:text-red-500 text-sm ml-1 shrink-0" title="删除">×</button>
+          </div>
+        ))}
+        {attributes.length === 0 && (
+          <div className="text-xs text-gray-400 text-center py-2">尚无属性，在上方输入添加</div>
+        )}
+      </div>
     </div>
   )
 }
