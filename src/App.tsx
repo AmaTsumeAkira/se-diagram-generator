@@ -9,12 +9,7 @@ import NodeEditor from './components/panels/NodeEditor'
 import { useUndoRedo } from './hooks/useUndoRedo'
 import type { DiagramNodeData } from './types/diagram'
 import type { UseCaseState, TreeNode, EntityState } from './components/panels/NodeEditor'
-import {
-  useCasePresets,
-  structureNodes,
-  structureEdges,
-  userEntityPreset,
-} from './data/mockData'
+import { useCasePresets, structureNodes, structureEdges, userEntityPreset } from './data/mockData'
 
 type DiagramType = 'usecase' | 'structure' | 'entity'
 
@@ -68,31 +63,79 @@ function jsonToConfigs(json: string): ConfigMap | null {
     const flat = JSON.parse(json)
     const configs: any = {}
     for (const key of ['usecase', 'structure', 'entity']) {
-      if (flat[key]) {
-        configs[key] = parseConfigJson(JSON.stringify(flat[key]))
-      }
+      if (flat[key]) configs[key] = parseConfigJson(JSON.stringify(flat[key]))
     }
     return configs as ConfigMap
   } catch { return null }
 }
 
+// ====== Config → Editor state (for undo sync) ======
+
+function configToUseCaseState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): UseCaseState {
+  const actor = cfg.nodes.find((n) => n.type === 'actor')
+  const useCases = cfg.nodes.filter((n) => n.type === 'usecase')
+  const actorId = actor?.id || 'a1'
+  const connectedIds = new Set(cfg.edges.filter((e) => e.source === actorId).map((e) => e.target))
+  return {
+    actorId,
+    actorLabel: (actor?.data.label as string) || '角色',
+    useCases: useCases
+      .filter((uc) => connectedIds.has(uc.id))
+      .map((uc) => ({ id: uc.id, label: (uc.data.label as string) || '' })),
+  }
+}
+
+function configToTreeState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): TreeNode {
+  const childrenMap = new Map<string, string[]>()
+  cfg.edges.forEach((e) => {
+    const list = childrenMap.get(e.source) || []
+    list.push(e.target)
+    childrenMap.set(e.source, list)
+  })
+  const nodeMap = new Map(cfg.nodes.map((n) => [n.id, n]))
+  const rootId = cfg.nodes.find((n) => !cfg.edges.some((e) => e.target === n.id))?.id
+
+  function build(id: string, depth: number): TreeNode {
+    const node = nodeMap.get(id)
+    return {
+      id,
+      label: (node?.data.label as string) || id,
+      vertical: (node?.data.vertical as boolean) || depth >= 2,
+      children: (childrenMap.get(id) || []).map((cid) => build(cid, depth + 1)),
+    }
+  }
+  return rootId ? build(rootId, 0) : { id: 'root', label: '系统', vertical: false, children: [] }
+}
+
+function configToEntityState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): EntityState {
+  const entity = cfg.nodes.find((n) => n.type === 'rectangle')
+  const attributes = cfg.nodes.filter((n) => n.type === 'ellipse')
+  const eid = entity?.id
+  const connectedIds = new Set(cfg.edges.filter((e) => e.source === eid || e.target === eid).map((e) => (e.source === eid ? e.target : e.source)))
+  return {
+    entityId: eid || 'entity',
+    entityLabel: (entity?.data.label as string) || '实体',
+    attributes: attributes
+      .filter((a) => connectedIds.has(a.id))
+      .map((a) => ({ id: a.id, label: (a.data.label as string) || '' })),
+  }
+}
+
+// ====== Initial data ======
+
 const initialConfigs: ConfigMap = {
   usecase: parseConfigJson(useCasePresets.admin.json),
-  structure: parseConfigJson(
-    JSON.stringify({
-      nodes: structureNodes.map((n) => ({ id: n.id, type: n.type, label: n.data.label, vertical: n.data.vertical })),
-      edges: structureEdges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
-    })
-  ),
-  entity: parseConfigJson(
-    JSON.stringify({
-      nodes: [
-        { id: userEntityPreset.entity.id, type: 'rectangle', label: userEntityPreset.entity.data.label },
-        ...userEntityPreset.attributes.map((a) => ({ id: a.id, type: 'ellipse', label: a.data.label, rx: 45, ry: 18 })),
-      ],
-      edges: userEntityPreset.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
-    })
-  ),
+  structure: parseConfigJson(JSON.stringify({
+    nodes: structureNodes.map((n) => ({ id: n.id, type: n.type, label: n.data.label, vertical: n.data.vertical })),
+    edges: structureEdges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+  })),
+  entity: parseConfigJson(JSON.stringify({
+    nodes: [
+      { id: userEntityPreset.entity.id, type: 'rectangle', label: userEntityPreset.entity.data.label },
+      ...userEntityPreset.attributes.map((a) => ({ id: a.id, type: 'ellipse', label: a.data.label, rx: 45, ry: 18 })),
+    ],
+    edges: userEntityPreset.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+  })),
 }
 
 function loadConfigs(): ConfigMap {
@@ -106,35 +149,28 @@ function loadConfigs(): ConfigMap {
   return initialConfigs
 }
 
-// ====== Initial editor data ======
+// ====== Shortcut Help ======
 
-function buildUseCase(): UseCaseState {
-  const p = useCasePresets.admin
-  return { actorId: p.actor.id, actorLabel: p.actor.data.label as string, useCases: p.useCases.map((uc) => ({ id: uc.id, label: uc.data.label as string })) }
-}
-
-function buildTree(): TreeNode {
-  const cm = new Map<string, string[]>()
-  structureEdges.forEach((e) => { const l = cm.get(e.source) || []; l.push(e.target); cm.set(e.source, l) })
-  const nm = new Map(structureNodes.map((n) => [n.id, n]))
-  function build(id: string, d: number): TreeNode {
-    const n = nm.get(id)
-    return { id, label: (n?.data.label as string) ?? id, vertical: d >= 2, children: (cm.get(id) || []).map((k) => build(k, d + 1)) }
-  }
-  return build(structureNodes.find((n) => !structureEdges.some((e) => e.target === n.id))?.id ?? 'root', 0)
-}
-
-function buildEntity(): EntityState {
-  return { entityId: userEntityPreset.entity.id, entityLabel: userEntityPreset.entity.data.label as string, attributes: userEntityPreset.attributes.map((a) => ({ id: a.id, label: a.data.label as string })) }
-}
+const shortcuts = [
+  { keys: 'Ctrl+Z', desc: '撤销' },
+  { keys: 'Ctrl+Y', desc: '重做' },
+  { keys: '双击元素', desc: '编辑名称' },
+  { keys: 'Enter', desc: '保存编辑' },
+  { keys: 'Tab', desc: '保存并跳转下一个' },
+  { keys: 'Tab(末尾)', desc: '新建空白元素' },
+  { keys: 'Delete', desc: '删除选中元素' },
+  { keys: '拖拽 ⠿', desc: '列表排序' },
+  { keys: '?', desc: '显示/隐藏快捷键' },
+]
 
 // ====== App ======
 
 function App() {
   const [active, setActive] = useState<DiagramType>('usecase')
+  const [configVersion, setConfigVersion] = useState(0)
+  const [showShortcuts, setShowShortcuts] = useState(false)
   const flowRef = useRef<HTMLDivElement>(null)
 
-  // Undo/Redo over configs
   const { present: configs, push: pushConfigs, undo, redo, canUndo, canRedo } = useUndoRedo<ConfigMap>(loadConfigs)
 
   // Persist to localStorage
@@ -142,18 +178,39 @@ function App() {
     localStorage.setItem(LS_KEY, configsToJson(configs))
   }, [configs])
 
+  // Increment version when configs change (apply / undo / redo / import)
+  useEffect(() => {
+    setConfigVersion((v) => v + 1)
+  }, [configs])
+
+  // ? key → toggle shortcut panel
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === '?' && !(e.target as HTMLElement).closest('input')) {
+        e.preventDefault()
+        setShowShortcuts((s) => !s)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
   const handleApply = useCallback(
     (json: string) => {
       try {
         const result = parseConfigJson(json)
         pushConfigs({ ...configs, [active]: result })
-      } catch { /* ignore invalid */ }
+      } catch { /* ignore */ }
     },
     [active, configs, pushConfigs]
   )
 
-  // ====== Derive diagram data ======
+  // ====== Derive editor states from configs ======
+  const ucState = useMemo(() => configToUseCaseState(configs.usecase), [configs.usecase])
+  const treeState = useMemo(() => configToTreeState(configs.structure), [configs.structure])
+  const entityState = useMemo(() => configToEntityState(configs.entity), [configs.entity])
 
+  // ====== Derive diagram data ======
   const useCaseData = useMemo(() => {
     const cfg = configs.usecase
     const actors = cfg.nodes.filter((n) => n.type === 'actor')
@@ -174,13 +231,11 @@ function App() {
   }, [configs.entity])
 
   // ====== Export image ======
-
   const [exporting, setExporting] = useState(false)
   const handleExportPng = useCallback(async () => {
     const el = flowRef.current?.querySelector('.react-flow') as HTMLElement | null
     if (!el) return
 
-    // 计算所有节点的包围盒
     const nodeEls = el.querySelectorAll('.react-flow__node')
     if (nodeEls.length === 0) return
 
@@ -199,34 +254,23 @@ function App() {
     const w = maxX - minX + padding * 2
     const h = maxY - minY + padding * 2
 
-    // 隐藏背景格点
     const bg = el.querySelector('.react-flow__background') as HTMLElement | null
     if (bg) bg.style.display = 'none'
 
     setExporting(true)
     try {
       const dataUrl = await toPng(el, { backgroundColor: '#ffffff', pixelRatio: scale })
-
-      // 裁剪到内容区域
       const img = new Image()
       await new Promise<void>((resolve, reject) => {
         img.onload = () => resolve()
         img.onerror = () => reject(new Error('Image load failed'))
         img.src = dataUrl
       })
-
       const canvas = document.createElement('canvas')
-      canvas.width = w * scale
-      canvas.height = h * scale
+      canvas.width = w * scale; canvas.height = h * scale
       const ctx = canvas.getContext('2d')!
-      ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-      ctx.drawImage(
-        img,
-        (minX - padding) * scale, (minY - padding) * scale, w * scale, h * scale,
-        0, 0, w * scale, h * scale,
-      )
-
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(img, (minX - padding) * scale, (minY - padding) * scale, w * scale, h * scale, 0, 0, w * scale, h * scale)
       const a = document.createElement('a')
       a.download = `diagram-${active}-${Date.now()}.png`
       a.href = canvas.toDataURL('image/png')
@@ -240,7 +284,6 @@ function App() {
   }, [active])
 
   // ====== Import / Export JSON ======
-
   const handleExportJson = () => {
     const json = configsToJson(configs)
     const blob = new Blob([json], { type: 'application/json' })
@@ -253,8 +296,7 @@ function App() {
 
   const handleImportJson = () => {
     const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = '.json'
+    input.type = 'file'; input.accept = '.json'
     input.onchange = (e: any) => {
       const file = e.target?.files?.[0]
       if (!file) return
@@ -269,51 +311,36 @@ function App() {
     input.click()
   }
 
-  // ====== Initial editor states ======
-  const [ucState] = useState(buildUseCase)
-  const [treeState] = useState(buildTree)
-  const [entityState] = useState(buildEntity)
-
   return (
     <div className="h-screen flex flex-col">
       {/* Top Navigation */}
       <header className="flex items-center gap-1 px-4 py-2 border-b border-gray-200 bg-white shrink-0">
         <h1 className="text-base font-bold mr-4">软件工程图生成器</h1>
         {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActive(tab.key)}
-            className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-              active === tab.key ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
+          <button key={tab.key} onClick={() => setActive(tab.key)}
+            className={`px-3 py-1 rounded text-sm font-medium transition-colors ${active === tab.key ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
             {tab.label}
           </button>
         ))}
 
         <div className="ml-auto flex items-center gap-1">
-          {/* Undo/Redo */}
-          <button onClick={undo} disabled={!canUndo} className="px-2 py-1 text-xs border rounded disabled:opacity-30 hover:bg-gray-50" title="Ctrl+Z">↩</button>
-          <button onClick={redo} disabled={!canRedo} className="px-2 py-1 text-xs border rounded disabled:opacity-30 hover:bg-gray-50" title="Ctrl+Y">↪</button>
-
+          <button onClick={undo} disabled={!canUndo} className="px-2 py-1 text-xs border rounded disabled:opacity-30 hover:bg-gray-50" title="Ctrl+Z">撤销</button>
+          <button onClick={redo} disabled={!canRedo} className="px-2 py-1 text-xs border rounded disabled:opacity-30 hover:bg-gray-50" title="Ctrl+Y">重做</button>
           <span className="w-px h-5 bg-gray-300 mx-1" />
-
-          {/* Import / Export */}
-          <button onClick={handleImportJson} className="px-2 py-1 text-xs border rounded hover:bg-gray-50" title="导入 JSON 配置">导入</button>
-          <button onClick={handleExportJson} className="px-2 py-1 text-xs border rounded hover:bg-gray-50" title="导出 JSON 配置">导出</button>
-
-          {/* Export PNG */}
+          <button onClick={handleImportJson} className="px-2 py-1 text-xs border rounded hover:bg-gray-50">导入</button>
+          <button onClick={handleExportJson} className="px-2 py-1 text-xs border rounded hover:bg-gray-50">导出</button>
           <button onClick={handleExportPng} disabled={exporting} className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800 disabled:opacity-50">
             {exporting ? '导出中...' : '导出 PNG'}
           </button>
+          <button onClick={() => setShowShortcuts(true)} className="px-2 py-1 text-xs text-gray-400 border rounded hover:bg-gray-50 ml-1" title="快捷键">?</button>
         </div>
       </header>
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
-        {active === 'usecase' && <NodeEditor type="usecase" useCase={ucState} onApply={handleApply} />}
-        {active === 'structure' && <NodeEditor type="structure" tree={treeState} onApply={handleApply} />}
-        {active === 'entity' && <NodeEditor type="entity" entity={entityState} onApply={handleApply} />}
+        {active === 'usecase' && <NodeEditor key={`usecase-${configVersion}`} type="usecase" useCase={ucState} onApply={handleApply} />}
+        {active === 'structure' && <NodeEditor key={`structure-${configVersion}`} type="structure" tree={treeState} onApply={handleApply} />}
+        {active === 'entity' && <NodeEditor key={`entity-${configVersion}`} type="entity" entity={entityState} onApply={handleApply} />}
 
         <div className="flex-1" ref={flowRef}>
           <ReactFlowProvider>
@@ -323,11 +350,9 @@ function App() {
             {active === 'usecase' && !useCaseData.actor && (
               <div className="flex items-center justify-center h-full text-gray-400">请添加 actor 节点</div>
             )}
-
             {active === 'structure' && (
               <StructureDiagram nodes={configs.structure.nodes} edges={configs.structure.edges} />
             )}
-
             {active === 'entity' && entityData.entity && (
               <EntityAttributeDiagram entity={entityData.entity} attributes={entityData.attributes} edges={entityData.edges}
                 orbitA={entityData.attributes.length >= 10 ? 200 : 165} />
@@ -338,6 +363,26 @@ function App() {
           </ReactFlowProvider>
         </div>
       </div>
+
+      {/* Shortcut Help Modal */}
+      {showShortcuts && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowShortcuts(false)}>
+          <div className="bg-white rounded-lg shadow-xl p-6 min-w-[320px]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold">键盘快捷键</h3>
+              <button onClick={() => setShowShortcuts(false)} className="text-gray-400 hover:text-black text-lg leading-none">×</button>
+            </div>
+            <div className="space-y-2">
+              {shortcuts.map((s) => (
+                <div key={s.keys} className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500">{s.desc}</span>
+                  <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-300 rounded text-xs font-mono text-gray-700">{s.keys}</kbd>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

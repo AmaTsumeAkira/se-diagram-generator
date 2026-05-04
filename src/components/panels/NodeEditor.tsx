@@ -297,6 +297,11 @@ function UseCaseEditor({
               </button>
             </div>
           ))}
+          {state.useCases.length === 0 && (
+            <div className="text-xs text-gray-400 text-center py-3 px-2 border border-dashed border-gray-300 rounded">
+              尚无用例节点<br />在上方输入框键入名称后按 Enter 添加
+            </div>
+          )}
         </div>
       </div>
 
@@ -655,7 +660,9 @@ function EntityEditor({
             </div>
           ))}
           {state.attributes.length === 0 && (
-            <div className="text-xs text-gray-400 text-center py-2">暂无属性，请添加</div>
+            <div className="text-xs text-gray-400 text-center py-3 px-2 border border-dashed border-gray-300 rounded">
+              尚无属性节点<br />在上方输入框键入名称后按 Enter 添加
+            </div>
           )}
         </div>
       </div>
