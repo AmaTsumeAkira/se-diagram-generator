@@ -106,11 +106,13 @@ export default function NodeEditor({ type, useCase, tree, entity, onApply }: Pro
 function InlineEdit({
   value,
   onSave,
+  onDelete,
   onTab,
   className = '',
 }: {
   value: string
   onSave: (val: string) => void
+  onDelete?: () => void
   onTab?: () => void
   className?: string
 }) {
@@ -124,6 +126,7 @@ function InlineEdit({
   const commit = () => {
     const v = text.trim()
     if (v) onSave(v)
+    else onDelete?.()
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -137,7 +140,7 @@ function InlineEdit({
       onTab?.()
     }
     if (e.key === 'Escape') {
-      onSave(value) // revert
+      onSave(value)
     }
   }
 
@@ -234,10 +237,8 @@ function UseCaseEditor({
               {editingId === uc.id ? (
                 <InlineEdit
                   value={uc.label}
-                  onSave={(v) => {
-                    renameUseCase(uc.id, v)
-                    setEditingId(null)
-                  }}
+                  onSave={(v) => { renameUseCase(uc.id, v); setEditingId(null) }}
+                  onDelete={() => { removeUseCase(uc.id); setEditingId(null) }}
                   onTab={() => {
                     if (i + 1 < state.useCases.length) {
                       setEditingId(state.useCases[i + 1].id)
@@ -428,6 +429,7 @@ function TreeNodeRow({
           <InlineEdit
             value={node.label}
             onSave={(v) => { onRename(node.id, v); onStartEdit('') }}
+            onDelete={() => { onDelete(node.id); onStartEdit('') }}
             onTab={() => onTab(node.id)}
             className="flex-1"
           />
@@ -566,6 +568,7 @@ function EntityEditor({
                 <InlineEdit
                   value={a.label}
                   onSave={(v) => { renameAttr(a.id, v); setEditingId(null) }}
+                  onDelete={() => { removeAttr(a.id); setEditingId(null) }}
                   onTab={() => {
                     if (i + 1 < state.attributes.length) {
                       setEditingId(state.attributes[i + 1].id)
