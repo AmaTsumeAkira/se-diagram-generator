@@ -298,6 +298,7 @@ function App() {
   }
 
   const emptyConfig = { nodes: [], edges: [] }
+  const mdSectionMap: Record<string, DiagramType> = { '用例图': 'usecase', '功能结构图': 'structure', '实体属性图': 'entity' }
 
   const handleImport = () => {
     const input = document.createElement('input')
@@ -316,7 +317,26 @@ function App() {
           else alert('JSON 格式不正确')
           return
         }
-        // Quick format - import for current diagram type, others empty
+        // MD format: multiple sections with # headers
+        if (text.includes('\n# ') || text.startsWith('# ')) {
+          const sections = text.split(/(?=^# )/m)
+          const newConfigs: Record<string, any> = { usecase: emptyConfig, structure: emptyConfig, entity: emptyConfig }
+          let hasData = false
+          sections.forEach((sec) => {
+            const lines = sec.trim().split('\n')
+            const header = lines[0].replace(/^# /, '').trim()
+            const type = mdSectionMap[header]
+            if (!type) return
+            const body = lines.slice(1).join('\n').trim()
+            if (!body) return
+            const result = parseQuickFormat(body, type)
+            if (result) { newConfigs[type] = result; hasData = true }
+          })
+          if (hasData) pushConfigs(newConfigs as ConfigMap)
+          else alert('未识别到有效数据')
+          return
+        }
+        // Plain quick format - import for current diagram type, others empty
         const result = parseQuickFormat(text, active)
         if (result) {
           pushConfigs({ usecase: emptyConfig, structure: emptyConfig, entity: emptyConfig, [active]: result })
