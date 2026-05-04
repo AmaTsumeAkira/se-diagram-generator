@@ -110,9 +110,12 @@ function InlineEdit({
 }) {
   const [text, setText] = useState(value)
   const ref = useRef<HTMLInputElement>(null)
+  const doneRef = useRef(false)
   useEffect(() => { ref.current?.select() }, [])
 
   const commit = () => {
+    if (doneRef.current) return
+    doneRef.current = true
     const v = text.trim()
     if (v) onSave(v)
     else onDelete?.()
