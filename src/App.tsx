@@ -338,9 +338,9 @@ function App() {
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
-        {active === 'usecase' && <NodeEditor key={`usecase-${configVersion}`} type="usecase" useCase={ucState} onApply={handleApply} />}
-        {active === 'structure' && <NodeEditor key={`structure-${configVersion}`} type="structure" tree={treeState} onApply={handleApply} />}
-        {active === 'entity' && <NodeEditor key={`entity-${configVersion}`} type="entity" entity={entityState} onApply={handleApply} />}
+        {active === 'usecase' && <NodeEditor key={`usecase-${configVersion}`} type="usecase" useCase={ucState} onChange={handleApply} />}
+        {active === 'structure' && <NodeEditor key={`structure-${configVersion}`} type="structure" tree={treeState} onChange={handleApply} />}
+        {active === 'entity' && <NodeEditor key={`entity-${configVersion}`} type="entity" entity={entityState} onChange={handleApply} />}
 
         <div className="flex-1" ref={flowRef}>
           <ReactFlowProvider>
