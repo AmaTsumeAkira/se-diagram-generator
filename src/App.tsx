@@ -297,6 +297,8 @@ function App() {
     return { nodes, edges }
   }
 
+  const emptyConfig = { nodes: [], edges: [] }
+
   const handleImport = () => {
     const input = document.createElement('input')
     input.type = 'file'; input.accept = '.json,.txt,.md'
@@ -305,6 +307,7 @@ function App() {
       if (!file) return
       const reader = new FileReader()
       reader.onload = () => {
+        if (!window.confirm('导入将清空所有现有数据，确定继续吗？')) return
         const text = reader.result as string
         // JSON
         if (text.trim().startsWith('{')) {
@@ -313,10 +316,10 @@ function App() {
           else alert('JSON 格式不正确')
           return
         }
-        // Quick format - import for current diagram type
+        // Quick format - import for current diagram type, others empty
         const result = parseQuickFormat(text, active)
         if (result) {
-          pushConfigs({ ...configs, [active]: result })
+          pushConfigs({ usecase: emptyConfig, structure: emptyConfig, entity: emptyConfig, [active]: result })
         } else {
           alert('快速导入格式不正确')
         }
