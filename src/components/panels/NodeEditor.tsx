@@ -76,8 +76,14 @@ function useDebouncedChange(state: any, toJson: (s: any) => string, onChange: (j
   onChangeRef.current = onChange
   const toJsonRef = useRef(toJson)
   toJsonRef.current = toJson
+  const skipRef = useRef(true)
 
   useEffect(() => {
+    // 跳过首次挂载，避免与 configVersion 重挂载形成反馈环
+    if (skipRef.current) {
+      skipRef.current = false
+      return
+    }
     const timer = setTimeout(() => {
       onChangeRef.current(toJsonRef.current(state))
     }, 250)
