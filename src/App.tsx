@@ -72,16 +72,19 @@ function jsonToConfigs(json: string): ConfigMap | null {
 // ====== Config → Editor state (for undo sync) ======
 
 function configToUseCaseState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): UseCaseState {
-  const actor = cfg.nodes.find((n) => n.type === 'actor')
-  const useCases = cfg.nodes.filter((n) => n.type === 'usecase')
-  const actorId = actor?.id || 'a1'
-  const connectedIds = new Set(cfg.edges.filter((e) => e.source === actorId).map((e) => e.target))
+  const actors = cfg.nodes.filter((n) => n.type === 'actor')
   return {
-    actorId,
-    actorLabel: (actor?.data.label as string) || '角色',
-    useCases: useCases
-      .filter((uc) => connectedIds.has(uc.id))
-      .map((uc) => ({ id: uc.id, label: (uc.data.label as string) || '' })),
+    actors: actors.map((actor) => {
+      const actorId = actor.id
+      const connectedIds = new Set(cfg.edges.filter((e) => e.source === actorId).map((e) => e.target))
+      return {
+        id: actorId,
+        label: (actor.data.label as string) || '角色',
+        useCases: cfg.nodes
+          .filter((n) => n.type === 'usecase' && connectedIds.has(n.id))
+          .map((uc) => ({ id: uc.id, label: (uc.data.label as string) || '' })),
+      }
+    }),
   }
 }
 
@@ -211,14 +214,18 @@ function App() {
   const entityState = useMemo(() => configToEntityState(configs.entity), [configs.entity])
 
   // ====== Derive diagram data ======
-  const useCaseData = useMemo(() => {
+  const useCaseGroups = useMemo(() => {
     const cfg = configs.usecase
     const actors = cfg.nodes.filter((n) => n.type === 'actor')
-    const useCases = cfg.nodes.filter((n) => n.type === 'usecase')
-    const actor = actors[0]
-    const actorEdges = actor ? cfg.edges.filter((e) => e.source === actor.id) : cfg.edges
-    const ids = new Set(actorEdges.map((e) => e.target))
-    return { actor: actor ?? null, useCases: useCases.filter((uc) => ids.has(uc.id)), edges: actorEdges }
+    return actors.map((actor) => {
+      const actorEdges = cfg.edges.filter((e) => e.source === actor.id)
+      const ids = new Set(actorEdges.map((e) => e.target))
+      return {
+        actor,
+        useCases: cfg.nodes.filter((n) => n.type === 'usecase' && ids.has(n.id)),
+        edges: actorEdges,
+      }
+    })
   }, [configs.usecase])
 
   const entityData = useMemo(() => {
@@ -344,11 +351,11 @@ function App() {
 
         <div className="flex-1" ref={flowRef}>
           <ReactFlowProvider>
-            {active === 'usecase' && useCaseData.actor && (
-              <UseCaseDiagram actor={useCaseData.actor} useCases={useCaseData.useCases} edges={useCaseData.edges} />
+            {active === 'usecase' && useCaseGroups.length > 0 && (
+              <UseCaseDiagram groups={useCaseGroups} />
             )}
-            {active === 'usecase' && !useCaseData.actor && (
-              <div className="flex items-center justify-center h-full text-gray-400">请添加 actor 节点</div>
+            {active === 'usecase' && useCaseGroups.length === 0 && (
+              <div className="flex items-center justify-center h-full text-gray-400">请添加角色节点</div>
             )}
             {active === 'structure' && (
               <StructureDiagram nodes={configs.structure.nodes} edges={configs.structure.edges} />

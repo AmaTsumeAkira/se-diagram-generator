@@ -3,9 +3,11 @@ import { useState, useRef, useEffect } from 'react'
 // ====== Types ======
 
 export interface UseCaseState {
-  actorId: string
-  actorLabel: string
-  useCases: { id: string; label: string }[]
+  actors: {
+    id: string
+    label: string
+    useCases: { id: string; label: string }[]
+  }[]
 }
 
 export interface TreeNode {
@@ -38,11 +40,15 @@ function uid(): string { return 'n' + _id++ }
 // ====== JSON generators ======
 
 function useCaseToJson(state: UseCaseState): string {
-  const nodes = [
-    { id: state.actorId, type: 'actor', label: state.actorLabel },
-    ...state.useCases.map((uc) => ({ id: uc.id, type: 'usecase', label: uc.label, rx: 60, ry: 15 })),
-  ]
-  const edges = state.useCases.map((uc, i) => ({ id: `e${i}`, source: state.actorId, target: uc.id }))
+  const nodes: any[] = []
+  const edges: any[] = []
+  state.actors.forEach((actor) => {
+    nodes.push({ id: actor.id, type: 'actor', label: actor.label })
+    actor.useCases.forEach((uc, i) => {
+      nodes.push({ id: uc.id, type: 'usecase', label: uc.label, rx: 60, ry: 15 })
+      edges.push({ id: `e_${actor.id}_${i}`, source: actor.id, target: uc.id })
+    })
+  })
   return JSON.stringify({ nodes, edges }, null, 2)
 }
 
@@ -129,92 +135,125 @@ function InlineEdit({
 
 function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApply: (json: string) => void }) {
   const [state, setState] = useState<UseCaseState>(initial)
-  const [newLabel, setNewLabel] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [focusedIdx, setFocusedIdx] = useState<number | null>(null)
-  const [dragIdx, setDragIdx] = useState<number | null>(null)
 
-  const addUseCase = () => {
-    const label = newLabel.trim()
-    if (!label) return
-    setState((s) => ({ ...s, useCases: [...s.useCases, { id: uid(), label }] }))
-    setNewLabel('')
+  const addActor = () => {
+    setState((s) => ({ actors: [...s.actors, { id: uid(), label: '新角色', useCases: [] }] }))
   }
-
-  const removeUseCase = (id: string) => {
-    setState((s) => ({ ...s, useCases: s.useCases.filter((uc) => uc.id !== id) }))
-    if (editingId === id) setEditingId(null)
+  const removeActor = (actorId: string) => {
+    setState((s) => ({ actors: s.actors.filter((a) => a.id !== actorId) }))
   }
-
-  const renameUseCase = (id: string, label: string) => {
-    setState((s) => ({ ...s, useCases: s.useCases.map((uc) => (uc.id === id ? { ...uc, label } : uc)) }))
+  const renameActor = (actorId: string, label: string) => {
+    setState((s) => ({ actors: s.actors.map((a) => a.id === actorId ? { ...a, label } : a) }))
   }
-
-  const moveUseCase = (from: number, to: number) => {
-    setState((s) => {
-      const arr = [...s.useCases]; const [item] = arr.splice(from, 1); arr.splice(to, 0, item)
-      return { ...s, useCases: arr }
-    })
-    setDragIdx(null)
+  const addUseCase = (actorId: string, label: string) => {
+    setState((s) => ({
+      actors: s.actors.map((a) => a.id === actorId ? { ...a, useCases: [...a.useCases, { id: uid(), label }] } : a),
+    }))
+  }
+  const removeUseCase = (actorId: string, ucId: string) => {
+    setState((s) => ({
+      actors: s.actors.map((a) => a.id === actorId ? { ...a, useCases: a.useCases.filter((uc) => uc.id !== ucId) } : a),
+    }))
+    if (editingId === ucId) setEditingId(null)
+  }
+  const renameUseCase = (actorId: string, ucId: string, label: string) => {
+    setState((s) => ({
+      actors: s.actors.map((a) => a.id === actorId ? {
+        ...a, useCases: a.useCases.map((uc) => uc.id === ucId ? { ...uc, label } : uc),
+      } : a),
+    }))
   }
 
   return (
     <div className="space-y-4">
-      <div>
-        <div className="text-xs font-medium text-gray-500 mb-1">角色 (Actor)</div>
-        <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded">
-          <span className="text-xs text-gray-400 mr-1">角色</span>
-          <input className="flex-1 text-sm bg-transparent focus:outline-none"
-            value={state.actorLabel} onChange={(e) => setState((s) => ({ ...s, actorLabel: e.target.value }))} />
-        </div>
-      </div>
+      {state.actors.map((actor) => (
+        <ActorSection key={actor.id} actor={actor} editingId={editingId} setEditingId={setEditingId}
+          onRename={(l) => renameActor(actor.id, l)} onRemove={() => removeActor(actor.id)}
+          onAddUc={(l) => addUseCase(actor.id, l)} onRemoveUc={(id) => removeUseCase(actor.id, id)}
+          onRenameUc={(id, l) => renameUseCase(actor.id, id, l)} />
+      ))}
 
-      <div>
-        <div className="text-xs font-medium text-gray-500 mb-1">用例 ({state.useCases.length})</div>
+      <button onClick={addActor} className="w-full py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
+        + 添加角色
+      </button>
+
+      <button onClick={() => onApply(useCaseToJson(state))}
+        className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
+        应用修改
+      </button>
+    </div>
+  )
+}
+
+function ActorSection({ actor, editingId, setEditingId, onRename, onRemove, onAddUc, onRemoveUc, onRenameUc }: {
+  actor: UseCaseState['actors'][number]
+  editingId: string | null; setEditingId: (id: string | null) => void
+  onRename: (label: string) => void; onRemove: () => void
+  onAddUc: (label: string) => void; onRemoveUc: (id: string) => void; onRenameUc: (id: string, label: string) => void
+}) {
+  const [newLabel, setNewLabel] = useState('')
+  const [focusedIdx, setFocusedIdx] = useState<number | null>(null)
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+
+  const add = () => {
+    const label = newLabel.trim()
+    if (!label) return
+    onAddUc(label)
+    setNewLabel('')
+  }
+
+  const move = (from: number, to: number) => {
+    // Moving handled via direct state mutation through parent...
+    // For simplicity we skip drag-to-reorder for now in multi-actor mode
+    setDragIdx(null)
+  }
+
+  return (
+    <div className="border border-gray-200 rounded-lg bg-white">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
+        <span className="text-xs text-gray-400 mr-1">角色</span>
+        <input className="flex-1 text-sm bg-transparent focus:outline-none font-medium"
+          value={actor.label} onChange={(e) => onRename(e.target.value)} />
+        <span className="text-xs text-gray-400">({actor.useCases.length})</span>
+        {actor.useCases.length === 0 && (
+          <button onClick={onRemove} className="text-gray-400 hover:text-red-500 text-sm" title="删除角色">×</button>
+        )}
+      </div>
+      <div className="px-3 py-2">
         <div className="flex gap-1 mb-2">
-          <input className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-black"
-            placeholder="输入用例名称..." value={newLabel}
-            onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addUseCase() }} />
-          <button onClick={addUseCase} className="px-3 py-1.5 text-sm bg-black text-white rounded hover:bg-gray-800">添加</button>
+          <input className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-black"
+            placeholder="添加用例..." value={newLabel}
+            onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add() }} />
+          <button onClick={add} className="px-2 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">添加</button>
         </div>
         <div className="space-y-1">
-          {state.useCases.map((uc, i) => (
-            <div key={uc.id} draggable tabIndex={0}
-              className={`flex items-center justify-between px-3 py-1.5 bg-white border rounded text-sm cursor-default transition-colors ${focusedIdx === i ? 'border-black ring-1 ring-black' : 'border-gray-200'} ${dragIdx === i ? 'opacity-40' : ''}`}
+          {actor.useCases.map((uc, i) => (
+            <div key={uc.id} tabIndex={0}
+              className={`flex items-center justify-between px-2 py-1 bg-gray-50 border rounded text-sm cursor-default transition-colors ${focusedIdx === i ? 'border-black ring-1 ring-black' : 'border-gray-200'}`}
               onDoubleClick={() => setEditingId(uc.id)}
               onFocus={() => setFocusedIdx(i)} onBlur={() => setFocusedIdx(null)}
               onKeyDown={(e) => {
-                if ((e.key === 'Delete' || e.key === 'Backspace') && editingId !== uc.id) removeUseCase(uc.id)
+                if ((e.key === 'Delete' || e.key === 'Backspace') && editingId !== uc.id) onRemoveUc(uc.id)
                 if (e.key === 'Enter') setEditingId(uc.id)
-              }}
-              onDragStart={() => setDragIdx(i)} onDragOver={(e) => e.preventDefault()}
-              onDrop={() => { if (dragIdx !== null && dragIdx !== i) moveUseCase(dragIdx, i) }}
-              onDragEnd={() => setDragIdx(null)}>
-              <span className="text-xs text-gray-300 mr-1 cursor-grab select-none">⋮⋮</span>
+              }}>
               {editingId === uc.id ? (
                 <InlineEdit value={uc.label} className="flex-1"
-                  onSave={(v) => { renameUseCase(uc.id, v); setEditingId(null) }}
-                  onDelete={() => { removeUseCase(uc.id); setEditingId(null) }}
+                  onSave={(v) => { onRenameUc(uc.id, v); setEditingId(null) }}
+                  onDelete={() => { onRemoveUc(uc.id); setEditingId(null) }}
                   onTab={() => {
-                    if (i + 1 < state.useCases.length) { setEditingId(state.useCases[i + 1].id) }
-                    else { const id = uid(); setState((s) => ({ ...s, useCases: [...s.useCases, { id, label: '' }] })); setTimeout(() => setEditingId(id), 0) }
+                    if (i + 1 < actor.useCases.length) { setEditingId(actor.useCases[i + 1].id) }
+                    else { const id = uid(); onAddUc(''); setTimeout(() => setEditingId(id), 0) }
                   }} />
               ) : (<span className="flex-1">{uc.label}</span>)}
-              <button onClick={() => removeUseCase(uc.id)} className="text-gray-400 hover:text-red-500 text-lg leading-none ml-2 shrink-0" title="删除">×</button>
+              <button onClick={() => onRemoveUc(uc.id)} className="text-gray-400 hover:text-red-500 text-sm ml-1 shrink-0" title="删除">×</button>
             </div>
           ))}
-          {state.useCases.length === 0 && (
-            <div className="text-xs text-gray-400 text-center py-3 px-2 border border-dashed border-gray-300 rounded">
-              尚无用例节点<br />在上方输入框键入名称后按 Enter 添加
-            </div>
+          {actor.useCases.length === 0 && (
+            <div className="text-xs text-gray-400 text-center py-2">尚无用例，在上方输入添加</div>
           )}
         </div>
       </div>
-
-      <button onClick={() => onApply(useCaseToJson(state))}
-        className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800 mt-4">
-        应用修改
-      </button>
     </div>
   )
 }

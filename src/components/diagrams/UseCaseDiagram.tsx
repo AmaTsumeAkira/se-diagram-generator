@@ -13,51 +13,61 @@ import type { DiagramNodeData } from '../../types/diagram'
 
 const nodeTypes = { actor: ActorNode, usecase: UseCaseEllipseNode }
 
-interface Props {
+interface ActorGroup {
   actor: Node<DiagramNodeData>
   useCases: Node<DiagramNodeData>[]
   edges: Edge[]
 }
 
-export default function UseCaseDiagram({ actor, useCases, edges }: Props) {
+interface Props {
+  groups: ActorGroup[]
+}
+
+export default function UseCaseDiagram({ groups }: Props) {
   const positionedNodes = useMemo(() => {
     const actorX = 40
-    const actorY = 60
-    const ucCenterX = 300
-    const spacing = 50
+    const actorH = 140
+    const firstY = 60
+    const colStartX = 260
+    const colWidth = 180
+    const ucSpacing = 50
 
-    const totalH = (useCases.length - 1) * spacing
-    const startY = actorY + 70 - totalH / 2
+    const result: Node<DiagramNodeData>[] = []
 
-    const positionedActor = {
-      ...actor,
-      position: { x: actorX, y: actorY },
-    }
+    groups.forEach((g, gi) => {
+      const actorY = firstY + gi * actorH
+      result.push({ ...g.actor, position: { x: actorX, y: actorY } })
 
-    const positionedUseCases = useCases.map((uc, i) => {
-      const rx = (uc.data.rx as number) ?? 60
-      const ry = (uc.data.ry as number) ?? 15
-      return {
-        ...uc,
-        position: { x: ucCenterX - rx, y: startY + i * spacing - ry },
-      }
+      const colCx = colStartX + gi * colWidth
+      const totalH = (g.useCases.length - 1) * ucSpacing
+      const startY = actorY + 70 - totalH / 2
+
+      g.useCases.forEach((uc, ui) => {
+        const rx = (uc.data.rx as number) ?? 60
+        const ry = (uc.data.ry as number) ?? 15
+        result.push({ ...uc, position: { x: colCx - rx, y: startY + ui * ucSpacing - ry } })
+      })
     })
 
-    return [positionedActor, ...positionedUseCases]
-  }, [actor, useCases])
+    return result
+  }, [groups])
 
-  const styledEdges = useMemo(
-    () =>
-      edges.map((e) => ({
-        ...e,
-        type: 'straight' as const,
-        sourceHandle: 'arm',
-        targetHandle: 'l',
-        style: { stroke: '#000', strokeWidth: 1 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#000' },
-      })),
-    [edges]
-  )
+  const styledEdges = useMemo(() => {
+    const all: Edge[] = []
+    groups.forEach((g) => {
+      g.edges.forEach((e) => {
+        all.push({
+          ...e,
+          type: 'straight' as const,
+          sourceHandle: 'arm',
+          targetHandle: 'l',
+          style: { stroke: '#000', strokeWidth: 1 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: '#000' },
+        })
+      })
+    })
+    return all
+  }, [groups])
 
   return (
     <ReactFlow
