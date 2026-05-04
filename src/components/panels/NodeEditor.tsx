@@ -314,6 +314,7 @@ function getSiblingGroups(node: TreeNode, groups: Map<string, string[]>) {
 }
 
 function TreeEditor({ root: initialRoot, onApply }: { root: TreeNode; onApply: (json: string) => void }) {
+  const { t } = useTranslation()
   const [root, setRoot] = useState<TreeNode>(initialRoot)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
@@ -454,6 +455,7 @@ function TreeNodeRow({ node, depth, editingId, onStartEdit, onAddChild, onDelete
 // ====== Entity Editor ======
 
 function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply: (json: string) => void }) {
+  const { t } = useTranslation()
   const [state, setState] = useState<EntityState>(initial)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
