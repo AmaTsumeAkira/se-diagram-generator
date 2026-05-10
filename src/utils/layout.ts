@@ -186,12 +186,16 @@ export function layoutTreeStructure(
 
   // 动态计算根节点 X，使其居中对齐整棵树
   const rootX = lv1TotalW / 2
-  positioned.set(rootId, { x: rootX - o.rootW / 2, y: o.rootY })
+  const rootNd2 = nodeMap.get(rootId)
+  const rw = (rootNd2?.data?.nodeW as number) || o.rootW
+  positioned.set(rootId, { x: rootX - rw / 2, y: o.rootY })
 
   let currentX = 0
   lv1Ids.forEach((id, i) => {
     const sw = lv1SubWidths[i]
-    const x = currentX + sw / 2 - o.lv2W / 2
+    const nd = nodeMap.get(id)
+    const w = (nd?.data?.nodeW as number) || o.lv2W
+    const x = currentX + sw / 2 - w / 2
     positioned.set(id, { x, y: o.lv2Y })
     currentX += sw + o.subtreeGap
   })
@@ -213,7 +217,8 @@ export function layoutTreeStructure(
       const parentPos = positioned.get(parentId)
       if (!parentPos) return
 
-      const parentW = lv === 2 ? o.lv2W : o.lv3W
+      const parentNd = nodeMap.get(parentId)
+      const parentW = lv === 2 ? ((parentNd?.data?.nodeW as number) || o.lv2W) : o.lv3W
       const totalW =
         childIds.length * o.lv3W + (childIds.length - 1) * o.lv3Gap
       const startX = parentPos.x + parentW / 2 - totalW / 2
