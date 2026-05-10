@@ -7,10 +7,12 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import RectangleNode from '../nodes/RectangleNode'
+import StructureEdge from '../edges/StructureEdge'
 import { layoutTreeStructure } from '../../utils/layout'
 import type { DiagramNodeData } from '../../types/diagram'
 
 const nodeTypes = { rectangle: RectangleNode }
+const edgeTypes = { structure: StructureEdge }
 
 interface Props {
   nodes: Node<DiagramNodeData>[]
@@ -36,6 +38,7 @@ export default function StructureDiagram({ nodes: initialNodes, edges: initialEd
       nodes={nodes}
       edges={edges}
       nodeTypes={nodeTypes}
+      edgeTypes={edgeTypes}
       fitView
       fitViewOptions={{ padding: 0.3 }}
       nodesDraggable={false}

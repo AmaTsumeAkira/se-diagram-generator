@@ -233,11 +233,10 @@ export function layoutTreeStructure(
     return { ...(nd || n), position: pos }
   })
 
-  // smoothstep 边：圆角自然过渡，避免近端子节点水平段不可见
+  // 自定义 StructureEdge：步进折线，同一父节点所有子边水平段精确对齐
   const styledEdges = edges.map((e) => ({
     ...e,
-    type: 'smoothstep' as const,
-    pathOptions: { borderRadius: 10 },
+    type: 'structure',
     style: { stroke: '#000', strokeWidth: 1 },
   }))
 
