@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { toPng } from 'html-to-image'
+import { toPng, toSvg } from 'html-to-image'
 import type { Node, Edge } from '@xyflow/react'
 import type { DiagramNodeData } from '../../types/diagram'
 
@@ -108,8 +108,19 @@ export default function ExportModal({ active, config, flowRef, onClose }: Props)
     })()
   }, [])
 
-  const dl = (url: string, name: string) => {
-    const a = document.createElement('a'); a.download = `${name}.png`; a.href = url; a.click()
+  const dl = (url: string, name: string, ext = 'png') => {
+    const a = document.createElement('a'); a.download = `${name}.${ext}`; a.href = url; a.click()
+  }
+
+  const handleSvg = async () => {
+    const el = flowRef.current?.querySelector('.react-flow') as HTMLElement | null
+    if (!el) return
+    const bg = el.querySelector('.react-flow__background') as HTMLElement | null
+    if (bg) bg.style.display = 'none'
+    try {
+      const url = await toSvg(el, { backgroundColor: '#ffffff' })
+      dl(url, `diagram-${active}`, 'svg')
+    } finally { if (bg) bg.style.display = '' }
   }
 
   const splitCols = Math.ceil(Math.sqrt(splitUrls.length))
@@ -121,7 +132,9 @@ export default function ExportModal({ active, config, flowRef, onClose }: Props)
           <div className="flex items-center gap-3">
             <h3 className="text-sm font-semibold">导出图片</h3>
             <button onClick={() => dl(fullUrl, `全图-${active}`)} disabled={!fullUrl}
-              className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800 disabled:opacity-30">下载全图</button>
+              className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800 disabled:opacity-30">下载全图 PNG</button>
+            <button onClick={handleSvg}
+              className="px-3 py-1 text-xs border border-black rounded hover:bg-gray-50">下载全图 SVG</button>
             <button onClick={() => splitUrls.forEach((url, i) => setTimeout(() => dl(url, `${splitLabels[i] || `分图${i + 1}`}`), i * 200))}
               disabled={splitUrls.length === 0}
               className="px-3 py-1 text-xs border border-black rounded hover:bg-gray-50 disabled:opacity-30">下载分图 ({splitUrls.length})</button>
