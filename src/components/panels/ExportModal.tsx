@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { toPng, toSvg } from 'html-to-image'
+import { toPng } from 'html-to-image'
+import { useCaseSvg, structureSvg, entitySvg } from '../../utils/svgExport'
 import type { Node, Edge } from '@xyflow/react'
 import type { DiagramNodeData } from '../../types/diagram'
 
@@ -112,15 +113,15 @@ export default function ExportModal({ active, config, flowRef, onClose }: Props)
     const a = document.createElement('a'); a.download = `${name}.${ext}`; a.href = url; a.click()
   }
 
-  const handleSvg = async () => {
-    const el = flowRef.current?.querySelector('.react-flow') as HTMLElement | null
-    if (!el) return
-    const bg = el.querySelector('.react-flow__background') as HTMLElement | null
-    if (bg) bg.style.display = 'none'
-    try {
-      const url = await toSvg(el, { backgroundColor: '#ffffff' })
-      dl(url, `diagram-${active}`, 'svg')
-    } finally { if (bg) bg.style.display = '' }
+  const handleSvg = () => {
+    let svg = ''
+    if (active === 'usecase') svg = useCaseSvg(config.nodes, config.edges)
+    else if (active === 'structure') svg = structureSvg(config.nodes, config.edges)
+    else svg = entitySvg(config.nodes, config.edges)
+    if (!svg) return
+    const blob = new Blob([svg], { type: 'image/svg+xml' })
+    dl(URL.createObjectURL(blob), `diagram-${active}`, 'svg')
+    URL.revokeObjectURL(blob as unknown as string)
   }
 
   const splitCols = Math.ceil(Math.sqrt(splitUrls.length))
