@@ -132,6 +132,10 @@ export function layoutTreeStructure(
   const userSpacing = (rootNd?.data?.spacing as number) || 26
   if (userSpacing !== o.lv3Gap) o.lv3Gap = userSpacing
   const charPx = Math.round(userFontSize * 1.1 + 2)
+  // 根据字号调整节点尺寸
+  o.lv3W = Math.max(18, Math.round(userFontSize * 1.2))
+  o.lv2H = Math.round(userFontSize * 1.6)
+  o.rootH = Math.round(userFontSize * 1.6)
 
   // 根据功能节点最长文字动态计算竖排矩形高度
   let funcMaxChars = 0
