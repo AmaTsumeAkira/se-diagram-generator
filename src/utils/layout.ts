@@ -152,12 +152,16 @@ export function layoutTreeStructure(
   }
   if (funcMaxChars > 0) o.lv3H = Math.max(50, funcMaxChars * charPx + 8)
   // 所有节点设置 fontSize + 横排节点统一高度
+  const padH = Math.round(userFontSize * 1.1)
+  const textW = (s: string) => { let w = 0; for (const ch of s) w += ch.charCodeAt(0) > 127 ? userFontSize : userFontSize * 0.6; return Math.ceil(w) }
+  let maxRootW = o.rootW; let maxLv2W = o.lv2W
   nodeMap.forEach((nd, id) => {
     const lv = levels.get(id)!
     nd.data = { ...nd.data, fontSize: userFontSize }
-    if (lv === 0) nd.data.nodeH = o.rootH
-    else if (lv === 1) nd.data.nodeH = o.lv2H
+    if (lv === 0) { nd.data.nodeH = o.rootH; nd.data.nodeW = textW(String(nd.data.label)) + padH * 2; maxRootW = Math.max(maxRootW, nd.data.nodeW as number) }
+    else if (lv === 1) { nd.data.nodeH = o.lv2H; nd.data.nodeW = textW(String(nd.data.label)) + padH * 2; maxLv2W = Math.max(maxLv2W, nd.data.nodeW as number) }
   })
+  o.rootW = maxRootW; o.lv2W = maxLv2W
 
   const positioned = new Map<string, { x: number; y: number }>()
 

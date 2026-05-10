@@ -97,8 +97,8 @@ export function structureSvg(nodes: DNode[], edges: Edge[]): string {
         svg += `<text x="${x + vw / 2}" y="${startY + ci * charH}" font-family="sans-serif" font-size="${fs}" text-anchor="middle" fill="#000">${esc(ch)}</text>`
       })
     } else {
-      const h = (n.data.nodeH) || (fs * 1.6)
-      const w = n.measured?.width || Math.max(80, label.length * fs * 0.8 + 32)
+      const h = (n.data.nodeH as number) || (fs * 1.6)
+      const w = (n.data.nodeW as number) || n.measured?.width || Math.max(80, label.length * fs * 0.8 + 32)
       svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#fff" stroke="#000" stroke-width="1"/>`
       svg += `<text x="${x + w / 2}" y="${y + h / 2 + fs * 0.3}" font-family="sans-serif" font-size="${fs}" text-anchor="middle" fill="#000">${label}</text>`
     }
@@ -118,7 +118,10 @@ export function structureSvg(nodes: DNode[], edges: Edge[]): string {
 
   const bb = bounds(ln.map((n) => {
     const v = n.data.vertical as boolean
-    return { x: n.position.x, y: n.position.y, w: v ? Math.max(18, (n.data.fontSize as number || 14) * 1.2) : (n.measured?.width || 80), h: v ? (n.data.nodeH as number || 110) : ((n.data.nodeH as number) || (n.data.fontSize as number || 14) * 1.6) }
+    const fs = (n.data.fontSize as number) || 14
+    const h = v ? ((n.data.nodeH as number) || 110) : ((n.data.nodeH as number) || fs * 1.6)
+    const w = v ? Math.max(18, fs * 1.2) : ((n.data.nodeW as number) || n.measured?.width || 80)
+    return { x: n.position.x, y: n.position.y, w, h }
   }))
   return wrapSvg(svg, bb.x - 20, bb.y - 20, bb.w + 40, bb.h + 40)
 }
