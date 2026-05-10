@@ -233,24 +233,13 @@ export function layoutTreeStructure(
     return { ...(nd || n), position: pos }
   })
 
-  // 为每条边计算统一折线偏移量（同一父节点下所有边水平段对齐）
-  const styledEdges = edges.map((e) => {
-    const srcPos = positioned.get(e.source)
-    const tgtPos = positioned.get(e.target)
-    const srcLv = levels.get(e.source)
-    const tgtLv = levels.get(e.target)
-    // 计算该层级转换的垂直间距
-    const srcH = (srcLv != null && srcLv >= 2) ? o.lv3H : (srcLv === 0 ? o.rootH : o.lv2H)
-    const srcBottom = (srcPos?.y || 0) + srcH
-    const tgtTop = tgtPos?.y || 0
-    const offset = Math.round((tgtTop - srcBottom) / 2)
-    return {
-      ...e,
-      type: 'step' as const,
-      pathOptions: { offset: offset > 0 ? offset : undefined },
-      style: { stroke: '#000', strokeWidth: 1 },
-    }
-  })
+  // smoothstep 边：圆角自然过渡，避免近端子节点水平段不可见
+  const styledEdges = edges.map((e) => ({
+    ...e,
+    type: 'smoothstep' as const,
+    pathOptions: { borderRadius: 10 },
+    style: { stroke: '#000', strokeWidth: 1 },
+  }))
 
   return { nodes: layoutedNodes, edges: styledEdges }
 }
