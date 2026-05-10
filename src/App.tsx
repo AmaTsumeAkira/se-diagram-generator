@@ -106,6 +106,8 @@ function configToTreeState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] 
       id,
       label: (node?.data.label as string) || id,
       vertical: (node?.data.vertical as boolean) || depth >= 2,
+      fontSize: depth === 0 ? ((node?.data.fontSize as number) || 14) : undefined,
+      spacing: depth === 0 ? ((node?.data.spacing as number) || 26) : undefined,
       children: (childrenMap.get(id) || []).map((cid) => build(cid, depth + 1)),
     }
   }

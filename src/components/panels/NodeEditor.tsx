@@ -17,6 +17,8 @@ export interface TreeNode {
   label: string
   vertical: boolean
   children: TreeNode[]
+  fontSize?: number
+  spacing?: number
 }
 
 export interface EntityState {
@@ -59,14 +61,16 @@ function useCaseToJson(state: UseCaseState): string {
 function treeToJson(root: TreeNode, fontSize = 14, spacing = 26): string {
   const nodes: any[] = []
   const edges: any[] = []
-  function walk(node: TreeNode) {
-    nodes.push({ id: node.id, type: 'rectangle', label: node.label, vertical: node.vertical, fontSize, spacing })
+  function walk(node: TreeNode, isRoot = false) {
+    const n: any = { id: node.id, type: 'rectangle', label: node.label, vertical: node.vertical }
+    if (isRoot) { n.fontSize = fontSize; n.spacing = spacing }
+    nodes.push(n)
     node.children.forEach((child) => {
       edges.push({ id: `e_${node.id}_${child.id}`, source: node.id, target: child.id })
       walk(child)
     })
   }
-  walk(root)
+  walk(root, true)
   return JSON.stringify({ nodes, edges }, null, 2)
 }
 
@@ -321,8 +325,8 @@ function TreeEditor({ root: initialRoot, onApply }: { root: TreeNode; onApply: (
   const [root, setRoot] = useState<TreeNode>(initialRoot)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
-  const [fontSize, setFontSize] = useState(14)
-  const [spacing, setSpacing] = useState(26)
+  const [fontSize, setFontSize] = useState(initialRoot.fontSize || 14)
+  const [spacing, setSpacing] = useState(initialRoot.spacing || 26)
 
   const handleAddChild = (parentId: string, label: string) => {
     setRoot((prev) => updateTreeNode(prev, parentId, (node) => ({ ...node, children: [...node.children, { id: uid(), label, vertical: false, children: [] }] })))
