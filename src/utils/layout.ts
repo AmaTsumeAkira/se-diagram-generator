@@ -126,15 +126,27 @@ export function layoutTreeStructure(
   const maxLevel = Math.max(...levelNodes.keys())
   const nodeMap = new Map(nodes.map((n) => [n.id, { ...n, data: { ...n.data } }]))
 
-  // 根据功能节点最长文字动态计算竖排矩形高度（每字≈16px，下限50px）
+  // 读取根节点的设置参数
+  const rootNd = nodeMap.get(rootId)
+  const userFontSize = (rootNd?.data?.fontSize as number) || 14
+  const userSpacing = (rootNd?.data?.spacing as number) || 26
+  if (userSpacing !== o.lv3Gap) o.lv3Gap = userSpacing
+  const charPx = Math.round(userFontSize * 1.1 + 2)
+
+  // 根据功能节点最长文字动态计算竖排矩形高度
   let funcMaxChars = 0
   for (let lv = 2; lv <= maxLevel; lv++) {
     (levelNodes.get(lv) || []).forEach((id) => {
       const nd = nodeMap.get(id)
-      if (nd) funcMaxChars = Math.max(funcMaxChars, String(nd.data.label || '').length)
+      if (nd) {
+        nd.data = { ...nd.data, fontSize: userFontSize }
+        funcMaxChars = Math.max(funcMaxChars, String(nd.data.label || '').length)
+      }
     })
   }
-  if (funcMaxChars > 0) o.lv3H = Math.max(50, funcMaxChars * 16 + 8)
+  if (funcMaxChars > 0) o.lv3H = Math.max(50, funcMaxChars * charPx + 8)
+  // 其他节点也设置 fontSize
+  nodeMap.forEach((nd) => { nd.data = { ...nd.data, fontSize: userFontSize } })
 
   const positioned = new Map<string, { x: number; y: number }>()
 

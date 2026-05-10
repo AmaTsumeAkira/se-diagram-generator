@@ -56,11 +56,11 @@ function useCaseToJson(state: UseCaseState): string {
   return JSON.stringify({ nodes, edges }, null, 2)
 }
 
-function treeToJson(root: TreeNode): string {
+function treeToJson(root: TreeNode, fontSize = 14, spacing = 26): string {
   const nodes: any[] = []
   const edges: any[] = []
   function walk(node: TreeNode) {
-    nodes.push({ id: node.id, type: 'rectangle', label: node.label, vertical: node.vertical })
+    nodes.push({ id: node.id, type: 'rectangle', label: node.label, vertical: node.vertical, fontSize, spacing })
     node.children.forEach((child) => {
       edges.push({ id: `e_${node.id}_${child.id}`, source: node.id, target: child.id })
       walk(child)
@@ -321,6 +321,8 @@ function TreeEditor({ root: initialRoot, onApply }: { root: TreeNode; onApply: (
   const [root, setRoot] = useState<TreeNode>(initialRoot)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
+  const [fontSize, setFontSize] = useState(14)
+  const [spacing, setSpacing] = useState(26)
 
   const handleAddChild = (parentId: string, label: string) => {
     setRoot((prev) => updateTreeNode(prev, parentId, (node) => ({ ...node, children: [...node.children, { id: uid(), label, vertical: false, children: [] }] })))
@@ -355,9 +357,22 @@ function TreeEditor({ root: initialRoot, onApply }: { root: TreeNode; onApply: (
         {t('editor.quickImport')}
       </button>
 
+      <div className="flex items-center gap-3 mb-3 px-1 text-xs text-gray-500">
+        <label className="flex items-center gap-1">
+          字号 <input type="number" min={10} max={22} value={fontSize}
+            className="w-12 px-1 py-0.5 border border-gray-300 rounded text-center text-xs"
+            onChange={(e) => setFontSize(Number(e.target.value) || 14)} />
+        </label>
+        <label className="flex items-center gap-1">
+          间距 <input type="number" min={16} max={50} value={spacing}
+            className="w-12 px-1 py-0.5 border border-gray-300 rounded text-center text-xs"
+            onChange={(e) => setSpacing(Number(e.target.value) || 26)} />
+        </label>
+      </div>
+
       <TreeNodeRow node={root} depth={0} editingId={editingId} onStartEdit={setEditingId}
         onAddChild={handleAddChild} onDelete={handleDelete} onRename={handleRename} onTab={handleTabFrom} />
-      <button onClick={() => onApply(treeToJson(root))}
+      <button onClick={() => onApply(treeToJson(root, fontSize, spacing))}
         className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800 mt-4">
         {t('editor.apply')}
       </button>

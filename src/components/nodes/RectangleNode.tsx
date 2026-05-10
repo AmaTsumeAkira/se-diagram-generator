@@ -8,20 +8,21 @@ import type { DiagramNodeData } from '../../types/diagram'
  */
 function RectangleNode({ data }: NodeProps<Node<DiagramNodeData>>) {
   const vertical = data.vertical as boolean
-
+  const fs = (data.fontSize as number) || 14
   const vh = (data.nodeH as number) || 110
+  const ls = Math.max(1, fs * 0.15)
 
   if (vertical) {
     return (
       <div
         style={{
-          width: 20, height: vh,
+          width: Math.max(18, fs * 1.2), height: vh,
           border: '1px solid #000', background: '#fff',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           position: 'relative',
         }}
       >
-        <span style={{ writingMode: 'vertical-rl', letterSpacing: 2, fontSize: 14 }}>
+        <span style={{ writingMode: 'vertical-rl', letterSpacing: ls, fontSize: fs }}>
           {data.label}
         </span>
         <Handle type="target" position={Position.Top} id="t" style={{ visibility: 'hidden' }} />
@@ -34,9 +35,9 @@ function RectangleNode({ data }: NodeProps<Node<DiagramNodeData>>) {
     <div
       style={{
         border: '1px solid #000', background: '#fff',
-        padding: '6px 16px', minWidth: 80,
+        padding: `${Math.round(fs * 0.4)}px ${Math.round(fs * 1.1)}px`, minWidth: 80,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 14, position: 'relative',
+        fontSize: fs, position: 'relative',
       }}
     >
       <Handle type="target" position={Position.Top} id="t" style={{ visibility: 'hidden' }} />

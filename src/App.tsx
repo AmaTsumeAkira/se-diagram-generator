@@ -35,6 +35,8 @@ function parseConfigJson(text: string): { nodes: Node<DiagramNodeData>[]; edges:
       ry: n.ry as number | undefined,
       vertical: n.vertical as boolean | undefined,
       nodeH: n.nodeH as number | undefined,
+      fontSize: n.fontSize as number | undefined,
+      spacing: n.spacing as number | undefined,
     },
     position: { x: 0, y: 0 },
   }))
@@ -51,7 +53,7 @@ function configsToJson(configs: ConfigMap): string {
   for (const key of Object.keys(configs)) {
     const cfg = configs[key as DiagramType]
     flat[key] = {
-      nodes: cfg.nodes.map((n) => ({ id: n.id, type: n.type, label: n.data.label, rx: n.data.rx, ry: n.data.ry, vertical: n.data.vertical })),
+      nodes: cfg.nodes.map((n) => ({ id: n.id, type: n.type, label: n.data.label, rx: n.data.rx, ry: n.data.ry, vertical: n.data.vertical, fontSize: n.data.fontSize, spacing: n.data.spacing })),
       edges: cfg.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
     }
   }
