@@ -151,8 +151,13 @@ export function layoutTreeStructure(
     })
   }
   if (funcMaxChars > 0) o.lv3H = Math.max(50, funcMaxChars * charPx + 8)
-  // 其他节点也设置 fontSize
-  nodeMap.forEach((nd) => { nd.data = { ...nd.data, fontSize: userFontSize } })
+  // 所有节点设置 fontSize + 横排节点统一高度
+  nodeMap.forEach((nd, id) => {
+    const lv = levels.get(id)!
+    nd.data = { ...nd.data, fontSize: userFontSize }
+    if (lv === 0) nd.data.nodeH = o.rootH
+    else if (lv === 1) nd.data.nodeH = o.lv2H
+  })
 
   const positioned = new Map<string, { x: number; y: number }>()
 

@@ -31,13 +31,17 @@ function RectangleNode({ data }: NodeProps<Node<DiagramNodeData>>) {
     )
   }
 
+  const hh = (data.nodeH as number) || 0
+
   return (
     <div
       style={{
         border: '1px solid #000', background: '#fff',
-        padding: `${Math.round(fs * 0.4)}px ${Math.round(fs * 1.1)}px`, minWidth: 80,
+        padding: `${Math.round(fs * 0.4)}px ${Math.round(fs * 1.1)}px`,
+        minWidth: 80, height: hh || undefined,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: fs, position: 'relative',
+        boxSizing: 'border-box',
       }}
     >
       <Handle type="target" position={Position.Top} id="t" style={{ visibility: 'hidden' }} />
