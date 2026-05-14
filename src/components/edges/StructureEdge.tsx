@@ -8,7 +8,6 @@ import type { EdgeProps } from '@xyflow/react'
 export default function StructureEdge({
   sourceX, sourceY,
   targetX, targetY,
-  sourcePosition, targetPosition,
   style,
 }: EdgeProps) {
   const offset = Math.abs(targetY - sourceY) / 2
