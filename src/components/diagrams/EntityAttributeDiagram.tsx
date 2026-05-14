@@ -20,9 +20,10 @@ interface EntityGroup {
 
 interface Props {
   groups: EntityGroup[]
+  showGrid?: boolean
 }
 
-export default function EntityAttributeDiagram({ groups }: Props) {
+export default function EntityAttributeDiagram({ groups, showGrid = true }: Props) {
   const positionedNodes = useMemo(() => {
     const cols = Math.ceil(Math.sqrt(groups.length))
 
@@ -97,7 +98,7 @@ export default function EntityAttributeDiagram({ groups }: Props) {
     <ReactFlow nodes={positionedNodes} edges={styledEdges} nodeTypes={nodeTypes}
       fitView fitViewOptions={{ padding: 0.3 }}
       nodesDraggable={false} nodesConnectable={false} elementsSelectable={false}>
-      <Background color="#e5e5e5" gap={20} />
+      {showGrid && <Background color="#e5e5e5" gap={20} />}
     </ReactFlow>
   )
 }

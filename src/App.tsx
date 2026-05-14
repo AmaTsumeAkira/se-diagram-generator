@@ -243,6 +243,7 @@ function App() {
   const [showExport, setShowExport] = useState(false)
   const [showDataExport, setShowDataExport] = useState(false)
   const [pendingImport, setPendingImport] = useState<ConfigMap | null>(null)
+  const [showGrid, setShowGrid] = useState(true)
 
   // ====== Reset ======
   const handleReset = () => {
@@ -360,6 +361,7 @@ function App() {
           <button onClick={() => setShowExport(true)} className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">{t('toolbar.exportImage')}</button>
           <button onClick={handleReset} className="px-2 py-1 text-xs text-red-400 border border-red-200 rounded hover:bg-red-50 ml-1">{t('toolbar.reset')}</button>
           <button onClick={() => setShowShortcuts(true)} className="px-2 py-1 text-xs text-gray-400 border rounded hover:bg-gray-50 ml-1" title={t('toolbar.shortcuts')}>?</button>
+          <button onClick={() => setShowGrid(!showGrid)} className={`px-2 py-1 text-xs border rounded hover:bg-gray-50 ml-1 ${!showGrid ? 'text-red-400 border-red-200' : ''}`}>{showGrid ? '背景' : '纯白'}</button>
           <button onClick={toggleLang} className="px-2 py-1 text-xs border rounded hover:bg-gray-50 ml-1">{t('toolbar.lang')}</button>
         </div>
       </header>
@@ -373,16 +375,16 @@ function App() {
         <div className="flex-1" ref={flowRef}>
           <ReactFlowProvider>
             {active === 'usecase' && useCaseGroups.length > 0 && (
-              <UseCaseDiagram groups={useCaseGroups} />
+              <UseCaseDiagram groups={useCaseGroups} showGrid={showGrid} />
             )}
             {active === 'usecase' && useCaseGroups.length === 0 && (
               <div className="flex items-center justify-center h-full text-gray-400">{t('editor.addActor')}</div>
             )}
             {active === 'structure' && (
-              <StructureDiagram nodes={configs.structure.nodes} edges={configs.structure.edges} />
+              <StructureDiagram nodes={configs.structure.nodes} edges={configs.structure.edges} showGrid={showGrid} />
             )}
             {active === 'entity' && entityGroups.length > 0 && (
-              <EntityAttributeDiagram groups={entityGroups} />
+              <EntityAttributeDiagram groups={entityGroups} showGrid={showGrid} />
             )}
             {active === 'entity' && entityGroups.length === 0 && (
               <div className="flex items-center justify-center h-full text-gray-400">请添加实体节点</div>

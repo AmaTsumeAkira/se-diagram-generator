@@ -21,9 +21,10 @@ interface ActorGroup {
 
 interface Props {
   groups: ActorGroup[]
+  showGrid?: boolean
 }
 
-export default function UseCaseDiagram({ groups }: Props) {
+export default function UseCaseDiagram({ groups, showGrid = true }: Props) {
   const positionedNodes = useMemo(() => {
     // 估算文字宽度：中文≈14px，英文≈8px
     const textW = (s: string) => { let w = 0; for (const ch of s) w += ch.charCodeAt(0) > 127 ? 14 : 8; return w }
@@ -107,7 +108,7 @@ export default function UseCaseDiagram({ groups }: Props) {
       nodesConnectable={false}
       elementsSelectable={false}
     >
-      <Background color="#e5e5e5" gap={20} />
+      {showGrid && <Background color="#e5e5e5" gap={20} />}
     </ReactFlow>
   )
 }

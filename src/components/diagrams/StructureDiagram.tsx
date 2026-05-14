@@ -17,6 +17,7 @@ const edgeTypes = { structure: StructureEdge }
 interface Props {
   nodes: Node<DiagramNodeData>[]
   edges: Edge[]
+  showGrid?: boolean
 }
 
 /**
@@ -27,7 +28,7 @@ interface Props {
  * - Level 2: 叶子节点分组排在各自父节点下方，竖排文字
  * - 连线: step 正交折线 (直角阶梯线)
  */
-export default function StructureDiagram({ nodes: initialNodes, edges: initialEdges }: Props) {
+export default function StructureDiagram({ nodes: initialNodes, edges: initialEdges, showGrid = true }: Props) {
   const { nodes, edges } = useMemo(
     () => layoutTreeStructure(initialNodes, initialEdges),
     [initialNodes, initialEdges]
@@ -45,7 +46,7 @@ export default function StructureDiagram({ nodes: initialNodes, edges: initialEd
       nodesConnectable={false}
       elementsSelectable={false}
     >
-      <Background color="#e5e5e5" gap={20} />
+      {showGrid && <Background color="#e5e5e5" gap={20} />}
     </ReactFlow>
   )
 }
