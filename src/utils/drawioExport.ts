@@ -13,7 +13,6 @@ function nid() { return String(cellId++) }
 
 const RECT = 'whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;'
 const ELLIPSE = 'ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;'
-const STEP = 'edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;startArrow=none;endArrow=none;'
 const TREE_EDGE = 'edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=8;html=1;strokeColor=#000000;startArrow=none;endArrow=none;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;'
 const LINE = 'html=1;strokeColor=#000000;startArrow=none;endArrow=none;'
 const ARROW = 'endArrow=block;html=1;strokeColor=#000000;'
