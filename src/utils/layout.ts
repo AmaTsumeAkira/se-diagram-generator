@@ -71,12 +71,12 @@ const defaultOptions: TreeLayoutOptions = {
   rootH: 30,
   lv2W: 80,
   lv2H: 30,
-  lv2Y: 110,
+  lv2Y: 100,
   subtreeGap: 40,
   lv3W: 20,
   lv3H: 110,
   lv3Gap: 26,
-  lv3Y: 200,
+  lv3Y: 175,
   levelVSpacing: 60,
 }
 

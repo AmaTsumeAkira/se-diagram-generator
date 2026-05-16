@@ -1,52 +1,33 @@
 import { useMemo } from 'react'
-import {
-  ReactFlow,
-  Background,
-  type Edge,
-  type Node,
-} from '@xyflow/react'
-import '@xyflow/react/dist/style.css'
-import RectangleNode from '../nodes/RectangleNode'
-import StructureEdge from '../edges/StructureEdge'
-import { layoutTreeStructure } from '../../utils/layout'
+import * as pako from 'pako'
+import type { Edge, Node } from '@xyflow/react'
+import { structureDrawio } from '../../utils/drawioExport'
 import type { DiagramNodeData } from '../../types/diagram'
-
-const nodeTypes = { rectangle: RectangleNode }
-const edgeTypes = { structure: StructureEdge }
 
 interface Props {
   nodes: Node<DiagramNodeData>[]
   edges: Edge[]
-  showGrid?: boolean
 }
 
-/**
- * 系统功能结构图 — 树状直角层级结构
- * 使用自定义层次布局精确匹配参考 SVG 的三级树状结构：
- * - Level 0: 根节点居中
- * - Level 1: 子节点水平均分
- * - Level 2: 叶子节点分组排在各自父节点下方，竖排文字
- * - 连线: step 正交折线 (直角阶梯线)
- */
-export default function StructureDiagram({ nodes: initialNodes, edges: initialEdges, showGrid = true }: Props) {
-  const { nodes, edges } = useMemo(
-    () => layoutTreeStructure(initialNodes, initialEdges),
-    [initialNodes, initialEdges]
-  )
+function encodeDiagram(xml: string): string {
+  const deflated = pako.deflateRaw(xml)
+  let bin = ''
+  deflated.forEach((b: number) => { bin += String.fromCharCode(b) })
+  return encodeURIComponent(btoa(bin))
+}
+
+export default function StructureDiagram({ nodes, edges }: Props) {
+  const xml = useMemo(() => structureDrawio(nodes, edges), [nodes, edges])
+  const src = useMemo(() => {
+    const enc = encodeDiagram(xml)
+    return `https://viewer.diagrams.net/?lightbox=1&layers=0&nav=0#R${enc}`
+  }, [xml])
 
   return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
-      fitView
-      fitViewOptions={{ padding: 0.3 }}
-      nodesDraggable={false}
-      nodesConnectable={false}
-      elementsSelectable={false}
-    >
-      {showGrid && <Background color="#e5e5e5" gap={20} />}
-    </ReactFlow>
+    <iframe
+      src={src}
+      style={{ width: '100%', height: '100%', border: 'none' }}
+      title="功能结构图"
+    />
   )
 }

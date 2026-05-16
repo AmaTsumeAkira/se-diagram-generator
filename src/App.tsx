@@ -380,9 +380,6 @@ function App() {
             {active === 'usecase' && useCaseGroups.length === 0 && (
               <div className="flex items-center justify-center h-full text-gray-400">{t('editor.addActor')}</div>
             )}
-            {active === 'structure' && (
-              <StructureDiagram nodes={configs.structure.nodes} edges={configs.structure.edges} showGrid={showGrid} />
-            )}
             {active === 'entity' && entityGroups.length > 0 && (
               <EntityAttributeDiagram groups={entityGroups} showGrid={showGrid} />
             )}
@@ -390,6 +387,9 @@ function App() {
               <div className="flex items-center justify-center h-full text-gray-400">请添加实体节点</div>
             )}
           </ReactFlowProvider>
+          {active === 'structure' && (
+            <StructureDiagram nodes={configs.structure.nodes} edges={configs.structure.edges} />
+          )}
         </div>
       </div>
 

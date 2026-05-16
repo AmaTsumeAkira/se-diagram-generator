@@ -1,0 +1,2817 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>软件工程图生成器 - 用例图/功能结构图/实体属性图 | SE Diagram Generator</title>
+    <meta name="description" content="免费在线软件工程图生成器，支持用例图、系统功能结构图、E-R实体属性图绘制。基于React Flow，可视化编辑，一键导出PNG，适合毕业设计和论文插图。Free online software engineering diagram generator." />
+    <meta name="keywords" content="软件工程图,用例图,功能结构图,实体属性图,E-R图,UML图,毕业设计,论文插图,在线绘图工具,diagram generator,use case,ER diagram" />
+    <meta name="author" content="Software Engineering Diagram Generator" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="googlebot" content="index, follow" />
+    <link rel="canonical" href="https://lct.fromakira.cn/" />
+    <link rel="alternate" hreflang="zh" href="https://lct.fromakira.cn/" />
+    <link rel="alternate" hreflang="en" href="https://lct.fromakira.cn/" />
+    <link rel="alternate" hreflang="x-default" href="https://lct.fromakira.cn/" />
+    <meta property="og:title" content="软件工程图生成器 - 用例图/功能结构图/实体属性图" />
+    <meta property="og:description" content="免费在线软件工程图生成器，支持用例图、功能结构图、E-R实体属性图。可视化编辑，一键导出PNG，适合毕业设计和论文。" />
+    <meta property="og:url" content="https://lct.fromakira.cn/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:site_name" content="软件工程图生成器" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="软件工程图生成器 - 用例图/功能结构图/实体属性图" />
+    <meta name="twitter:description" content="免费在线软件工程图生成器，支持用例图、功能结构图、E-R实体属性图。" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "软件工程图生成器",
+      "alternateName": "SE Diagram Generator",
+      "url": "https://lct.fromakira.cn/",
+      "description": "免费在线软件工程图生成器，支持用例图、系统功能结构图、E-R实体属性图绘制。",
+      "applicationCategory": "DesignApplication",
+      "operatingSystem": "Web",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "CNY" },
+      "author": { "@type": "Person", "name": "AmaTsumeAkira" }
+    }
+    </script>
+  </head>
+  <body>
+    <noscript>
+      <h1>软件工程图生成器 | SE Diagram Generator</h1>
+      <p>免费在线软件工程图生成器，支持用例图、系统功能结构图、E-R 实体属性图。可视化编辑，一键导出 PNG，适合毕业设计和论文插图。</p>
+      <p>Free online software engineering diagram generator supporting Use Case, Structure, and E-R diagrams.</p>
+    </noscript>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+import js from '@eslint/js'
+import globals from 'globals'
+import reactHooks from 'eslint-plugin-react-hooks'
+import reactRefresh from 'eslint-plugin-react-refresh'
+import tseslint from 'typescript-eslint'
+import { defineConfig, globalIgnores } from 'eslint/config'
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      js.configs.recommended,
+      tseslint.configs.recommended,
+      reactHooks.configs.flat.recommended,
+      reactRefresh.configs.vite,
+    ],
+    languageOptions: {
+      globals: globals.browser,
+    },
+  },
+])
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  base: './',
+})
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "module": "esnext",
+    "types": ["node"],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["vite.config.ts"]
+}
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    "types": ["vite/client"],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"]
+}
+# 软件工程图生成器 · SE Diagram Generator
+在线软件工程图表绘制工具，支持**用例图**、**系统功能结构图**、**E-R 实体属性图**三种类型，可视化编辑，一键导出 PNG。支持中英文切换。
+## 在线访问
+- **[lct.fromakira.cn](https:
+- **[amatsumeakira.github.io/se-diagram-generator](https:
+## 功能特性
+- **用例图** — 多角色火柴人 + 椭圆用例，正方形网格布局，箭头精准连接，椭圆按文字动态宽度
+- **功能结构图** — 树状直角层级结构，根/模块/功能三色标签，模块外框包裹，竖排文字防溢出
+- **实体属性图** — 椭圆极坐标系放射布局，多实体网格排列，等角度间距环绕
+- **可视化编辑** — 双击编辑、拖拽排序、Tab 快速新建、Delete 快捷删除
+- **撤销/重做** — Ctrl+Z / Ctrl+Y 编辑器全链路同步
+- **快速导入** — 空格分隔文本，一行一个角色/实体，批量创建
+- **导出图片** — 全图/分图裁剪导出，复制模式适配论文插图
+- **导入/导出数据** — JSON 完整配置 + Markdown 快速格式，一键导入导出
+- **本地持久化** — localStorage 自动保存，刷新不丢失
+- **国际化** — 中文 / English 切换
+## 本地运行
+```bash
+npm install
+npm run dev
+```
+## 技术栈
+React 19 + TypeScript + Vite + @xyflow/react + dagre + Tailwind CSS + i18next
+## 许可证
+MIT
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://lct.fromakira.cn/</loc>
+    <xhtml:link rel="alternate" hreflang="zh" href="https://lct.fromakira.cn/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://lct.fromakira.cn/"/>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>
+User-agent: *
+Allow: /
+Sitemap: https://lct.fromakira.cn/sitemap.xml
+<svg xmlns="http://www.w3.org/2000/svg">
+  <symbol id="bluesky-icon" viewBox="0 0 16 17">
+    <g clip-path="url(#bluesky-clip)"><path fill="#08060d" d="M7.75 7.735c-.693-1.348-2.58-3.86-4.334-5.097-1.68-1.187-2.32-.981-2.74-.79C.188 2.065.1 2.812.1 3.251s.241 3.602.398 4.13c.52 1.744 2.367 2.333 4.07 2.145-2.495.37-4.71 1.278-1.805 4.512 3.196 3.309 4.38-.71 4.987-2.746.608 2.036 1.307 5.91 4.93 2.746 2.72-2.746.747-4.143-1.747-4.512 1.702.189 3.55-.4 4.07-2.145.156-.528.397-3.691.397-4.13s-.088-1.186-.575-1.406c-.42-.19-1.06-.395-2.741.79-1.755 1.24-3.64 3.752-4.334 5.099"/></g>
+    <defs><clipPath id="bluesky-clip"><path fill="#fff" d="M.1.85h15.3v15.3H.1z"/></clipPath></defs>
+  </symbol>
+  <symbol id="discord-icon" viewBox="0 0 20 19">
+    <path fill="#08060d" d="M16.224 3.768a14.5 14.5 0 0 0-3.67-1.153c-.158.286-.343.67-.47.976a13.5 13.5 0 0 0-4.067 0c-.128-.306-.317-.69-.476-.976A14.4 14.4 0 0 0 3.868 3.77C1.546 7.28.916 10.703 1.231 14.077a14.7 14.7 0 0 0 4.5 2.306q.545-.748.965-1.587a9.5 9.5 0 0 1-1.518-.74q.191-.14.372-.293c2.927 1.369 6.107 1.369 8.999 0q.183.152.372.294-.723.437-1.52.74.418.838.963 1.588a14.6 14.6 0 0 0 4.504-2.308c.37-3.911-.63-7.302-2.644-10.309m-9.13 8.234c-.878 0-1.599-.82-1.599-1.82 0-.998.705-1.82 1.6-1.82.894 0 1.614.82 1.599 1.82.001 1-.705 1.82-1.6 1.82m5.91 0c-.878 0-1.599-.82-1.599-1.82 0-.998.705-1.82 1.6-1.82.893 0 1.614.82 1.599 1.82 0 1-.706 1.82-1.6 1.82"/>
+  </symbol>
+  <symbol id="documentation-icon" viewBox="0 0 21 20">
+    <path fill="none" stroke="#aa3bff" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.35" d="m15.5 13.333 1.533 1.322c.645.555.967.833.967 1.178s-.322.623-.967 1.179L15.5 18.333m-3.333-5-1.534 1.322c-.644.555-.966.833-.966 1.178s.322.623.966 1.179l1.534 1.321"/>
+    <path fill="none" stroke="#aa3bff" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.35" d="M17.167 10.836v-4.32c0-1.41 0-2.117-.224-2.68-.359-.906-1.118-1.621-2.08-1.96-.599-.21-1.349-.21-2.848-.21-2.623 0-3.935 0-4.983.369-1.684.591-3.013 1.842-3.641 3.428C3 6.449 3 7.684 3 10.154v2.122c0 2.558 0 3.838.706 4.726q.306.383.713.671c.76.536 1.79.64 3.581.66"/>
+    <path fill="none" stroke="#aa3bff" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.35" d="M3 10a2.78 2.78 0 0 1 2.778-2.778c.555 0 1.209.097 1.748-.047.48-.129.854-.503.982-.982.145-.54.048-1.194.048-1.749a2.78 2.78 0 0 1 2.777-2.777"/>
+  </symbol>
+  <symbol id="github-icon" viewBox="0 0 19 19">
+    <path fill="#08060d" fill-rule="evenodd" d="M9.356 1.85C5.05 1.85 1.57 5.356 1.57 9.694a7.84 7.84 0 0 0 5.324 7.44c.387.079.528-.168.528-.376 0-.182-.013-.805-.013-1.454-2.165.467-2.616-.935-2.616-.935-.349-.91-.864-1.143-.864-1.143-.71-.48.051-.48.051-.48.787.051 1.2.805 1.2.805.695 1.194 1.817.857 2.268.649.064-.507.27-.857.49-1.052-1.728-.182-3.545-.857-3.545-3.87 0-.857.31-1.558.8-2.104-.078-.195-.349-1 .077-2.078 0 0 .657-.208 2.14.805a7.5 7.5 0 0 1 1.946-.26c.657 0 1.328.092 1.946.26 1.483-1.013 2.14-.805 2.14-.805.426 1.078.155 1.883.078 2.078.502.546.799 1.247.799 2.104 0 3.013-1.818 3.675-3.558 3.87.284.247.528.714.528 1.454 0 1.052-.012 1.896-.012 2.156 0 .208.142.455.528.377a7.84 7.84 0 0 0 5.324-7.441c.013-4.338-3.48-7.844-7.773-7.844" clip-rule="evenodd"/>
+  </symbol>
+  <symbol id="social-icon" viewBox="0 0 20 20">
+    <path fill="none" stroke="#aa3bff" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.35" d="M12.5 6.667a4.167 4.167 0 1 0-8.334 0 4.167 4.167 0 0 0 8.334 0"/>
+    <path fill="none" stroke="#aa3bff" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.35" d="M2.5 16.667a5.833 5.833 0 0 1 8.75-5.053m3.837.474.513 1.035c.07.144.257.282.414.309l.93.155c.596.1.736.536.307.965l-.723.73a.64.64 0 0 0-.152.531l.207.903c.164.715-.213.991-.84.618l-.872-.52a.63.63 0 0 0-.577 0l-.872.52c-.624.373-1.003.094-.84-.618l.207-.903a.64.64 0 0 0-.152-.532l-.723-.729c-.426-.43-.289-.864.306-.964l.93-.156a.64.64 0 0 0 .412-.31l.513-1.034c.28-.562.735-.562 1.012 0"/>
+  </symbol>
+  <symbol id="x-icon" viewBox="0 0 19 19">
+    <path fill="#08060d" fill-rule="evenodd" d="M1.893 1.98c.052.072 1.245 1.769 2.653 3.77l2.892 4.114c.183.261.333.48.333.486s-.068.089-.152.183l-.522.593-.765.867-3.597 4.087c-.375.426-.734.834-.798.905a1 1 0 0 0-.118.148c0 .01.236.017.664.017h.663l.729-.83c.4-.457.796-.906.879-.999a692 692 0 0 0 1.794-2.038c.034-.037.301-.34.594-.675l.551-.624.345-.392a7 7 0 0 1 .34-.374c.006 0 .93 1.306 2.052 2.903l2.084 2.965.045.063h2.275c1.87 0 2.273-.003 2.266-.021-.008-.02-1.098-1.572-3.894-5.547-2.013-2.862-2.28-3.246-2.273-3.266.008-.019.282-.332 2.085-2.38l2-2.274 1.567-1.782c.022-.028-.016-.03-.65-.03h-.674l-.3.342a871 871 0 0 1-1.782 2.025c-.067.075-.405.458-.75.852a100 100 0 0 1-.803.91c-.148.172-.299.344-.99 1.127-.304.343-.32.358-.345.327-.015-.019-.904-1.282-1.976-2.808L6.365 1.85H1.8zm1.782.91 8.078 11.294c.772 1.08 1.413 1.973 1.425 1.984.016.017.241.02 1.05.017l1.03-.004-2.694-3.766L7.796 5.75 5.722 2.852l-1.039-.004-1.039-.004z" clip-rule="evenodd"/>
+  </symbol>
+</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="46" fill="none" viewBox="0 0 48 46"><path fill="#863bff" d="M25.946 44.938c-.664.845-2.021.375-2.021-.698V33.937a2.26 2.26 0 0 0-2.262-2.262H10.287c-.92 0-1.456-1.04-.92-1.788l7.48-10.471c1.07-1.497 0-3.578-1.842-3.578H1.237c-.92 0-1.456-1.04-.92-1.788L10.013.474c.214-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.471c-1.07 1.498 0 3.579 1.842 3.579h11.377c.943 0 1.473 1.088.89 1.83L25.947 44.94z" style="fill:#863bff;fill:color(display-p3 .5252 .23 1);fill-opacity:1"/><mask id="a" width="48" height="46" x="0" y="0" maskUnits="userSpaceOnUse" style="mask-type:alpha"><path fill="#000" d="M25.842 44.938c-.664.844-2.021.375-2.021-.698V33.937a2.26 2.26 0 0 0-2.262-2.262H10.183c-.92 0-1.456-1.04-.92-1.788l7.48-10.471c1.07-1.498 0-3.579-1.842-3.579H1.133c-.92 0-1.456-1.04-.92-1.787L9.91.473c.214-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.471c-1.07 1.498 0 3.578 1.842 3.578h11.377c.943 0 1.473 1.088.89 1.832L25.843 44.94z" style="fill:#000;fill-opacity:1"/></mask><g mask="url(#a)"><g filter="url(#b)"><ellipse cx="5.508" cy="14.704" fill="#ede6ff" rx="5.508" ry="14.704" style="fill:#ede6ff;fill:color(display-p3 .9275 .9033 1);fill-opacity:1" transform="matrix(.00324 1 1 -.00324 -4.47 31.516)"/></g><g filter="url(#c)"><ellipse cx="10.399" cy="29.851" fill="#ede6ff" rx="10.399" ry="29.851" style="fill:#ede6ff;fill:color(display-p3 .9275 .9033 1);fill-opacity:1" transform="matrix(.00324 1 1 -.00324 -39.328 7.883)"/></g><g filter="url(#d)"><ellipse cx="5.508" cy="30.487" fill="#7e14ff" rx="5.508" ry="30.487" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(89.814 -25.913 -14.639)scale(1 -1)"/></g><g filter="url(#e)"><ellipse cx="5.508" cy="30.599" fill="#7e14ff" rx="5.508" ry="30.599" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(89.814 -32.644 -3.334)scale(1 -1)"/></g><g filter="url(#f)"><ellipse cx="5.508" cy="30.599" fill="#7e14ff" rx="5.508" ry="30.599" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="matrix(.00324 1 1 -.00324 -34.34 30.47)"/></g><g filter="url(#g)"><ellipse cx="14.072" cy="22.078" fill="#ede6ff" rx="14.072" ry="22.078" style="fill:#ede6ff;fill:color(display-p3 .9275 .9033 1);fill-opacity:1" transform="rotate(93.35 24.506 48.493)scale(-1 1)"/></g><g filter="url(#h)"><ellipse cx="3.47" cy="21.501" fill="#7e14ff" rx="3.47" ry="21.501" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(89.009 28.708 47.59)scale(-1 1)"/></g><g filter="url(#i)"><ellipse cx="3.47" cy="21.501" fill="#7e14ff" rx="3.47" ry="21.501" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(89.009 28.708 47.59)scale(-1 1)"/></g><g filter="url(#j)"><ellipse cx=".387" cy="8.972" fill="#7e14ff" rx="4.407" ry="29.108" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(39.51 .387 8.972)"/></g><g filter="url(#k)"><ellipse cx="47.523" cy="-6.092" fill="#7e14ff" rx="4.407" ry="29.108" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(37.892 47.523 -6.092)"/></g><g filter="url(#l)"><ellipse cx="41.412" cy="6.333" fill="#47bfff" rx="5.971" ry="9.665" style="fill:#47bfff;fill:color(display-p3 .2799 .748 1);fill-opacity:1" transform="rotate(37.892 41.412 6.333)"/></g><g filter="url(#m)"><ellipse cx="-1.879" cy="38.332" fill="#7e14ff" rx="4.407" ry="29.108" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(37.892 -1.88 38.332)"/></g><g filter="url(#n)"><ellipse cx="-1.879" cy="38.332" fill="#7e14ff" rx="4.407" ry="29.108" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(37.892 -1.88 38.332)"/></g><g filter="url(#o)"><ellipse cx="35.651" cy="29.907" fill="#7e14ff" rx="4.407" ry="29.108" style="fill:#7e14ff;fill:color(display-p3 .4922 .0767 1);fill-opacity:1" transform="rotate(37.892 35.651 29.907)"/></g><g filter="url(#p)"><ellipse cx="38.418" cy="32.4" fill="#47bfff" rx="5.971" ry="15.297" style="fill:#47bfff;fill:color(display-p3 .2799 .748 1);fill-opacity:1" transform="rotate(37.892 38.418 32.4)"/></g></g><defs><filter id="b" width="60.045" height="41.654" x="-19.77" y="16.149" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="7.659"/></filter><filter id="c" width="90.34" height="51.437" x="-54.613" y="-7.533" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="7.659"/></filter><filter id="d" width="79.355" height="29.4" x="-49.64" y="2.03" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="e" width="79.579" height="29.4" x="-45.045" y="20.029" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="f" width="79.579" height="29.4" x="-43.513" y="21.178" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="g" width="74.749" height="58.852" x="15.756" y="-17.901" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="7.659"/></filter><filter id="h" width="61.377" height="25.362" x="23.548" y="2.284" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="i" width="61.377" height="25.362" x="23.548" y="2.284" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="j" width="56.045" height="63.649" x="-27.636" y="-22.853" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="k" width="54.814" height="64.646" x="20.116" y="-38.415" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="l" width="33.541" height="35.313" x="24.641" y="-11.323" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="m" width="54.814" height="64.646" x="-29.286" y="6.009" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="n" width="54.814" height="64.646" x="-29.286" y="6.009" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="o" width="54.814" height="64.646" x="8.244" y="-2.416" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter><filter id="p" width="39.409" height="43.623" x="18.713" y="10.588" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17158" stdDeviation="4.596"/></filter></defs></svg>
+import type { Node, Edge } from '@xyflow/react'
+import type { DiagramNodeData } from '../types/diagram'
+import { layoutTreeStructure } from './layout'
+type DNode = Node<DiagramNodeData>
+function esc(s: string) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
+function bounds(nodes: { x: number; y: number; w?: number; h?: number }[]) {
+  if (nodes.length === 0) return { x: 0, y: 0, w: 400, h: 300 }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  nodes.forEach((n) => {
+    minX = Math.min(minX, n.x); minY = Math.min(minY, n.y)
+    maxX = Math.max(maxX, n.x + (n.w || 80)); maxY = Math.max(maxY, n.y + (n.h || 30))
+  })
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
+}
+function markerDef(id: string) {
+  return `<marker id="${id}" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#000"/></marker>`
+}
+export function useCaseSvg(nodes: DNode[], edges: Edge[]): string {
+  const groups = new Map<string, { actor: DNode; useCases: DNode[] }>()
+  const actors = nodes.filter((n) => n.type === 'actor')
+  actors.forEach((a) => {
+    const ucIds = new Set(edges.filter((e) => e.source === a.id).map((e) => e.target))
+    groups.set(a.id, { actor: a, useCases: nodes.filter((n) => n.type === 'usecase' && ucIds.has(n.id)) })
+  })
+  const cols = Math.ceil(Math.sqrt(groups.size))
+  const cellW = 380; const spacing = 48
+  let svg = ''; const boxes: { x: number; y: number; w: number; h: number }[] = []
+  let gi = 0
+  groups.forEach((g) => {
+    const ci = gi % cols; const ri = Math.floor(gi / cols)
+    const baseX = ci * cellW; const baseY = ri * 360
+    const actorY = baseY + 160
+    const ucBlockH = (g.useCases.length - 1) * spacing + 30
+    const startY = baseY + 140 - ucBlockH / 2
+    const ucCx = baseX + 280
+    const maxW = g.useCases.reduce((m, uc) => {
+      let w = 0; for (const ch of (uc.data.label as string)) w += ch.charCodeAt(0) > 127 ? 14 : 8
+      return Math.max(m, w)
+    }, 0)
+    const rx = Math.max(55, Math.ceil(maxW / 2) + 18)
+    const ax = baseX + 40; const ay = actorY
+    svg += `<g stroke="#000" stroke-width="1.5" fill="none"><circle cx="${ax + 27}" cy="${ay + 12}" r="10"/><line x1="${ax + 27}" y1="${ay + 22}" x2="${ax + 27}" y2="${ay + 68}"/><line x1="${ax + 27}" y1="${ay + 40}" x2="${ax}" y2="${ay + 40}"/><line x1="${ax + 27}" y1="${ay + 68}" x2="${ax + 10}" y2="${ay + 102}"/><line x1="${ax + 27}" y1="${ay + 68}" x2="${ax + 44}" y2="${ay + 102}"/></g>`
+    svg += `<text x="${ax + 27}" y="${ay + 120}" font-family="sans-serif" font-size="14" text-anchor="middle" fill="#000">${esc(g.actor.data.label as string)}</text>`
+    g.useCases.forEach((uc, ui) => {
+      const ucy = startY + ui * spacing
+      svg += `<line x1="${ax + 55}" y1="${ay + 40}" x2="${ucCx - rx}" y2="${ucy}" stroke="#000" stroke-width="1" marker-end="url(#arrow)"/>`
+      svg += `<ellipse cx="${ucCx}" cy="${ucy}" rx="${rx}" ry="15" fill="#fff" stroke="#000" stroke-width="1"/>`
+      svg += `<text x="${ucCx}" y="${ucy + 5}" font-family="sans-serif" font-size="14" text-anchor="middle" fill="#000">${esc(uc.data.label as string)}</text>`
+    })
+    boxes.push({ x: baseX, y: baseY, w: cellW, h: 360 })
+    gi++
+  })
+  const bb = bounds(boxes); const pad = 20
+  return wrapSvg(markerDef('arrow') + svg, bb.x - pad, bb.y - pad, bb.w + pad * 2, bb.h + pad * 2)
+}
+export function structureSvg(nodes: DNode[], edges: Edge[]): string {
+  const { nodes: ln } = layoutTreeStructure(nodes, edges)
+  const nodeMap = new Map(ln.map((n) => [n.id, n]))
+  let svg = ''
+  ln.forEach((n) => {
+    const x = n.position.x; const y = n.position.y
+    const label = esc(n.data.label as string)
+    const vert = n.data.vertical as boolean
+    const fs = (n.data.fontSize as number) || 14
+    const vh = (n.data.nodeH as number) || 110
+    const vw = Math.max(18, fs * 1.2)
+    if (vert) {
+      svg += `<rect x="${x}" y="${y}" width="${vw}" height="${vh}" fill="#fff" stroke="#000" stroke-width="1"/>`
+      const chars = (n.data.label as string).split('')
+      const ls = Math.max(1, fs * 0.15)
+      const charH = fs + ls
+      const startY = y + (vh - chars.length * charH + ls) / 2 + fs * 0.8
+      chars.forEach((ch, ci) => {
+        svg += `<text x="${x + vw / 2}" y="${startY + ci * charH}" font-family="sans-serif" font-size="${fs}" text-anchor="middle" fill="#000">${esc(ch)}</text>`
+      })
+    } else {
+      const h = (n.data.nodeH as number) || (fs * 1.6)
+      const w = (n.data.nodeW as number) || n.measured?.width || Math.max(80, label.length * fs * 0.8 + 32)
+      svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#fff" stroke="#000" stroke-width="1"/>`
+      svg += `<text x="${x + w / 2}" y="${y + h / 2 + fs * 0.3}" font-family="sans-serif" font-size="${fs}" text-anchor="middle" fill="#000">${label}</text>`
+    }
+  })
+  edges.forEach((e) => {
+    const src = nodeMap.get(e.source); const tgt = nodeMap.get(e.target)
+    if (!src || !tgt) return
+    const sx = src.position.x + ((src.measured?.width as number) || 80) / 2
+    const sy = src.position.y + (src.data.vertical ? (src.data.nodeH as number || 110) : ((src.data.nodeH as number) || (src.data.fontSize as number || 14) * 1.6))
+    const tx = tgt.position.x + (tgt.data.vertical ? Math.max(18, (tgt.data.fontSize as number || 14) * 1.2) : (tgt.measured?.width as number) || 80) / 2
+    const ty = tgt.position.y
+    const oy = (ty - sy) / 2
+    svg += `<path d="M ${sx} ${sy} L ${sx} ${sy + oy} L ${tx} ${sy + oy} L ${tx} ${ty}" fill="none" stroke="#000" stroke-width="1"/>`
+  })
+  const bb = bounds(ln.map((n) => {
+    const v = n.data.vertical as boolean
+    const fs = (n.data.fontSize as number) || 14
+    const h = v ? ((n.data.nodeH as number) || 110) : ((n.data.nodeH as number) || fs * 1.6)
+    const w = v ? Math.max(18, fs * 1.2) : ((n.data.nodeW as number) || n.measured?.width || 80)
+    return { x: n.position.x, y: n.position.y, w, h }
+  }))
+  return wrapSvg(svg, bb.x - 20, bb.y - 20, bb.w + 40, bb.h + 40)
+}
+export function entitySvg(nodes: DNode[], edges: Edge[]): string {
+  const entities = nodes.filter((n) => n.type === 'rectangle')
+  const cols = Math.ceil(Math.sqrt(entities.length))
+  const cellW = 400; const cellH = 400
+  const cyOff = 220
+  let svg = ''; const boxes: { x: number; y: number; w: number; h: number }[] = []
+  entities.forEach((ent, ei) => {
+    const ci = ei % cols; const ri = Math.floor(ei / cols)
+    const baseX = ci * cellW; const baseY = ri * cellH
+    const cx = baseX + 200; const cy = baseY + cyOff
+    const entEdges = edges.filter((e) => e.source === ent.id)
+    const attrIds = new Set(entEdges.map((e) => e.target))
+    const attrs = nodes.filter((n) => n.type === 'ellipse' && attrIds.has(n.id))
+    const n = attrs.length
+    const a = 100 + n * 10; const b = Math.round(a * 0.55)
+    const ew = 90; const eh = 36
+    svg += `<rect x="${cx - ew / 2}" y="${cy - eh / 2}" width="${ew}" height="${eh}" fill="#fff" stroke="#000" stroke-width="1.5"/>`
+    svg += `<text x="${cx}" y="${cy + 5}" font-family="sans-serif" font-size="14" text-anchor="middle" fill="#000">${esc(ent.data.label as string)}</text>`
+    attrs.forEach((attr, ai) => {
+      const angle = -Math.PI / 2 + (2 * Math.PI * ai) / n
+      const ax = cx + a * Math.cos(angle); const ay = cy + b * Math.sin(angle)
+      const rx = 45; const ry = 18
+      svg += `<line x1="${cx}" y1="${cy}" x2="${ax}" y2="${ay}" stroke="#000" stroke-width="1.2"/>`
+      svg += `<ellipse cx="${ax}" cy="${ay}" rx="${rx}" ry="${ry}" fill="#fff" stroke="#000" stroke-width="1.2"/>`
+      svg += `<text x="${ax}" y="${ay + 5}" font-family="sans-serif" font-size="14" text-anchor="middle" fill="#000">${esc(attr.data.label as string)}</text>`
+    })
+    boxes.push({ x: baseX, y: baseY, w: cellW, h: cellH })
+  })
+  const bb = bounds(boxes); const pad = 20
+  return wrapSvg(svg, bb.x - pad, bb.y - pad, bb.w + pad * 2, bb.h + pad * 2)
+}
+function wrapSvg(content: string, x: number, y: number, w: number, h: number) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x} ${y} ${w} ${h}" width="${w}" height="${h}">${content}</svg>`
+}
+import dagre from 'dagre'
+import type { Node, Edge } from '@xyflow/react'
+import type { DiagramNodeData } from '../types/diagram'
+const NODE_WIDTH = 120
+const NODE_HEIGHT = 40
+export function getLayoutedElements(
+  nodes: Node<DiagramNodeData>[],
+  edges: Edge[],
+  direction: 'TB' | 'LR' = 'TB'
+): { nodes: Node<DiagramNodeData>[]; edges: Edge[] } {
+  const g = new dagre.graphlib.Graph()
+  g.setDefaultEdgeLabel(() => ({}))
+  g.setGraph({ rankdir: direction, nodesep: 60, ranksep: 80 })
+  nodes.forEach((node) => {
+    const w = (node.measured?.width ?? node.width ?? NODE_WIDTH) as number
+    const h = (node.measured?.height ?? node.height ?? NODE_HEIGHT) as number
+    g.setNode(node.id, { width: w, height: h })
+  })
+  edges.forEach((edge) => g.setEdge(edge.source, edge.target))
+  dagre.layout(g)
+  const layoutedNodes = nodes.map((node) => {
+    const pos = g.node(node.id)
+    if (!pos) return node
+    return {
+      ...node,
+      position: {
+        x: pos.x - (pos.width as number) / 2,
+        y: pos.y - (pos.height as number) / 2,
+      },
+    }
+  })
+  return { nodes: layoutedNodes, edges }
+}
+interface TreeLayoutOptions {
+  rootY: number
+  rootW: number
+  rootH: number
+  lv2W: number
+  lv2H: number
+  lv2Y: number
+  subtreeGap: number
+  lv3W: number
+  lv3H: number
+  lv3Gap: number
+  lv3Y: number
+  levelVSpacing: number
+}
+const defaultOptions: TreeLayoutOptions = {
+  rootY: 20,
+  rootW: 200,
+  rootH: 30,
+  lv2W: 80,
+  lv2H: 30,
+  lv2Y: 110,
+  subtreeGap: 40,
+  lv3W: 20,
+  lv3H: 110,
+  lv3Gap: 26,
+  lv3Y: 200,
+  levelVSpacing: 60,
+}
+export function layoutTreeStructure(
+  nodes: Node<DiagramNodeData>[],
+  edges: Edge[],
+  opts: Partial<TreeLayoutOptions> = {}
+): { nodes: Node<DiagramNodeData>[]; edges: Edge[] } {
+  const o = { ...defaultOptions, ...opts }
+  const childrenMap = new Map<string, string[]>()
+  const parentMap = new Map<string, string | null>()
+  nodes.forEach((n) => parentMap.set(n.id, null))
+  edges.forEach((e) => {
+    const list = childrenMap.get(e.source) || []
+    list.push(e.target)
+    childrenMap.set(e.source, list)
+    parentMap.set(e.target, e.source)
+  })
+  const rootId = nodes.find((n) => parentMap.get(n.id) === null)?.id
+  if (!rootId) return { nodes, edges }
+  const levels = new Map<string, number>()
+  const queue: string[] = [rootId]
+  levels.set(rootId, 0)
+  while (queue.length > 0) {
+    const id = queue.shift()!
+    const lv = levels.get(id)!
+    ;(childrenMap.get(id) || []).forEach((cid) => {
+      levels.set(cid, lv + 1)
+      queue.push(cid)
+    })
+  }
+  const levelNodes = new Map<number, string[]>()
+  levels.forEach((lv, id) => {
+    const list = levelNodes.get(lv) || []
+    list.push(id)
+    levelNodes.set(lv, list)
+  })
+  const maxLevel = Math.max(...levelNodes.keys())
+  const nodeMap = new Map(nodes.map((n) => [n.id, { ...n, data: { ...n.data } }]))
+  const rootNd = nodeMap.get(rootId)
+  const userFontSize = (rootNd?.data?.fontSize as number) || 14
+  const userSpacing = (rootNd?.data?.spacing as number) || 26
+  if (userSpacing !== o.lv3Gap) o.lv3Gap = userSpacing
+  const ls = Math.max(1, userFontSize * 0.15)
+  const charPx = userFontSize + ls  
+  o.lv3W = Math.max(18, Math.round(userFontSize * 1.2))
+  const padV = Math.round(userFontSize * 0.4)
+  o.lv2H = userFontSize + padV * 2 + 2
+  o.rootH = o.lv2H
+  let funcMaxChars = 0
+  for (let lv = 2; lv <= maxLevel; lv++) {
+    (levelNodes.get(lv) || []).forEach((id) => {
+      const nd = nodeMap.get(id)
+      if (nd) {
+        nd.data = { ...nd.data, fontSize: userFontSize }
+        funcMaxChars = Math.max(funcMaxChars, String(nd.data.label || '').length)
+      }
+    })
+  }
+  if (funcMaxChars > 0) o.lv3H = Math.max(50, funcMaxChars * charPx + 8)
+  const padH = Math.round(userFontSize * 1.1)
+  const textW = (s: string) => { let w = 0; for (const ch of s) w += ch.charCodeAt(0) > 127 ? userFontSize : userFontSize * 0.6; return Math.ceil(w) }
+  let maxRootW = o.rootW; let maxLv2W = o.lv2W
+  nodeMap.forEach((nd, id) => {
+    const lv = levels.get(id)!
+    nd.data = { ...nd.data, fontSize: userFontSize }
+    if (lv === 0) { nd.data.nodeH = o.rootH; nd.data.nodeW = textW(String(nd.data.label)) + padH * 2; maxRootW = Math.max(maxRootW, nd.data.nodeW as number) }
+    else if (lv === 1) { nd.data.nodeH = o.lv2H; nd.data.nodeW = textW(String(nd.data.label)) + padH * 2; maxLv2W = Math.max(maxLv2W, nd.data.nodeW as number) }
+  })
+  o.rootW = maxRootW; o.lv2W = maxLv2W
+  const positioned = new Map<string, { x: number; y: number }>()
+  function calcSubtreeWidth(id: string): number {
+    const kids = childrenMap.get(id) || []
+    if (kids.length === 0) {
+      const lv = levels.get(id) || 0
+      return lv >= 2 ? o.lv3W : o.lv2W
+    }
+    const sum = kids.reduce((s, k) => s + calcSubtreeWidth(k), 0)
+    const gaps = (kids.length - 1) * o.lv3Gap
+    return Math.max(o.lv2W, sum + gaps)
+  }
+  const lv1Ids = levelNodes.get(1) || []
+  const lv1SubWidths = lv1Ids.map((id) => calcSubtreeWidth(id))
+  const lv1TotalW =
+    lv1SubWidths.reduce((a, b) => a + b, 0) +
+    (lv1Ids.length - 1) * o.subtreeGap
+  const rootX = lv1TotalW / 2
+  const rootNd2 = nodeMap.get(rootId)
+  const rw = (rootNd2?.data?.nodeW as number) || o.rootW
+  positioned.set(rootId, { x: rootX - rw / 2, y: o.rootY })
+  let currentX = 0
+  lv1Ids.forEach((id, i) => {
+    const sw = lv1SubWidths[i]
+    const nd = nodeMap.get(id)
+    const w = (nd?.data?.nodeW as number) || o.lv2W
+    const x = currentX + sw / 2 - w / 2
+    positioned.set(id, { x, y: o.lv2Y })
+    currentX += sw + o.subtreeGap
+  })
+  for (let lv = 2; lv <= maxLevel; lv++) {
+    const ids = levelNodes.get(lv) || []
+    const groups = new Map<string, string[]>()
+    ids.forEach((id) => {
+      const p = parentMap.get(id)
+      if (!p) return
+      const list = groups.get(p) || []
+      list.push(id)
+      groups.set(p, list)
+    })
+    groups.forEach((childIds, parentId) => {
+      const parentPos = positioned.get(parentId)
+      if (!parentPos) return
+      const parentNd = nodeMap.get(parentId)
+      const parentW = lv === 2 ? ((parentNd?.data?.nodeW as number) || o.lv2W) : o.lv3W
+      const totalW =
+        childIds.length * o.lv3W + (childIds.length - 1) * o.lv3Gap
+      const startX = parentPos.x + parentW / 2 - totalW / 2
+      childIds.forEach((cid, j) => {
+        const x = startX + j * (o.lv3W + o.lv3Gap)
+        const nd = nodeMap.get(cid)
+        if (nd) nd.data = { ...nd.data, vertical: true, nodeH: o.lv3H }
+        positioned.set(cid, {
+          x,
+          y: lv === 2 ? o.lv3Y : o.lv3Y + (lv - 2) * (o.lv3H + o.levelVSpacing),
+        })
+      })
+    })
+  }
+  const layoutedNodes = nodes.map((n) => {
+    const pos = positioned.get(n.id)
+    const nd = nodeMap.get(n.id)
+    if (!pos) return n
+    return { ...(nd || n), position: pos }
+  })
+  const styledEdges = edges.map((e) => ({
+    ...e,
+    type: 'structure',
+    style: { stroke: '#000', strokeWidth: 1 },
+  }))
+  return { nodes: layoutedNodes, edges: styledEdges }
+}
+import type { Node, Edge } from '@xyflow/react'
+import type { DiagramNodeData } from '../types/diagram'
+import { layoutTreeStructure } from './layout'
+type DNode = Node<DiagramNodeData>
+function esc(s: string) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+let cellId = 2
+function nid() { return String(cellId++) }
+const RECT = 'whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;'
+const ELLIPSE = 'ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;'
+const STEP = 'edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#000000;'
+const LINE = 'html=1;strokeColor=#000000;'
+const ARROW = 'endArrow=block;html=1;strokeColor=#000000;'
+function rect(id: string, x: number, y: number, w: number, h: number, label: string, st = RECT) {
+  return `<mxCell id="${id}" value="${esc(label)}" style="${st}" vertex="1" parent="1"><mxGeometry x="${Math.round(x)}" y="${Math.round(y)}" width="${Math.round(w)}" height="${Math.round(h)}" as="geometry"/></mxCell>`
+}
+function edge(id: string, src: string, tgt: string, st = LINE) {
+  return `<mxCell id="${id}" style="${st}" edge="1" parent="1" source="${src}" target="${tgt}"><mxGeometry relative="1" as="geometry"/></mxCell>`
+}
+function wrap(name: string, cells: string) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="se-diagram-generator" modified="2026-01-01T00:00:00.000Z" agent="SE Diagram Generator" version="21.0.0">
+  <diagram name="${esc(name)}" id="d1">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        ${cells}
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>`
+}
+export function useCaseDrawio(nodes: DNode[], edges: Edge[]): string {
+  cellId = 2
+  const idMap = new Map<string, string>()
+  const cells: string[] = []
+  const groups = new Map<string, { actor: DNode; useCases: DNode[] }>()
+  nodes.filter((n) => n.type === 'actor').forEach((a) => {
+    const ucIds = new Set(edges.filter((e) => e.source === a.id).map((e) => e.target))
+    groups.set(a.id, { actor: a, useCases: nodes.filter((n) => n.type === 'usecase' && ucIds.has(n.id)) })
+  })
+  const cols = Math.ceil(Math.sqrt(groups.size))
+  const cw = 380; const sp = 48
+  let gi = 0
+  groups.forEach((g) => {
+    const ci = gi % cols; const ri = Math.floor(gi / cols)
+    const bx = ci * cw; const by = ri * 360
+    const ay = by + 120
+    const bh = (g.useCases.length - 1) * sp + 30
+    const sy = by + 140 - bh / 2
+    const ux = bx + 280
+    const maxW = g.useCases.reduce((m, uc) => {
+      let w = 0; for (const ch of (uc.data.label as string)) w += ch.charCodeAt(0) > 127 ? 14 : 8
+      return Math.max(m, w)
+    }, 0)
+    const rx = Math.max(55, Math.ceil(maxW / 2) + 18)
+    const aid = nid(); idMap.set(g.actor.id, aid)
+    cells.push(rect(aid, bx + 15, ay, 55, 100, g.actor.data.label as string, RECT + 'fillColor=none;verticalAlign=bottom;verticalLabelPosition=bottom;'))
+    g.useCases.forEach((uc, ui) => {
+      const uid = nid(); idMap.set(uc.id, uid)
+      cells.push(rect(uid, ux - rx, sy + ui * sp - 15, rx * 2, 30, uc.data.label as string, ELLIPSE))
+      cells.push(edge(nid(), aid, uid, ARROW))
+    })
+    gi++
+  })
+  return wrap('用例图', cells.join('\n'))
+}
+export function structureDrawio(nodes: DNode[], edges: Edge[]): string {
+  cellId = 2
+  const { nodes: ln } = layoutTreeStructure(nodes, edges)
+  const idMap = new Map<string, string>()
+  const cells: string[] = []
+  ln.forEach((n) => {
+    const did = nid(); idMap.set(n.id, did)
+    const x = n.position.x; const y = n.position.y
+    const vert = n.data.vertical as boolean
+    const fs = (n.data.fontSize as number) || 14
+    const vh = (n.data.nodeH as number) || 110
+    const vw = Math.max(18, fs * 1.2)
+    const hw = (n.data.nodeW as number) || n.measured?.width || 80
+    const hh = (n.data.nodeH as number) || fs * 1.6
+    if (vert) {
+      cells.push(rect(did, x, y, vw, vh, n.data.label as string,
+        'whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;horizontal=0;verticalAlign=middle;'))
+    } else {
+      cells.push(rect(did, x, y, hw, hh, n.data.label as string))
+    }
+  })
+  edges.forEach((e) => {
+    const sid = idMap.get(e.source); const tid = idMap.get(e.target)
+    if (sid && tid) cells.push(edge(nid(), sid, tid, STEP))
+  })
+  return wrap('功能结构图', cells.join('\n'))
+}
+export function entityDrawio(nodes: DNode[], edges: Edge[]): string {
+  cellId = 2
+  const idMap = new Map<string, string>()
+  const cells: string[] = []
+  const entities = nodes.filter((n) => n.type === 'rectangle')
+  const cols = Math.ceil(Math.sqrt(entities.length))
+  const cw = 400; const ch = 400; const co = 220
+  entities.forEach((ent, ei) => {
+    const ci = ei % cols; const ri = Math.floor(ei / cols)
+    const bx = ci * cw; const by = ri * ch
+    const cx = bx + 200; const cy = by + co
+    const entEdges = edges.filter((e) => e.source === ent.id)
+    const attrIds = new Set(entEdges.map((e) => e.target))
+    const attrs = nodes.filter((n) => n.type === 'ellipse' && attrIds.has(n.id))
+    const n = attrs.length
+    const a = 100 + n * 10; const b = Math.round(a * 0.55)
+    const eid = nid(); idMap.set(ent.id, eid)
+    cells.push(rect(eid, cx - 45, cy - 18, 90, 36, ent.data.label as string))
+    attrs.forEach((attr, ai) => {
+      const angle = -Math.PI / 2 + (2 * Math.PI * ai) / n
+      const ax = cx + a * Math.cos(angle); const ay = cy + b * Math.sin(angle)
+      const aid = nid(); idMap.set(attr.id, aid)
+      cells.push(rect(aid, ax - 45, ay - 18, 90, 36, attr.data.label as string, ELLIPSE))
+      cells.push(edge(nid(), eid, aid, LINE))
+    })
+  })
+  return wrap('实体属性图', cells.join('\n'))
+}
+import type { Node, Edge } from '@xyflow/react'
+export type NodeType = 'actor' | 'usecase' | 'rectangle' | 'ellipse'
+export interface DiagramNodeData extends Record<string, unknown> {
+  label: string
+  rx?: number
+  ry?: number
+  vertical?: boolean
+  nodeH?: number
+}
+export interface DiagramConfig {
+  nodes: Node<DiagramNodeData>[]
+  edges: Edge[]
+}
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import './i18n'
+import './index.css'
+import App from './App.tsx'
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+)
+@import "tailwindcss";
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+#root {
+  width: 100%;
+  height: 100vh;
+}
+import { useState, useCallback, useRef, useEffect } from 'react'
+export function useUndoRedo<T>(initial: T) {
+  const [past, setPast] = useState<T[]>([])
+  const [present, setPresent] = useState<T>(initial)
+  const [future, setFuture] = useState<T[]>([])
+  const skipRef = useRef(false)
+  const push = useCallback((val: T) => {
+    if (skipRef.current) {
+      skipRef.current = false
+      setPresent(val)
+      return
+    }
+    setPast((p) => [...p, present])
+    setPresent(val)
+    setFuture([])
+  }, [present])
+  const undo = useCallback(() => {
+    if (past.length === 0) return
+    const prev = past[past.length - 1]
+    setPast((p) => p.slice(0, -1))
+    setFuture((f) => [present, ...f])
+    skipRef.current = true
+    setPresent(prev)
+  }, [past, present])
+  const redo = useCallback(() => {
+    if (future.length === 0) return
+    const next = future[0]
+    setFuture((f) => f.slice(1))
+    setPast((p) => [...p, present])
+    skipRef.current = true
+    setPresent(next)
+  }, [future, present])
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault()
+        undo()
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        e.preventDefault()
+        redo()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [undo, redo])
+  return { present, push, undo, redo, canUndo: past.length > 0, canRedo: future.length > 0 }
+}
+export default {
+  app: {
+    title: '软件工程图生成器',
+    usecase: '用例图',
+    structure: '功能结构图',
+    entity: '实体属性图',
+  },
+  toolbar: {
+    undo: '撤销',
+    redo: '重做',
+    import: '导入',
+    exportData: '导出数据',
+    exportImage: '导出图片',
+    reset: '重置',
+    shortcuts: '快捷键',
+    lang: 'EN',
+  },
+  editor: {
+    usecaseTitle: '用例图 - 节点编辑',
+    structureTitle: '功能结构图 - 节点编辑',
+    entityTitle: '实体属性图 - 节点编辑',
+    hint: '双击编辑 · Enter 保存 · Tab 下一个 · 末尾 Tab 新建',
+    addActor: '+ 添加角色',
+    addEntity: '+ 添加实体',
+    actorLabel: '角色',
+    entityLabel: '实体',
+    useCase: '用例',
+    attribute: '属性',
+    module: '模块',
+    function: '功能',
+    addUseCase: '添加用例...',
+    addAttribute: '添加属性...',
+    addModule: '模块名称...',
+    addFunction: '功能名称...',
+    newActor: '新角色',
+    newEntity: '新实体',
+    confirm: '确定',
+    cancel: '取消',
+    add: '添加',
+    apply: '应用修改',
+    delete: '删除',
+    deleteRole: '删除角色',
+    deleteEntity: '删除实体',
+    quickImport: '快速导入',
+    noUc: '尚无用例，在上方输入添加',
+    noAttr: '尚无属性，在上方输入添加',
+  },
+  tree: {
+    root: '根',
+    module: '模块',
+    func: '功能',
+    addChild: '添加子节点',
+  },
+  export: {
+    exportImage: '导出图片',
+    fullExport: '下载全图',
+    splitExport: '下载分图',
+    fullLabel: '全图',
+    splitLabel: '分图',
+    generating: '生成中...',
+    copyHint: '右键图片 → 复制图片，直接在论文/文档中粘贴即可。分图下载较多时浏览器可能拦截，请留意地址栏提示。',
+  },
+  dataExport: {
+    title: '导出数据',
+    downloadJson: '下载 JSON',
+    downloadMd: '下载快速格式 (.md)',
+    copy: '复制',
+    hint: '以上为快速导入格式：空格分隔，首词为主名称。可在对应图表编辑面板中一键导入。',
+  },
+  import: {
+    confirmTitle: '导入将清空所有现有数据，确定继续吗？',
+    cancel: '取消',
+    confirm: '确定',
+    jsonError: 'JSON 格式不正确',
+    mdError: '未识别到有效数据',
+    quickError: '快速导入格式不正确',
+  },
+  shortcuts: {
+    title: '键盘快捷键',
+    list: [
+      { keys: 'Ctrl+Z', desc: '撤销' },
+      { keys: 'Ctrl+Y', desc: '重做' },
+      { keys: '双击元素', desc: '编辑名称' },
+      { keys: 'Enter', desc: '保存编辑' },
+      { keys: 'Tab', desc: '保存并跳转下一个' },
+      { keys: 'Tab(末尾)', desc: '新建空白元素' },
+      { keys: 'Delete', desc: '删除选中元素' },
+      { keys: '拖拽 ⋮⋮', desc: '列表排序' },
+      { keys: '?', desc: '显示/隐藏快捷键' },
+    ],
+  },
+  quickImport: {
+    usecaseTitle: '快速导入用例',
+    entityTitle: '快速导入实体',
+    structureTitle: '快速导入结构',
+    hint: '每行一个角色/实体，空格分隔：第一个词为名称，后续为元素',
+    formatExample: '示例格式：',
+    import: '导入',
+    cancel: '取消',
+  },
+  reset: {
+    confirm: '确定要重置所有图表为初始状态吗？此操作不可撤销。',
+  },
+  stats: {
+    sitePv: '全站浏览量',
+    pagePv: '本页浏览',
+    siteUv: '独立访客',
+  },
+  footer: {
+    copyright: '© 2026 软件工程图生成器 v1.0',
+    icp: '陕ICP备20011108号-2',
+  },
+}
+import i18n from 'i18next'
+import { initReactI18next } from 'react-i18next'
+import zh from './zh'
+import en from './en'
+const saved = localStorage.getItem('lang') || 'zh'
+i18n.use(initReactI18next).init({
+  resources: { zh: { translation: zh }, en: { translation: en } },
+  lng: saved,
+  fallbackLng: 'zh',
+  interpolation: { escapeValue: false },
+})
+export default i18n
+export default {
+  app: {
+    title: 'SE Diagram Generator',
+    usecase: 'Use Case',
+    structure: 'Structure',
+    entity: 'E-R Diagram',
+  },
+  toolbar: {
+    undo: 'Undo',
+    redo: 'Redo',
+    import: 'Import',
+    exportData: 'Export Data',
+    exportImage: 'Export Image',
+    reset: 'Reset',
+    shortcuts: 'Shortcuts',
+    lang: '中文',
+  },
+  editor: {
+    usecaseTitle: 'Use Case - Editor',
+    structureTitle: 'Structure - Editor',
+    entityTitle: 'E-R Diagram - Editor',
+    hint: 'Double-click edit · Enter save · Tab next · Tab at end new',
+    addActor: '+ Add Actor',
+    addEntity: '+ Add Entity',
+    actorLabel: 'Actor',
+    entityLabel: 'Entity',
+    useCase: 'Use Case',
+    attribute: 'Attribute',
+    module: 'Module',
+    function: 'Function',
+    addUseCase: 'Add use case...',
+    addAttribute: 'Add attribute...',
+    addModule: 'Module name...',
+    addFunction: 'Function name...',
+    newActor: 'New Actor',
+    newEntity: 'New Entity',
+    confirm: 'OK',
+    cancel: 'Cancel',
+    add: 'Add',
+    apply: 'Apply',
+    delete: 'Delete',
+    deleteRole: 'Delete Actor',
+    deleteEntity: 'Delete Entity',
+    quickImport: 'Quick Import',
+    noUc: 'No use cases. Add one above.',
+    noAttr: 'No attributes. Add one above.',
+  },
+  tree: {
+    root: 'Root',
+    module: 'Module',
+    func: 'Func',
+    addChild: 'Add child',
+  },
+  export: {
+    exportImage: 'Export Image',
+    fullExport: 'Download Full',
+    splitExport: 'Download Split',
+    fullLabel: 'Full Image',
+    splitLabel: 'Split Images',
+    generating: 'Generating...',
+    copyHint: 'Right-click image → Copy image, paste directly into papers/docs. Browser may block multiple downloads; please check the address bar.',
+  },
+  dataExport: {
+    title: 'Export Data',
+    downloadJson: 'Download JSON',
+    downloadMd: 'Download Quick Format (.md)',
+    copy: 'Copy',
+    hint: 'Quick import format: space-separated, first word is the main name. Use in the editor\'s quick import panel.',
+  },
+  import: {
+    confirmTitle: 'Import will clear all existing data. Continue?',
+    cancel: 'Cancel',
+    confirm: 'OK',
+    jsonError: 'Invalid JSON format',
+    mdError: 'No valid data found',
+    quickError: 'Invalid quick import format',
+  },
+  shortcuts: {
+    title: 'Keyboard Shortcuts',
+    list: [
+      { keys: 'Ctrl+Z', desc: 'Undo' },
+      { keys: 'Ctrl+Y', desc: 'Redo' },
+      { keys: 'Double-click', desc: 'Edit name' },
+      { keys: 'Enter', desc: 'Save edit' },
+      { keys: 'Tab', desc: 'Save and go to next' },
+      { keys: 'Tab (end)', desc: 'Create new blank' },
+      { keys: 'Delete', desc: 'Delete selected' },
+      { keys: 'Drag ⋮⋮', desc: 'Reorder list' },
+      { keys: '?', desc: 'Toggle shortcuts' },
+    ],
+  },
+  quickImport: {
+    usecaseTitle: 'Quick Import Use Cases',
+    entityTitle: 'Quick Import Entities',
+    structureTitle: 'Quick Import Structure',
+    hint: 'One actor/entity per line, space-separated: first word = name, rest = elements',
+    formatExample: 'Example:',
+    import: 'Import',
+    cancel: 'Cancel',
+  },
+  reset: {
+    confirm: 'Reset all diagrams to initial state? This cannot be undone.',
+  },
+  stats: {
+    sitePv: 'Site PV',
+    pagePv: 'Page PV',
+    siteUv: 'Site UV',
+  },
+  footer: {
+    copyright: '© 2026 SE Diagram Generator v1.0',
+    icp: '陕ICP备20011108号-2',
+  },
+}
+import type { Edge, Node } from '@xyflow/react'
+import type { DiagramNodeData } from '../types/diagram'
+export interface UseCasePreset {
+  actor: Node<DiagramNodeData>
+  useCases: Node<DiagramNodeData>[]
+  edges: Edge[]
+  json: string
+}
+function makeUseCasePreset(
+  actorId: string,
+  actorLabel: string,
+  useCaseDefs: { id: string; label: string }[]
+): UseCasePreset {
+  const actor: Node<DiagramNodeData> = {
+    id: actorId,
+    type: 'actor',
+    data: { label: actorLabel },
+    position: { x: 0, y: 0 },
+  }
+  const useCases: Node<DiagramNodeData>[] = useCaseDefs.map((uc) => ({
+    id: uc.id,
+    type: 'usecase',
+    data: { label: uc.label, rx: 60, ry: 15 },
+    position: { x: 0, y: 0 },
+  }))
+  const edges: Edge[] = useCaseDefs.map((uc, i) => ({
+    id: `e${i}`,
+    source: actorId,
+    target: uc.id,
+  }))
+  const allNodes = [
+    { id: actorId, type: 'actor', label: actorLabel },
+    ...useCaseDefs.map((uc) => ({
+      id: uc.id,
+      type: 'usecase',
+      label: uc.label,
+      rx: 60,
+      ry: 15,
+    })),
+  ]
+  const allEdges = edges.map((e) => ({ id: e.id, source: e.source, target: e.target }))
+  return {
+    actor,
+    useCases,
+    edges,
+    json: JSON.stringify({ nodes: allNodes, edges: allEdges }, null, 2),
+  }
+}
+export const useCasePresets: Record<string, UseCasePreset> = {
+  admin: makeUseCasePreset('a1', '管理员', [
+    { id: 'u1', label: '业主管理' },
+    { id: 'u2', label: '维修人员管理' },
+    { id: 'u3', label: '公寓设施管理' },
+    { id: 'u4', label: '报修服务管理' },
+    { id: 'u5', label: '维修服务评价' },
+    { id: 'u6', label: '修改密码' },
+  ]),
+  owner: makeUseCasePreset('a2', '业主', [
+    { id: 'u1', label: '个人中心' },
+    { id: 'u2', label: '报修服务' },
+    { id: 'u3', label: '维修评价' },
+    { id: 'u4', label: '修改密码' },
+  ]),
+  repairer: makeUseCasePreset('a3', '维修人员', [
+    { id: 'u1', label: '个人资料管理' },
+    { id: 'u2', label: '报修服务订单' },
+    { id: 'u3', label: '维修评价' },
+    { id: 'u4', label: '修改密码' },
+  ]),
+}
+export const structureNodes: Node<DiagramNodeData>[] = [
+  { id: 'root', type: 'rectangle', data: { label: '公寓报修管理系统' }, position: { x: 0, y: 0 } },
+  { id: 'm1', type: 'rectangle', data: { label: '管理员' }, position: { x: 0, y: 0 } },
+  { id: 'm2', type: 'rectangle', data: { label: '业主' }, position: { x: 0, y: 0 } },
+  { id: 'm3', type: 'rectangle', data: { label: '维修人员' }, position: { x: 0, y: 0 } },
+  { id: 'm1a', type: 'rectangle', data: { label: '业主管理', vertical: true }, position: { x: 0, y: 0 } },
+  { id: 'm1b', type: 'rectangle', data: { label: '维修人员管理', vertical: true }, position: { x: 0, y: 0 } },
+  { id: 'm1c', type: 'rectangle', data: { label: '公寓设施管理', vertical: true }, position: { x: 0, y: 0 } },
+  { id: 'm1d', type: 'rectangle', data: { label: '报修服务管理', vertical: true }, position: { x: 0, y: 0 } },
+  { id: 'm1e', type: 'rectangle', data: { label: '维修服务评价', vertical: true }, position: { x: 0, y: 0 } },
+  { id: 'm1f', type: 'rectangle', data: { label: '修改密码', vertical: true }, position: { x: 0, y: 0 } },
+  { id: 'm2a', type: 'rectangle', data: { label: '个人中心', vertical: true }, position: { x: 0, y: 0 } },
+  { id: 'm2b', type: 'rectangle', data: { label: '报修服务', vertical: true }, position: { x: 0, y: 0 } },
+  { id: 'm2c', type: 'rectangle', data: { label: '维修评价', vertical: true }, position: { x: 0, y: 0 } },
+  { id: 'm2d', type: 'rectangle', data: { label: '修改密码', vertical: true }, position: { x: 0, y: 0 } },
+  { id: 'm3a', type: 'rectangle', data: { label: '个人资料管理', vertical: true }, position: { x: 0, y: 0 } },
+  { id: 'm3b', type: 'rectangle', data: { label: '报修服务订单', vertical: true }, position: { x: 0, y: 0 } },
+  { id: 'm3c', type: 'rectangle', data: { label: '维修评价', vertical: true }, position: { x: 0, y: 0 } },
+  { id: 'm3d', type: 'rectangle', data: { label: '修改密码', vertical: true }, position: { x: 0, y: 0 } },
+]
+export const structureEdges: Edge[] = [
+  { id: 's1', source: 'root', target: 'm1' },
+  { id: 's2', source: 'root', target: 'm2' },
+  { id: 's3', source: 'root', target: 'm3' },
+  { id: 's4', source: 'm1', target: 'm1a' },
+  { id: 's5', source: 'm1', target: 'm1b' },
+  { id: 's6', source: 'm1', target: 'm1c' },
+  { id: 's7', source: 'm1', target: 'm1d' },
+  { id: 's8', source: 'm1', target: 'm1e' },
+  { id: 's9', source: 'm1', target: 'm1f' },
+  { id: 's10', source: 'm2', target: 'm2a' },
+  { id: 's11', source: 'm2', target: 'm2b' },
+  { id: 's12', source: 'm2', target: 'm2c' },
+  { id: 's13', source: 'm2', target: 'm2d' },
+  { id: 's14', source: 'm3', target: 'm3a' },
+  { id: 's15', source: 'm3', target: 'm3b' },
+  { id: 's16', source: 'm3', target: 'm3c' },
+  { id: 's17', source: 'm3', target: 'm3d' },
+]
+export function makeStructureJson(): string {
+  const nodes = [
+    { id: 'root', type: 'rectangle', label: '公寓报修管理系统' },
+    { id: 'm1', type: 'rectangle', label: '管理员' },
+    { id: 'm2', type: 'rectangle', label: '业主' },
+    { id: 'm3', type: 'rectangle', label: '维修人员' },
+    { id: 'm1a', type: 'rectangle', label: '业主管理', vertical: true },
+    { id: 'm1b', type: 'rectangle', label: '维修人员管理', vertical: true },
+    { id: 'm1c', type: 'rectangle', label: '公寓设施管理', vertical: true },
+    { id: 'm1d', type: 'rectangle', label: '报修服务管理', vertical: true },
+    { id: 'm1e', type: 'rectangle', label: '维修服务评价', vertical: true },
+    { id: 'm1f', type: 'rectangle', label: '修改密码', vertical: true },
+    { id: 'm2a', type: 'rectangle', label: '个人中心', vertical: true },
+    { id: 'm2b', type: 'rectangle', label: '报修服务', vertical: true },
+    { id: 'm2c', type: 'rectangle', label: '维修评价', vertical: true },
+    { id: 'm2d', type: 'rectangle', label: '修改密码', vertical: true },
+    { id: 'm3a', type: 'rectangle', label: '个人资料管理', vertical: true },
+    { id: 'm3b', type: 'rectangle', label: '报修服务订单', vertical: true },
+    { id: 'm3c', type: 'rectangle', label: '维修评价', vertical: true },
+    { id: 'm3d', type: 'rectangle', label: '修改密码', vertical: true },
+  ]
+  const edges = [
+    { id: 's1', source: 'root', target: 'm1' },
+    { id: 's2', source: 'root', target: 'm2' },
+    { id: 's3', source: 'root', target: 'm3' },
+    { id: 's4', source: 'm1', target: 'm1a' }, { id: 's5', source: 'm1', target: 'm1b' },
+    { id: 's6', source: 'm1', target: 'm1c' }, { id: 's7', source: 'm1', target: 'm1d' },
+    { id: 's8', source: 'm1', target: 'm1e' }, { id: 's9', source: 'm1', target: 'm1f' },
+    { id: 's10', source: 'm2', target: 'm2a' }, { id: 's11', source: 'm2', target: 'm2b' },
+    { id: 's12', source: 'm2', target: 'm2c' }, { id: 's13', source: 'm2', target: 'm2d' },
+    { id: 's14', source: 'm3', target: 'm3a' }, { id: 's15', source: 'm3', target: 'm3b' },
+    { id: 's16', source: 'm3', target: 'm3c' }, { id: 's17', source: 'm3', target: 'm3d' },
+  ]
+  return JSON.stringify({ nodes, edges }, null, 2)
+}
+export interface EntityPreset {
+  entity: Node<DiagramNodeData>
+  attributes: Node<DiagramNodeData>[]
+  edges: Edge[]
+}
+export const userEntityPreset: EntityPreset = {
+  entity: {
+    id: 'user',
+    type: 'rectangle',
+    data: { label: '用户' },
+    position: { x: 0, y: 0 },
+  },
+  attributes: [
+    { id: 'ua1', type: 'ellipse', data: { label: '入住时间', rx: 45, ry: 18 }, position: { x: 0, y: 0 } },
+    { id: 'ua2', type: 'ellipse', data: { label: '房产地址', rx: 45, ry: 18 }, position: { x: 0, y: 0 } },
+    { id: 'ua3', type: 'ellipse', data: { label: '添加时间', rx: 45, ry: 18 }, position: { x: 0, y: 0 } },
+    { id: 'ua4', type: 'ellipse', data: { label: '用户名', rx: 45, ry: 18 }, position: { x: 0, y: 0 } },
+    { id: 'ua5', type: 'ellipse', data: { label: '姓名', rx: 45, ry: 18 }, position: { x: 0, y: 0 } },
+    { id: 'ua6', type: 'ellipse', data: { label: '性别', rx: 45, ry: 18 }, position: { x: 0, y: 0 } },
+    { id: 'ua7', type: 'ellipse', data: { label: '手机', rx: 45, ry: 18 }, position: { x: 0, y: 0 } },
+    { id: 'ua8', type: 'ellipse', data: { label: '身份证', rx: 45, ry: 18 }, position: { x: 0, y: 0 } },
+    { id: 'ua9', type: 'ellipse', data: { label: '头像', rx: 45, ry: 18 }, position: { x: 0, y: 0 } },
+    { id: 'ua10', type: 'ellipse', data: { label: '备注', rx: 45, ry: 18 }, position: { x: 0, y: 0 } },
+  ],
+  edges: [
+    { id: 'ue1', source: 'user', target: 'ua1' }, { id: 'ue2', source: 'user', target: 'ua2' },
+    { id: 'ue3', source: 'user', target: 'ua3' }, { id: 'ue4', source: 'user', target: 'ua4' },
+    { id: 'ue5', source: 'user', target: 'ua5' }, { id: 'ue6', source: 'user', target: 'ua6' },
+    { id: 'ue7', source: 'user', target: 'ua7' }, { id: 'ue8', source: 'user', target: 'ua8' },
+    { id: 'ue9', source: 'user', target: 'ua9' }, { id: 'ue10', source: 'user', target: 'ua10' },
+  ],
+}
+export const repairerEntityPreset: EntityPreset = {
+  entity: {
+    id: 'repairer',
+    type: 'rectangle',
+    data: { label: '维修人员' },
+    position: { x: 0, y: 0 },
+  },
+  attributes: [
+    { id: 'ra1', type: 'ellipse', data: { label: '邮箱', rx: 45, ry: 18 }, position: { x: 0, y: 0 } },
+    { id: 'ra2', type: 'ellipse', data: { label: '照片', rx: 45, ry: 18 }, position: { x: 0, y: 0 } },
+    { id: 'ra3', type: 'ellipse', data: { label: '专业技能', rx: 45, ry: 18 }, position: { x: 0, y: 0 } },
+    { id: 'ra4', type: 'ellipse', data: { label: '添加时间', rx: 45, ry: 18 }, position: { x: 0, y: 0 } },
+    { id: 'ra5', type: 'ellipse', data: { label: '账号', rx: 45, ry: 18 }, position: { x: 0, y: 0 } },
+    { id: 'ra6', type: 'ellipse', data: { label: '名字', rx: 45, ry: 18 }, position: { x: 0, y: 0 } },
+    { id: 'ra7', type: 'ellipse', data: { label: '电话', rx: 45, ry: 18 }, position: { x: 0, y: 0 } },
+  ],
+  edges: [
+    { id: 're1', source: 'repairer', target: 'ra1' }, { id: 're2', source: 'repairer', target: 'ra2' },
+    { id: 're3', source: 'repairer', target: 'ra3' }, { id: 're4', source: 'repairer', target: 'ra4' },
+    { id: 're5', source: 'repairer', target: 'ra5' }, { id: 're6', source: 'repairer', target: 'ra6' },
+    { id: 're7', source: 'repairer', target: 'ra7' },
+  ],
+}
+export function makeEntityJson(preset: EntityPreset): string {
+  const nodes = [
+    { id: preset.entity.id, type: 'rectangle', label: preset.entity.data.label },
+    ...preset.attributes.map((a) => ({
+      id: a.id,
+      type: 'ellipse',
+      label: a.data.label,
+      rx: 45,
+      ry: 18,
+    })),
+  ]
+  const edges = preset.edges.map((e) => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+  }))
+  return JSON.stringify({ nodes, edges }, null, 2)
+}
+<svg xmlns="http://www.w3.org/2000/svg" width="77" height="47" fill="none" aria-labelledby="vite-logo-title" viewBox="0 0 77 47"><title id="vite-logo-title">Vite</title><style>.parenthesis{fill:#000}@media (prefers-color-scheme:dark){.parenthesis{fill:#fff}}</style><path fill="#9135ff" d="M40.151 45.71c-.663.844-2.02.374-2.02-.699V34.708a2.26 2.26 0 0 0-2.262-2.262H24.493c-.92 0-1.457-1.04-.92-1.788l7.479-10.471c1.07-1.498 0-3.578-1.842-3.578H15.443c-.92 0-1.456-1.04-.92-1.788l9.696-13.576c.213-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.472c-1.07 1.497 0 3.578 1.842 3.578h11.376c.944 0 1.474 1.087.89 1.83L40.153 45.712z"/><mask id="a" width="48" height="47" x="14" y="0" maskUnits="userSpaceOnUse" style="mask-type:alpha"><path fill="#000" d="M40.047 45.71c-.663.843-2.02.374-2.02-.699V34.708a2.26 2.26 0 0 0-2.262-2.262H24.389c-.92 0-1.457-1.04-.92-1.788l7.479-10.472c1.07-1.497 0-3.578-1.842-3.578H15.34c-.92 0-1.456-1.04-.92-1.788l9.696-13.575c.213-.297.556-.474.92-.474H53.93c.92 0 1.456 1.04.92 1.788L47.37 13.03c-1.07 1.498 0 3.578 1.842 3.578h11.376c.944 0 1.474 1.088.89 1.831L40.049 45.712z"/></mask><g mask="url(#a)"><g filter="url(#b)"><ellipse cx="5.508" cy="14.704" fill="#eee6ff" rx="5.508" ry="14.704" transform="rotate(269.814 20.96 11.29)scale(-1 1)"/></g><g filter="url(#c)"><ellipse cx="10.399" cy="29.851" fill="#eee6ff" rx="10.399" ry="29.851" transform="rotate(89.814 -16.902 -8.275)scale(1 -1)"/></g><g filter="url(#d)"><ellipse cx="5.508" cy="30.487" fill="#8900ff" rx="5.508" ry="30.487" transform="rotate(89.814 -19.197 -7.127)scale(1 -1)"/></g><g filter="url(#e)"><ellipse cx="5.508" cy="30.599" fill="#8900ff" rx="5.508" ry="30.599" transform="rotate(89.814 -25.928 4.177)scale(1 -1)"/></g><g filter="url(#f)"><ellipse cx="5.508" cy="30.599" fill="#8900ff" rx="5.508" ry="30.599" transform="rotate(89.814 -25.738 5.52)scale(1 -1)"/></g><g filter="url(#g)"><ellipse cx="14.072" cy="22.078" fill="#eee6ff" rx="14.072" ry="22.078" transform="rotate(93.35 31.245 55.578)scale(-1 1)"/></g><g filter="url(#h)"><ellipse cx="3.47" cy="21.501" fill="#8900ff" rx="3.47" ry="21.501" transform="rotate(89.009 35.419 55.202)scale(-1 1)"/></g><g filter="url(#i)"><ellipse cx="3.47" cy="21.501" fill="#8900ff" rx="3.47" ry="21.501" transform="rotate(89.009 35.419 55.202)scale(-1 1)"/></g><g filter="url(#j)"><ellipse cx="14.592" cy="9.743" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(39.51 14.592 9.743)"/></g><g filter="url(#k)"><ellipse cx="61.728" cy="-5.321" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(37.892 61.728 -5.32)"/></g><g filter="url(#l)"><ellipse cx="55.618" cy="7.104" fill="#00c2ff" rx="5.971" ry="9.665" transform="rotate(37.892 55.618 7.104)"/></g><g filter="url(#m)"><ellipse cx="12.326" cy="39.103" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(37.892 12.326 39.103)"/></g><g filter="url(#n)"><ellipse cx="12.326" cy="39.103" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(37.892 12.326 39.103)"/></g><g filter="url(#o)"><ellipse cx="49.857" cy="30.678" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(37.892 49.857 30.678)"/></g><g filter="url(#p)"><ellipse cx="52.623" cy="33.171" fill="#00c2ff" rx="5.971" ry="15.297" transform="rotate(37.892 52.623 33.17)"/></g></g><path d="M6.919 0c-9.198 13.166-9.252 33.575 0 46.789h6.215c-9.25-13.214-9.196-33.623 0-46.789zm62.424 0h-6.215c9.198 13.166 9.252 33.575 0 46.789h6.215c9.25-13.214 9.196-33.623 0-46.789" class="parenthesis"/><defs><filter id="b" width="60.045" height="41.654" x="-5.564" y="16.92" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="7.659"/></filter><filter id="c" width="90.34" height="51.437" x="-40.407" y="-6.762" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="7.659"/></filter><filter id="d" width="79.355" height="29.4" x="-35.435" y="2.801" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="e" width="79.579" height="29.4" x="-30.84" y="20.8" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="f" width="79.579" height="29.4" x="-29.307" y="21.949" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="g" width="74.749" height="58.852" x="29.961" y="-17.13" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="7.659"/></filter><filter id="h" width="61.377" height="25.362" x="37.754" y="3.055" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="i" width="61.377" height="25.362" x="37.754" y="3.055" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="j" width="56.045" height="63.649" x="-13.43" y="-22.082" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="k" width="54.814" height="64.646" x="34.321" y="-37.644" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="l" width="33.541" height="35.313" x="38.847" y="-10.552" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="m" width="54.814" height="64.646" x="-15.081" y="6.78" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="n" width="54.814" height="64.646" x="-15.081" y="6.78" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="o" width="54.814" height="64.646" x="22.45" y="-1.645" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="p" width="39.409" height="43.623" x="32.919" y="11.36" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter></defs></svg>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" aria-hidden="true" role="img" class="iconify iconify--logos" width="35.93" height="32" preserveAspectRatio="xMidYMid meet" viewBox="0 0 256 228"><path fill="#00D8FF" d="M210.483 73.824a171.49 171.49 0 0 0-8.24-2.597c.465-1.9.893-3.777 1.273-5.621c6.238-30.281 2.16-54.676-11.769-62.708c-13.355-7.7-35.196.329-57.254 19.526a171.23 171.23 0 0 0-6.375 5.848a155.866 155.866 0 0 0-4.241-3.917C100.759 3.829 77.587-4.822 63.673 3.233C50.33 10.957 46.379 33.89 51.995 62.588a170.974 170.974 0 0 0 1.892 8.48c-3.28.932-6.445 1.924-9.474 2.98C17.309 83.498 0 98.307 0 113.668c0 15.865 18.582 31.778 46.812 41.427a145.52 145.52 0 0 0 6.921 2.165a167.467 167.467 0 0 0-2.01 9.138c-5.354 28.2-1.173 50.591 12.134 58.266c13.744 7.926 36.812-.22 59.273-19.855a145.567 145.567 0 0 0 5.342-4.923a168.064 168.064 0 0 0 6.92 6.314c21.758 18.722 43.246 26.282 56.54 18.586c13.731-7.949 18.194-32.003 12.4-61.268a145.016 145.016 0 0 0-1.535-6.842c1.62-.48 3.21-.974 4.76-1.488c29.348-9.723 48.443-25.443 48.443-41.52c0-15.417-17.868-30.326-45.517-39.844Zm-6.365 70.984c-1.4.463-2.836.91-4.3 1.345c-3.24-10.257-7.612-21.163-12.963-32.432c5.106-11 9.31-21.767 12.459-31.957c2.619.758 5.16 1.557 7.61 2.4c23.69 8.156 38.14 20.213 38.14 29.504c0 9.896-15.606 22.743-40.946 31.14Zm-10.514 20.834c2.562 12.94 2.927 24.64 1.23 33.787c-1.524 8.219-4.59 13.698-8.382 15.893c-8.067 4.67-25.32-1.4-43.927-17.412a156.726 156.726 0 0 1-6.437-5.87c7.214-7.889 14.423-17.06 21.459-27.246c12.376-1.098 24.068-2.894 34.671-5.345a134.17 134.17 0 0 1 1.386 6.193ZM87.276 214.515c-7.882 2.783-14.16 2.863-17.955.675c-8.075-4.657-11.432-22.636-6.853-46.752a156.923 156.923 0 0 1 1.869-8.499c10.486 2.32 22.093 3.988 34.498 4.994c7.084 9.967 14.501 19.128 21.976 27.15a134.668 134.668 0 0 1-4.877 4.492c-9.933 8.682-19.886 14.842-28.658 17.94ZM50.35 144.747c-12.483-4.267-22.792-9.812-29.858-15.863c-6.35-5.437-9.555-10.836-9.555-15.216c0-9.322 13.897-21.212 37.076-29.293c2.813-.98 5.757-1.905 8.812-2.773c3.204 10.42 7.406 21.315 12.477 32.332c-5.137 11.18-9.399 22.249-12.634 32.792a134.718 134.718 0 0 1-6.318-1.979Zm12.378-84.26c-4.811-24.587-1.616-43.134 6.425-47.789c8.564-4.958 27.502 2.111 47.463 19.835a144.318 144.318 0 0 1 3.841 3.545c-7.438 7.987-14.787 17.08-21.808 26.988c-12.04 1.116-23.565 2.908-34.161 5.309a160.342 160.342 0 0 1-1.76-7.887Zm110.427 27.268a347.8 347.8 0 0 0-7.785-12.803c8.168 1.033 15.994 2.404 23.343 4.08c-2.206 7.072-4.956 14.465-8.193 22.045a381.151 381.151 0 0 0-7.365-13.322Zm-45.032-43.861c5.044 5.465 10.096 11.566 15.065 18.186a322.04 322.04 0 0 0-30.257-.006c4.974-6.559 10.069-12.652 15.192-18.18ZM82.802 87.83a323.167 323.167 0 0 0-7.227 13.238c-3.184-7.553-5.909-14.98-8.134-22.152c7.304-1.634 15.093-2.97 23.209-3.984a321.524 321.524 0 0 0-7.848 12.897Zm8.081 65.352c-8.385-.936-16.291-2.203-23.593-3.793c2.26-7.3 5.045-14.885 8.298-22.6a321.187 321.187 0 0 0 7.257 13.246c2.594 4.48 5.28 8.868 8.038 13.147Zm37.542 31.03c-5.184-5.592-10.354-11.779-15.403-18.433c4.902.192 9.899.29 14.978.29c5.218 0 10.376-.117 15.453-.343c-4.985 6.774-10.018 12.97-15.028 18.486Zm52.198-57.817c3.422 7.8 6.306 15.345 8.596 22.52c-7.422 1.694-15.436 3.058-23.88 4.071a382.417 382.417 0 0 0 7.859-13.026a347.403 347.403 0 0 0 7.425-13.565Zm-16.898 8.101a358.557 358.557 0 0 1-12.281 19.815a329.4 329.4 0 0 1-23.444.823c-7.967 0-15.716-.248-23.178-.732a310.202 310.202 0 0 1-12.513-19.846h.001a307.41 307.41 0 0 1-10.923-20.627a310.278 310.278 0 0 1 10.89-20.637l-.001.001a307.318 307.318 0 0 1 12.413-19.761c7.613-.576 15.42-.876 23.31-.876H128c7.926 0 15.743.303 23.354.883a329.357 329.357 0 0 1 12.335 19.695a358.489 358.489 0 0 1 11.036 20.54a329.472 329.472 0 0 1-11 20.722Zm22.56-122.124c8.572 4.944 11.906 24.881 6.52 51.026c-.344 1.668-.73 3.367-1.15 5.09c-10.622-2.452-22.155-4.275-34.23-5.408c-7.034-10.017-14.323-19.124-21.64-27.008a160.789 160.789 0 0 1 5.888-5.4c18.9-16.447 36.564-22.941 44.612-18.3ZM128 90.808c12.625 0 22.86 10.235 22.86 22.86s-10.235 22.86-22.86 22.86s-22.86-10.235-22.86-22.86s10.235-22.86 22.86-22.86Z"></path></svg>
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
+import { ReactFlowProvider } from '@xyflow/react'
+import type { Edge, Node } from '@xyflow/react'
+import UseCaseDiagram from './components/diagrams/UseCaseDiagram'
+import StructureDiagram from './components/diagrams/StructureDiagram'
+import EntityAttributeDiagram from './components/diagrams/EntityAttributeDiagram'
+import NodeEditor from './components/panels/NodeEditor'
+import ExportModal from './components/panels/ExportModal'
+import ExportDataModal from './components/panels/ExportDataModal'
+import { useUndoRedo } from './hooks/useUndoRedo'
+import type { DiagramNodeData } from './types/diagram'
+import type { UseCaseState, TreeNode, EntityState } from './components/panels/NodeEditor'
+import { useCasePresets, structureNodes, structureEdges, userEntityPreset } from './data/mockData'
+import i18n from './i18n'
+type DiagramType = 'usecase' | 'structure' | 'entity'
+const LS_KEY = 'diagram-editor-configs'
+const tabKeys: DiagramType[] = ['usecase', 'structure', 'entity']
+export type ConfigMap = Record<DiagramType, { nodes: Node<DiagramNodeData>[]; edges: Edge[] }>
+function parseConfigJson(text: string): { nodes: Node<DiagramNodeData>[]; edges: Edge[] } {
+  const data = JSON.parse(text)
+  const nodes: Node<DiagramNodeData>[] = (data.nodes || []).map((n: any) => ({
+    id: String(n.id),
+    type: n.type ?? 'rectangle',
+    data: {
+      label: String(n.label ?? n.id),
+      rx: n.rx as number | undefined,
+      ry: n.ry as number | undefined,
+      vertical: n.vertical as boolean | undefined,
+      nodeH: n.nodeH as number | undefined,
+      fontSize: n.fontSize as number | undefined,
+      spacing: n.spacing as number | undefined,
+    },
+    position: { x: 0, y: 0 },
+  }))
+  const edges: Edge[] = (data.edges || []).map((e: any, i: number) => ({
+    id: e.id ?? `edge_${i}`,
+    source: String(e.source),
+    target: String(e.target),
+  }))
+  return { nodes, edges }
+}
+function configsToJson(configs: ConfigMap): string {
+  const flat: Record<string, any> = {}
+  for (const key of Object.keys(configs)) {
+    const cfg = configs[key as DiagramType]
+    flat[key] = {
+      nodes: cfg.nodes.map((n) => ({ id: n.id, type: n.type, label: n.data.label, rx: n.data.rx, ry: n.data.ry, vertical: n.data.vertical, fontSize: n.data.fontSize, spacing: n.data.spacing })),
+      edges: cfg.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+    }
+  }
+  return JSON.stringify(flat, null, 2)
+}
+function jsonToConfigs(json: string): ConfigMap | null {
+  try {
+    const flat = JSON.parse(json)
+    const configs: any = {}
+    for (const key of ['usecase', 'structure', 'entity']) {
+      if (flat[key]) configs[key] = parseConfigJson(JSON.stringify(flat[key]))
+    }
+    return configs as ConfigMap
+  } catch { return null }
+}
+function configToUseCaseState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): UseCaseState {
+  const actors = cfg.nodes.filter((n) => n.type === 'actor')
+  return {
+    actors: actors.map((actor) => {
+      const actorId = actor.id
+      const connectedIds = new Set(cfg.edges.filter((e) => e.source === actorId).map((e) => e.target))
+      return {
+        id: actorId,
+        label: (actor.data.label as string) || '角色',
+        useCases: cfg.nodes
+          .filter((n) => n.type === 'usecase' && connectedIds.has(n.id))
+          .map((uc) => ({ id: uc.id, label: (uc.data.label as string) || '' })),
+      }
+    }),
+  }
+}
+function configToTreeState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): TreeNode {
+  const childrenMap = new Map<string, string[]>()
+  cfg.edges.forEach((e) => {
+    const list = childrenMap.get(e.source) || []
+    list.push(e.target)
+    childrenMap.set(e.source, list)
+  })
+  const nodeMap = new Map(cfg.nodes.map((n) => [n.id, n]))
+  const rootId = cfg.nodes.find((n) => !cfg.edges.some((e) => e.target === n.id))?.id
+  function build(id: string, depth: number): TreeNode {
+    const node = nodeMap.get(id)
+    return {
+      id,
+      label: (node?.data.label as string) || id,
+      vertical: (node?.data.vertical as boolean) || depth >= 2,
+      fontSize: depth === 0 ? ((node?.data.fontSize as number) || 14) : undefined,
+      spacing: depth === 0 ? ((node?.data.spacing as number) || 26) : undefined,
+      children: (childrenMap.get(id) || []).map((cid) => build(cid, depth + 1)),
+    }
+  }
+  return rootId ? build(rootId, 0) : { id: 'root', label: '系统', vertical: false, children: [] }
+}
+function configToEntityState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): EntityState {
+  const entities = cfg.nodes.filter((n) => n.type === 'rectangle')
+  return {
+    entities: entities.map((ent) => {
+      const eid = ent.id
+      const connectedIds = new Set(cfg.edges.filter((e) => e.source === eid).map((e) => e.target))
+      return {
+        id: eid,
+        label: (ent.data.label as string) || '实体',
+        attributes: cfg.nodes
+          .filter((n) => n.type === 'ellipse' && connectedIds.has(n.id))
+          .map((a) => ({ id: a.id, label: (a.data.label as string) || '' })),
+      }
+    }),
+  }
+}
+const initialConfigs: ConfigMap = {
+  usecase: parseConfigJson(useCasePresets.admin.json),
+  structure: parseConfigJson(JSON.stringify({
+    nodes: structureNodes.map((n) => ({ id: n.id, type: n.type, label: n.data.label, vertical: n.data.vertical })),
+    edges: structureEdges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+  })),
+  entity: parseConfigJson(JSON.stringify({
+    nodes: [
+      { id: userEntityPreset.entity.id, type: 'rectangle', label: userEntityPreset.entity.data.label },
+      ...userEntityPreset.attributes.map((a) => ({ id: a.id, type: 'ellipse', label: a.data.label, rx: 45, ry: 18 })),
+    ],
+    edges: userEntityPreset.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+  })),
+}
+function loadConfigs(): ConfigMap {
+  try {
+    const raw = localStorage.getItem(LS_KEY)
+    if (raw) {
+      const restored = jsonToConfigs(raw)
+      if (restored?.usecase && restored?.structure && restored?.entity) return restored
+    }
+  } catch {  }
+  return initialConfigs
+}
+function App() {
+  const { t } = useTranslation()
+  const [active, setActive] = useState<DiagramType>('usecase')
+  const [configVersion, setConfigVersion] = useState(0)
+  const [showShortcuts, setShowShortcuts] = useState(false)
+  const flowRef = useRef<HTMLDivElement>(null)
+  const toggleLang = () => { const next = i18n.language === 'zh' ? 'en' : 'zh'; i18n.changeLanguage(next); localStorage.setItem('lang', next) }
+  const { present: configs, push: pushConfigs, undo, redo, canUndo, canRedo } = useUndoRedo<ConfigMap>(loadConfigs())
+  useEffect(() => {
+    localStorage.setItem(LS_KEY, configsToJson(configs))
+  }, [configs])
+  useEffect(() => {
+    setConfigVersion((v) => v + 1)
+  }, [configs])
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === '?' && !(e.target as HTMLElement).closest('input')) {
+        e.preventDefault()
+        setShowShortcuts((s) => !s)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+  const handleApply = useCallback(
+    (json: string) => {
+      try {
+        const result = parseConfigJson(json)
+        pushConfigs({ ...configs, [active]: result })
+      } catch {  }
+    },
+    [active, configs, pushConfigs]
+  )
+  const ucState = useMemo(() => configToUseCaseState(configs.usecase), [configs.usecase])
+  const treeState = useMemo(() => configToTreeState(configs.structure), [configs.structure])
+  const entityState = useMemo(() => configToEntityState(configs.entity), [configs.entity])
+  const useCaseGroups = useMemo(() => {
+    const cfg = configs.usecase
+    const actors = cfg.nodes.filter((n) => n.type === 'actor')
+    return actors.map((actor) => {
+      const actorEdges = cfg.edges.filter((e) => e.source === actor.id)
+      const ids = new Set(actorEdges.map((e) => e.target))
+      return {
+        actor,
+        useCases: cfg.nodes.filter((n) => n.type === 'usecase' && ids.has(n.id)),
+        edges: actorEdges,
+      }
+    })
+  }, [configs.usecase])
+  const entityGroups = useMemo(() => {
+    const cfg = configs.entity
+    const entities = cfg.nodes.filter((n) => n.type === 'rectangle')
+    return entities.map((ent) => {
+      const entEdges = cfg.edges.filter((e) => e.source === ent.id)
+      const ids = new Set(entEdges.map((e) => e.target))
+      return {
+        entity: ent,
+        attributes: cfg.nodes.filter((n) => n.type === 'ellipse' && ids.has(n.id)),
+        edges: entEdges,
+      }
+    })
+  }, [configs.entity])
+  const [showExport, setShowExport] = useState(false)
+  const [showDataExport, setShowDataExport] = useState(false)
+  const [pendingImport, setPendingImport] = useState<ConfigMap | null>(null)
+  const [showGrid, setShowGrid] = useState(true)
+  const handleReset = () => {
+    if (!window.confirm(t('reset.confirm'))) return
+    localStorage.removeItem(LS_KEY)
+    pushConfigs(initialConfigs)
+  }
+  const parseQuickFormat = (text: string, type: DiagramType) => {
+    const lines = text.trim().split('\n').filter(Boolean).map((l) => l.trim().split(/\s+/))
+    if (lines.length === 0) return null
+    if (type === 'structure') {
+      const rootLabel = lines[0][0] || '系统'
+      const nodes: Node<DiagramNodeData>[] = [{ id: 'root', type: 'rectangle', data: { label: rootLabel }, position: { x: 0, y: 0 } }]
+      const edges: Edge[] = []
+      lines.slice(1).forEach((words, mi) => {
+        if (words.length < 1) return
+        const modId = `m${mi}`; const modLabel = words[0]
+        nodes.push({ id: modId, type: 'rectangle', data: { label: modLabel }, position: { x: 0, y: 0 } })
+        edges.push({ id: `e_root_${modId}`, source: 'root', target: modId })
+        words.slice(1).forEach((w, fi) => {
+          const fId = `${modId}_f${fi}`
+          nodes.push({ id: fId, type: 'rectangle', data: { label: w, vertical: true }, position: { x: 0, y: 0 } })
+          edges.push({ id: `e_${modId}_${fId}`, source: modId, target: fId })
+        })
+      })
+      return { nodes, edges }
+    }
+    const sourceType = type === 'usecase' ? 'actor' : 'rectangle'
+    const targetType = type === 'usecase' ? 'usecase' : 'ellipse'
+    const nodes: Node<DiagramNodeData>[] = []; const edges: Edge[] = []
+    lines.forEach((words, ai) => {
+      if (words.length < 1) return
+      const srcId = `s${ai}`; const srcLabel = words[0]
+      nodes.push({ id: srcId, type: sourceType, data: { label: srcLabel }, position: { x: 0, y: 0 } })
+      words.slice(1).forEach((w, ti) => {
+        const tId = `${srcId}_t${ti}`
+        nodes.push({ id: tId, type: targetType, data: { label: w, rx: type === 'usecase' ? 60 : 45, ry: type === 'usecase' ? 15 : 18 }, position: { x: 0, y: 0 } })
+        edges.push({ id: `e_${srcId}_${ti}`, source: srcId, target: tId })
+      })
+    })
+    return { nodes, edges }
+  }
+  const emptyConfig = { nodes: [], edges: [] }
+  const mdSectionMap: Record<string, DiagramType> = { '用例图': 'usecase', '功能结构图': 'structure', '实体属性图': 'entity' }
+  const handleImport = () => {
+    const input = document.createElement('input')
+    input.type = 'file'; input.accept = '.json,.txt,.md'
+    input.onchange = (e: any) => {
+      const file = e.target?.files?.[0]
+      if (!file) return
+      const reader = new FileReader()
+      reader.onload = () => {
+        const text = reader.result as string
+        let importConfigs: ConfigMap | null = null
+        if (text.trim().startsWith('{')) {
+          importConfigs = jsonToConfigs(text)
+          if (!importConfigs) { alert(t('import.jsonError')); return }
+        }
+        else if (text.includes('\n# ') || text.startsWith('# ')) {
+          const sections = text.split(/(?=^# )/m)
+          const newConfigs: Record<string, any> = { usecase: emptyConfig, structure: emptyConfig, entity: emptyConfig }
+          let hasData = false
+          sections.forEach((sec) => {
+            const lines = sec.trim().split('\n')
+            const header = lines[0].replace(/^# /, '').trim()
+            const type = mdSectionMap[header]
+            if (!type) return
+            const body = lines.slice(1).join('\n').trim()
+            if (!body) return
+            const result = parseQuickFormat(body, type)
+            if (result) { newConfigs[type] = result; hasData = true }
+          })
+          if (hasData) importConfigs = newConfigs as ConfigMap
+          else { alert(t('import.mdError')); return }
+        }
+        else {
+          const result = parseQuickFormat(text, active)
+          if (result) importConfigs = { usecase: emptyConfig, structure: emptyConfig, entity: emptyConfig, [active]: result }
+          else { alert(t('import.quickError')); return }
+        }
+        setPendingImport(importConfigs)
+      }
+      reader.readAsText(file)
+    }
+    input.click()
+  }
+  return (
+    <div className="h-screen flex flex-col">
+      {}
+      <header className="flex items-center gap-1 px-4 py-2 border-b border-gray-200 bg-white shrink-0">
+        <h1 className="text-base font-bold mr-4">{t('app.title')}</h1>
+        {tabKeys.map((key) => (
+          <button key={key} onClick={() => setActive(key)}
+            className={`px-3 py-1 rounded text-sm font-medium transition-colors ${active === key ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+            {t(`app.${key}`)}
+          </button>
+        ))}
+        <div className="ml-auto flex items-center gap-1">
+          <button onClick={undo} disabled={!canUndo} className="px-2 py-1 text-xs border rounded disabled:opacity-30 hover:bg-gray-50" title="Ctrl+Z">{t('toolbar.undo')}</button>
+          <button onClick={redo} disabled={!canRedo} className="px-2 py-1 text-xs border rounded disabled:opacity-30 hover:bg-gray-50" title="Ctrl+Y">{t('toolbar.redo')}</button>
+          <span className="w-px h-5 bg-gray-300 mx-1" />
+          <button onClick={handleImport} className="px-2 py-1 text-xs border rounded hover:bg-gray-50">{t('toolbar.import')}</button>
+          <button onClick={() => setShowDataExport(true)} className="px-2 py-1 text-xs border rounded hover:bg-gray-50">{t('toolbar.exportData')}</button>
+          <button onClick={() => setShowExport(true)} className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">{t('toolbar.exportImage')}</button>
+          <button onClick={handleReset} className="px-2 py-1 text-xs text-red-400 border border-red-200 rounded hover:bg-red-50 ml-1">{t('toolbar.reset')}</button>
+          <button onClick={() => setShowShortcuts(true)} className="px-2 py-1 text-xs text-gray-400 border rounded hover:bg-gray-50 ml-1" title={t('toolbar.shortcuts')}>?</button>
+          <button onClick={() => setShowGrid(!showGrid)} className={`px-2 py-1 text-xs border rounded hover:bg-gray-50 ml-1 ${!showGrid ? 'text-red-400 border-red-200' : ''}`}>{showGrid ? '背景' : '纯白'}</button>
+          <button onClick={toggleLang} className="px-2 py-1 text-xs border rounded hover:bg-gray-50 ml-1">{t('toolbar.lang')}</button>
+        </div>
+      </header>
+      {}
+      <div className="flex flex-1 overflow-hidden">
+        {active === 'usecase' && <NodeEditor key={`usecase-${configVersion}`} type="usecase" useCase={ucState} onApply={handleApply} />}
+        {active === 'structure' && <NodeEditor key={`structure-${configVersion}`} type="structure" tree={treeState} onApply={handleApply} />}
+        {active === 'entity' && <NodeEditor key={`entity-${configVersion}`} type="entity" entity={entityState} onApply={handleApply} />}
+        <div className="flex-1" ref={flowRef}>
+          <ReactFlowProvider>
+            {active === 'usecase' && useCaseGroups.length > 0 && (
+              <UseCaseDiagram groups={useCaseGroups} showGrid={showGrid} />
+            )}
+            {active === 'usecase' && useCaseGroups.length === 0 && (
+              <div className="flex items-center justify-center h-full text-gray-400">{t('editor.addActor')}</div>
+            )}
+            {active === 'entity' && entityGroups.length > 0 && (
+              <EntityAttributeDiagram groups={entityGroups} showGrid={showGrid} />
+            )}
+            {active === 'entity' && entityGroups.length === 0 && (
+              <div className="flex items-center justify-center h-full text-gray-400">请添加实体节点</div>
+            )}
+          </ReactFlowProvider>
+          {active === 'structure' && (
+            <StructureDiagram nodes={configs.structure.nodes} edges={configs.structure.edges} />
+          )}
+        </div>
+      </div>
+      {}
+      {showExport && <ExportModal active={active} config={configs[active]} flowRef={flowRef} onClose={() => setShowExport(false)} />}
+      {showDataExport && <ExportDataModal configs={configs} onClose={() => setShowDataExport(false)} />}
+      {}
+      {pendingImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-80">
+            <p className="text-sm mb-4">{t('import.confirmTitle')}</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setPendingImport(null)}
+                className="px-4 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50">{t('import.cancel')}</button>
+              <button onClick={() => { pushConfigs(pendingImport); setPendingImport(null) }}
+                className="px-4 py-1.5 text-sm bg-black text-white rounded hover:bg-gray-800">{t('import.confirm')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {}
+      {showShortcuts && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowShortcuts(false)}>
+          <div className="bg-white rounded-lg shadow-xl p-6 min-w-[320px]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold">{t('shortcuts.title')}</h3>
+              <button onClick={() => setShowShortcuts(false)} className="text-gray-400 hover:text-black text-lg leading-none">×</button>
+            </div>
+            <div className="space-y-2">
+              {(t('shortcuts.list', { returnObjects: true }) as { keys: string; desc: string }[]).map((s) => (
+                <div key={s.keys} className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500">{s.desc}</span>
+                  <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-300 rounded text-xs font-mono text-gray-700">{s.keys}</kbd>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+export default App
+import { useState, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useVercount } from '@vercount/react'
+export interface UseCaseState {
+  actors: {
+    id: string
+    label: string
+    useCases: { id: string; label: string }[]
+  }[]
+}
+export interface TreeNode {
+  id: string
+  label: string
+  vertical: boolean
+  children: TreeNode[]
+  fontSize?: number
+  spacing?: number
+}
+export interface EntityState {
+  entities: {
+    id: string
+    label: string
+    attributes: { id: string; label: string }[]
+  }[]
+}
+export type DiagramType = 'usecase' | 'structure' | 'entity'
+interface Props {
+  type: DiagramType
+  useCase?: UseCaseState
+  tree?: TreeNode
+  entity?: EntityState
+  onApply: (json: string) => void
+}
+let _id = 100
+function uid(): string { return 'n' + _id++ }
+function useCaseToJson(state: UseCaseState): string {
+  const nodes: any[] = []
+  const edges: any[] = []
+  state.actors.forEach((actor) => {
+    nodes.push({ id: actor.id, type: 'actor', label: actor.label })
+    actor.useCases.forEach((uc, i) => {
+      nodes.push({ id: uc.id, type: 'usecase', label: uc.label, rx: 60, ry: 15 })
+      edges.push({ id: `e_${actor.id}_${i}`, source: actor.id, target: uc.id })
+    })
+  })
+  return JSON.stringify({ nodes, edges }, null, 2)
+}
+function treeToJson(root: TreeNode, fontSize = 14, spacing = 26): string {
+  const nodes: any[] = []
+  const edges: any[] = []
+  function walk(node: TreeNode, isRoot = false) {
+    const n: any = { id: node.id, type: 'rectangle', label: node.label, vertical: node.vertical }
+    if (isRoot) { n.fontSize = fontSize; n.spacing = spacing }
+    nodes.push(n)
+    node.children.forEach((child) => {
+      edges.push({ id: `e_${node.id}_${child.id}`, source: node.id, target: child.id })
+      walk(child)
+    })
+  }
+  walk(root, true)
+  return JSON.stringify({ nodes, edges }, null, 2)
+}
+function entityToJson(state: EntityState): string {
+  const nodes: any[] = []
+  const edges: any[] = []
+  state.entities.forEach((ent) => {
+    nodes.push({ id: ent.id, type: 'rectangle', label: ent.label })
+    ent.attributes.forEach((a, i) => {
+      nodes.push({ id: a.id, type: 'ellipse', label: a.label, rx: 45, ry: 18 })
+      edges.push({ id: `e_${ent.id}_${i}`, source: ent.id, target: a.id })
+    })
+  })
+  return JSON.stringify({ nodes, edges }, null, 2)
+}
+export default function NodeEditor({ type, useCase, tree, entity, onApply }: Props) {
+  const { t } = useTranslation()
+  const { sitePv, pagePv, siteUv } = useVercount()
+  const titleKey = type === 'usecase' ? 'editor.usecaseTitle' : type === 'structure' ? 'editor.structureTitle' : 'editor.entityTitle'
+  return (
+    <div className="w-[420px] shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col h-full">
+      <div className="px-4 py-3 border-b border-gray-200 bg-white">
+        <h2 className="text-sm font-semibold">{t(titleKey)}</h2>
+        <p className="text-xs text-gray-500 mt-0.5">{t('editor.hint')}</p>
+      </div>
+      <div className="flex-1 overflow-y-auto px-4 py-3">
+        {type === 'usecase' && useCase && <UseCaseEditor state={useCase} onApply={onApply} />}
+        {type === 'structure' && tree && <TreeEditor root={tree} onApply={onApply} />}
+        {type === 'entity' && entity && <EntityEditor state={entity} onApply={onApply} />}
+      </div>
+      <div className="px-3 py-2 border-t border-gray-200 bg-white text-[10px] text-gray-400 text-center">
+        <div className="mb-1">{t('stats.sitePv')}: {sitePv} &nbsp; {t('stats.pagePv')}: {pagePv} &nbsp; {t('stats.siteUv')}: {siteUv}</div>
+        {t('footer.copyright')} &nbsp;|&nbsp;
+        <a href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600">{t('footer.icp')}</a>
+      </div>
+    </div>
+  )
+}
+function InlineEdit({
+  value, onSave, onDelete, onTab, className = '',
+}: {
+  value: string; onSave: (val: string) => void; onDelete?: () => void; onTab?: () => void; className?: string
+}) {
+  const [text, setText] = useState(value)
+  const ref = useRef<HTMLInputElement>(null)
+  const doneRef = useRef(false)
+  useEffect(() => { ref.current?.select() }, [])
+  const commit = () => {
+    if (doneRef.current) return
+    doneRef.current = true
+    const v = text.trim()
+    if (v) onSave(v)
+    else onDelete?.()
+  }
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') { e.preventDefault(); commit() }
+    if (e.key === 'Tab') { e.preventDefault(); commit(); onTab?.() }
+    if (e.key === 'Escape') { onSave(value) }
+  }
+  return (
+    <input ref={ref} value={text} onChange={(e) => setText(e.target.value)}
+      onKeyDown={handleKeyDown} onBlur={commit}
+      className={`text-sm border border-black rounded px-1 py-0.5 bg-white focus:outline-none ${className}`} />
+  )
+}
+function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApply: (json: string) => void }) {
+  const { t } = useTranslation()
+  const [state, setState] = useState<UseCaseState>(initial)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const addActor = () => {
+    setState((s) => ({ actors: [...s.actors, { id: uid(), label: t('editor.newActor'), useCases: [] }] }))
+  }
+  const removeActor = (actorId: string) => {
+    setState((s) => ({ actors: s.actors.filter((a) => a.id !== actorId) }))
+  }
+  const renameActor = (actorId: string, label: string) => {
+    setState((s) => ({ actors: s.actors.map((a) => a.id === actorId ? { ...a, label } : a) }))
+  }
+  const addUseCase = (actorId: string, id: string, label: string) => {
+    setState((s) => ({
+      actors: s.actors.map((a) => a.id === actorId ? { ...a, useCases: [...a.useCases, { id, label }] } : a),
+    }))
+  }
+  const moveUseCase = (actorId: string, from: number, to: number) => {
+    setState((s) => ({
+      actors: s.actors.map((a) => {
+        if (a.id !== actorId) return a
+        const arr = [...a.useCases]; const [item] = arr.splice(from, 1); arr.splice(to, 0, item)
+        return { ...a, useCases: arr }
+      }),
+    }))
+  }
+  const removeUseCase = (actorId: string, ucId: string) => {
+    setState((s) => ({
+      actors: s.actors.map((a) => a.id === actorId ? { ...a, useCases: a.useCases.filter((uc) => uc.id !== ucId) } : a),
+    }))
+    if (editingId === ucId) setEditingId(null)
+  }
+  const renameUseCase = (actorId: string, ucId: string, label: string) => {
+    setState((s) => ({
+      actors: s.actors.map((a) => a.id === actorId ? {
+        ...a, useCases: a.useCases.map((uc) => uc.id === ucId ? { ...uc, label } : uc),
+      } : a),
+    }))
+  }
+  const [showImport, setShowImport] = useState(false)
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <button onClick={addActor} className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
+          {t('editor.addActor')}
+        </button>
+        <button onClick={() => setShowImport(true)} className="px-3 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 text-gray-500">
+          {t('editor.quickImport')}
+        </button>
+      </div>
+      {state.actors.map((actor) => (
+        <ActorSection key={actor.id} actor={actor} editingId={editingId} setEditingId={setEditingId}
+          onRename={(l) => renameActor(actor.id, l)} onRemove={() => removeActor(actor.id)}
+          onAddUc={(id, l) => addUseCase(actor.id, id, l)} onRemoveUc={(id) => removeUseCase(actor.id, id)}
+          onRenameUc={(id, l) => renameUseCase(actor.id, id, l)}
+          onMoveUc={(from, to) => moveUseCase(actor.id, from, to)} />
+      ))}
+      <button onClick={() => onApply(useCaseToJson(state))}
+        className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
+        {t('editor.apply')}
+      </button>
+      {showImport && (
+        <QuickImport title="{t('editor.quickImport')}用例" example={`管理员 业主管理 维修人员管理 公寓设施管理
+业主 个人中心 报修服务 维修评价`}
+          onClose={() => setShowImport(false)}
+          onImport={(lines) => {
+            lines.forEach((words) => {
+              if (words.length >= 1) {
+                const actorId = uid(); const actorLabel = words[0]
+                const useCases = words.slice(1).map((w) => ({ id: uid(), label: w }))
+                setState((s) => ({ actors: [...s.actors, { id: actorId, label: actorLabel, useCases }] }))
+              }
+            })
+            setShowImport(false)
+          }} />
+      )}
+    </div>
+  )
+}
+function ActorSection({ actor, editingId, setEditingId, onRename, onRemove, onAddUc, onRemoveUc, onRenameUc, onMoveUc }: {
+  actor: UseCaseState['actors'][number]
+  editingId: string | null; setEditingId: (id: string | null) => void
+  onRename: (label: string) => void; onRemove: () => void
+  onAddUc: (id: string, label: string) => void; onRemoveUc: (id: string) => void
+  onRenameUc: (id: string, label: string) => void
+  onMoveUc: (from: number, to: number) => void
+}) {
+  const [newLabel, setNewLabel] = useState('')
+  const [focusedIdx, setFocusedIdx] = useState<number | null>(null)
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const add = () => {
+    const label = newLabel.trim()
+    if (!label) return
+    onAddUc(uid(), label)
+    setNewLabel('')
+  }
+  return (
+    <div className="border border-gray-200 rounded-lg bg-white">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
+        <span className="text-xs text-gray-400 mr-1">角色</span>
+        <input className="flex-1 text-sm bg-transparent focus:outline-none font-medium"
+          value={actor.label} onChange={(e) => onRename(e.target.value)} />
+        <span className="text-xs text-gray-400">({actor.useCases.length})</span>
+        <button onClick={onRemove} className="text-gray-400 hover:text-red-500 text-sm ml-1" title="删除角色">×</button>
+      </div>
+      <div className="px-3 py-2">
+        <div className="flex gap-1 mb-2">
+          <input className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-black"
+            placeholder="添加用例..." value={newLabel}
+            onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add() }} />
+          <button onClick={add} className="px-2 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">添加</button>
+        </div>
+        <div className="space-y-1">
+          {actor.useCases.map((uc, i) => (
+            <div key={uc.id} draggable={editingId !== uc.id} tabIndex={0}
+              className={`flex items-center justify-between px-2 py-1 bg-gray-50 border rounded text-sm cursor-default transition-colors ${focusedIdx === i ? 'border-black ring-1 ring-black' : 'border-gray-200'} ${dragIdx === i ? 'opacity-40' : ''}`}
+              onDoubleClick={() => setEditingId(uc.id)}
+              onDragStart={() => { if (editingId === uc.id) return; setDragIdx(i) }} onDragOver={(e) => e.preventDefault()}
+              onDrop={() => { if (dragIdx !== null && dragIdx !== i) onMoveUc(dragIdx, i); setDragIdx(null) }}
+              onDragEnd={() => setDragIdx(null)}
+              onFocus={() => setFocusedIdx(i)} onBlur={() => setFocusedIdx(null)}
+              onKeyDown={(e) => {
+                if ((e.key === 'Delete' || e.key === 'Backspace') && editingId !== uc.id) onRemoveUc(uc.id)
+                if (e.key === 'Enter') setEditingId(uc.id)
+              }}>
+              <span className="text-xs text-gray-300 mr-1 cursor-grab select-none">⋮⋮</span>
+              {editingId === uc.id ? (
+                <InlineEdit value={uc.label} className="flex-1"
+                  onSave={(v) => { onRenameUc(uc.id, v); setEditingId(null) }}
+                  onDelete={() => { onRemoveUc(uc.id); setEditingId(null) }}
+                  onTab={() => {
+                    if (i + 1 < actor.useCases.length) { setEditingId(actor.useCases[i + 1].id) }
+                    else { const id = uid(); onAddUc(id, ''); setTimeout(() => setEditingId(id), 0) }
+                  }} />
+              ) : (<span className="flex-1">{uc.label}</span>)}
+              <button onClick={() => onRemoveUc(uc.id)} className="text-gray-400 hover:text-red-500 text-sm ml-1 shrink-0" title="删除">×</button>
+            </div>
+          ))}
+          {actor.useCases.length === 0 && (
+            <div className="text-xs text-gray-400 text-center py-2">尚无用例，在上方输入添加</div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+function updateTreeNode(node: TreeNode, targetId: string, fn: (n: TreeNode) => TreeNode): TreeNode {
+  if (node.id === targetId) return fn(node)
+  return { ...node, children: node.children.map((c) => updateTreeNode(c, targetId, fn)) }
+}
+function deleteTreeNode(node: TreeNode, targetId: string): TreeNode | null {
+  if (node.id === targetId) return null
+  return { ...node, children: node.children.map((c) => deleteTreeNode(c, targetId)).filter((c): c is TreeNode => c !== null) }
+}
+function getSiblingGroups(node: TreeNode, groups: Map<string, string[]>) {
+  if (node.children.length > 0) groups.set(node.id, node.children.map((c) => c.id))
+  node.children.forEach((c) => getSiblingGroups(c, groups))
+}
+function TreeEditor({ root: initialRoot, onApply }: { root: TreeNode; onApply: (json: string) => void }) {
+  const { t } = useTranslation()
+  const [root, setRoot] = useState<TreeNode>(initialRoot)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [showImport, setShowImport] = useState(false)
+  const [fontSize, setFontSize] = useState(initialRoot.fontSize || 14)
+  const [spacing, setSpacing] = useState(initialRoot.spacing || 26)
+  const handleAddChild = (parentId: string, label: string) => {
+    setRoot((prev) => updateTreeNode(prev, parentId, (node) => ({ ...node, children: [...node.children, { id: uid(), label, vertical: false, children: [] }] })))
+  }
+  const handleDelete = (nodeId: string) => {
+    setRoot((prev) => deleteTreeNode(prev, nodeId) ?? prev)
+    if (editingId === nodeId) setEditingId(null)
+  }
+  const handleRename = (nodeId: string, label: string) => {
+    setRoot((prev) => updateTreeNode(prev, nodeId, (node) => ({ ...node, label })))
+  }
+  const siblingGroups = new Map<string, string[]>()
+  getSiblingGroups(root, siblingGroups)
+  const handleTabFrom = (nodeId: string) => {
+    for (const [parentId, siblings] of siblingGroups) {
+      const idx = siblings.indexOf(nodeId)
+      if (idx !== -1) {
+        if (idx + 1 < siblings.length) { setEditingId(siblings[idx + 1]) }
+        else { const id = uid(); setRoot((prev) => updateTreeNode(prev, parentId, (n) => ({ ...n, children: [...n.children, { id, label: '', vertical: false, children: [] }] }))); setTimeout(() => setEditingId(id), 0) }
+        return
+      }
+    }
+    setEditingId(null)
+  }
+  return (
+    <div>
+      <button onClick={() => setShowImport(true)}
+        className="w-full py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 text-gray-500 mb-3">
+        {t('editor.quickImport')}
+      </button>
+      <div className="flex items-center gap-3 mb-3 px-1 text-xs text-gray-500">
+        <label className="flex items-center gap-1">
+          字号 <input type="number" min={10} max={22} value={fontSize}
+            className="w-12 px-1 py-0.5 border border-gray-300 rounded text-center text-xs"
+            onChange={(e) => setFontSize(Number(e.target.value) || 14)} />
+        </label>
+        <label className="flex items-center gap-1">
+          间距 <input type="number" min={16} max={50} value={spacing}
+            className="w-12 px-1 py-0.5 border border-gray-300 rounded text-center text-xs"
+            onChange={(e) => setSpacing(Number(e.target.value) || 26)} />
+        </label>
+      </div>
+      <TreeNodeRow node={root} depth={0} editingId={editingId} onStartEdit={setEditingId}
+        onAddChild={handleAddChild} onDelete={handleDelete} onRename={handleRename} onTab={handleTabFrom} />
+      <button onClick={() => onApply(treeToJson(root, fontSize, spacing))}
+        className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800 mt-4">
+        {t('editor.apply')}
+      </button>
+      {showImport && (
+        <QuickImport title="{t('editor.quickImport')}结构" example={`公寓报修管理系统
+管理员 业主管理 维修人员管理 公寓设施管理 报修服务管理 维修服务评价 修改密码
+业主 个人中心 报修服务 维修评价 修改密码
+维修人员 个人资料管理 报修服务订单 维修评价 修改密码`}
+          onClose={() => setShowImport(false)}
+          onImport={(lines) => {
+            if (lines.length < 1) return
+            const rootLabel = lines[0][0] || '系统'
+            const children: TreeNode[] = []
+            lines.slice(1).forEach((words) => {
+              if (words.length < 1) return
+              children.push({
+                id: uid(), label: words[0], vertical: false,
+                children: words.slice(1).map((w) => ({ id: uid(), label: w, vertical: true, children: [] })),
+              })
+            })
+            setRoot({ id: uid(), label: rootLabel, vertical: false, children })
+            setShowImport(false)
+          }} />
+      )}
+    </div>
+  )
+}
+const typeColors: Record<number, string> = {
+  0: 'text-blue-700 bg-blue-50 border-blue-200',
+  1: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+}
+function TreeNodeRow({ node, depth, editingId, onStartEdit, onAddChild, onDelete, onRename, onTab }: {
+  node: TreeNode; depth: number; editingId: string | null
+  onStartEdit: (id: string) => void; onAddChild: (pid: string, label: string) => void
+  onDelete: (id: string) => void; onRename: (id: string, label: string) => void; onTab: (id: string) => void
+}) {
+  const { t } = useTranslation()
+  const [adding, setAdding] = useState(false)
+  const [childLabel, setChildLabel] = useState('')
+  const isEditing = editingId === node.id
+  const wrap = depth === 1
+  const tc = typeColors[depth] || 'text-gray-500 bg-gray-100 border-gray-200'
+  const lbl = depth === 0 ? t('tree.root') : depth === 1 ? t('tree.module') : t('tree.func')
+  const confirmAdd = () => {
+    const label = childLabel.trim()
+    if (!label) return
+    onAddChild(node.id, label)
+    setChildLabel(''); setAdding(false)
+  }
+  const row = (
+    <>
+      <div className="flex items-center gap-1.5 py-1 px-2 rounded hover:bg-gray-100/70 group" style={{ marginLeft: depth >= 2 ? 0 : depth * 16 }}>
+        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${tc}`}>
+          {lbl}
+        </span>
+        {isEditing ? (
+          <InlineEdit value={node.label} className="flex-1"
+            onSave={(v) => { onRename(node.id, v); onStartEdit('') }}
+            onDelete={() => { onDelete(node.id); onStartEdit('') }}
+            onTab={() => onTab(node.id)} />
+        ) : (
+          <span className={`flex-1 text-sm truncate cursor-default ${depth === 0 ? 'font-semibold' : ''}`}
+            onDoubleClick={() => onStartEdit(node.id)}>{node.label}</span>
+        )}
+        <button onClick={() => setAdding(!adding)} className="text-gray-400 hover:text-black text-sm px-1 opacity-0 group-hover:opacity-100 transition-opacity" title={t('tree.addChild')}>+</button>
+        {depth > 0 && (
+          <button onClick={() => onDelete(node.id)} className="text-gray-400 hover:text-red-500 text-sm px-1 opacity-0 group-hover:opacity-100 transition-opacity" title="删除">×</button>
+        )}
+      </div>
+      {adding && (
+        <div className="flex gap-1 my-1" style={{ marginLeft: depth >= 2 ? 16 : (depth + 1) * 16 }}>
+          <input autoFocus className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-black"
+            placeholder={depth < 1 ? '模块名称...' : '功能名称...'} value={childLabel}
+            onChange={(e) => setChildLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') confirmAdd(); if (e.key === 'Escape') { setAdding(false); setChildLabel('') } }} />
+          <button onClick={confirmAdd} className="px-2 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">确定</button>
+          <button onClick={() => { setAdding(false); setChildLabel('') }} className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100">取消</button>
+        </div>
+      )}
+      {node.children.length > 0 && (
+        <div className={wrap ? 'ml-6 mt-1 border border-gray-200 rounded-lg p-2 pb-0.5' : ''}>
+          {node.children.map((child) => (
+            <TreeNodeRow key={child.id} node={child} depth={depth + 1} editingId={editingId}
+              onStartEdit={onStartEdit} onAddChild={onAddChild} onDelete={onDelete} onRename={onRename} onTab={onTab} />
+          ))}
+        </div>
+      )}
+    </>
+  )
+  return row
+}
+function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply: (json: string) => void }) {
+  const { t } = useTranslation()
+  const [state, setState] = useState<EntityState>(initial)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [showImport, setShowImport] = useState(false)
+  const addEntity = () => {
+    setState((s) => ({ entities: [...s.entities, { id: uid(), label: '新实体', attributes: [] }] }))
+  }
+  const removeEntity = (entId: string) => {
+    setState((s) => ({ entities: s.entities.filter((e) => e.id !== entId) }))
+  }
+  const renameEntity = (entId: string, label: string) => {
+    setState((s) => ({ entities: s.entities.map((e) => e.id === entId ? { ...e, label } : e) }))
+  }
+  const addAttr = (entId: string, id: string, label: string) => {
+    setState((s) => ({
+      entities: s.entities.map((e) => e.id === entId ? { ...e, attributes: [...e.attributes, { id, label }] } : e),
+    }))
+  }
+  const removeAttr = (entId: string, attrId: string) => {
+    setState((s) => ({
+      entities: s.entities.map((e) => e.id === entId ? { ...e, attributes: e.attributes.filter((a) => a.id !== attrId) } : e),
+    }))
+    if (editingId === attrId) setEditingId(null)
+  }
+  const renameAttr = (entId: string, attrId: string, label: string) => {
+    setState((s) => ({
+      entities: s.entities.map((e) => e.id === entId ? {
+        ...e, attributes: e.attributes.map((a) => a.id === attrId ? { ...a, label } : a),
+      } : e),
+    }))
+  }
+  const moveAttr = (entId: string, from: number, to: number) => {
+    setState((s) => ({
+      entities: s.entities.map((e) => {
+        if (e.id !== entId) return e
+        const arr = [...e.attributes]; const [item] = arr.splice(from, 1); arr.splice(to, 0, item)
+        return { ...e, attributes: arr }
+      }),
+    }))
+  }
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <button onClick={addEntity} className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
+          + 添加实体
+        </button>
+        <button onClick={() => setShowImport(true)} className="px-3 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 text-gray-500">
+          {t('editor.quickImport')}
+        </button>
+      </div>
+      {state.entities.map((ent) => (
+        <div key={ent.id} className="border border-gray-200 rounded-lg bg-white">
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
+            <span className="text-xs text-gray-400 mr-1">实体</span>
+            <input className="flex-1 text-sm bg-transparent focus:outline-none font-medium"
+              value={ent.label} onChange={(e) => renameEntity(ent.id, e.target.value)} />
+            <span className="text-xs text-gray-400">({ent.attributes.length})</span>
+            <button onClick={() => removeEntity(ent.id)} className="text-gray-400 hover:text-red-500 text-sm ml-1" title="删除实体">×</button>
+          </div>
+          <div className="px-3 py-2">
+            <AttrList attributes={ent.attributes} editingId={editingId} setEditingId={setEditingId}
+              onAdd={(id, l) => addAttr(ent.id, id, l)} onRemove={(id) => removeAttr(ent.id, id)}
+              onRename={(id, l) => renameAttr(ent.id, id, l)} onMove={(f, t) => moveAttr(ent.id, f, t)} />
+          </div>
+        </div>
+      ))}
+      <button onClick={() => onApply(entityToJson(state))}
+        className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
+        {t('editor.apply')}
+      </button>
+      {showImport && (
+        <QuickImport title="{t('editor.quickImport')}实体" example={`用户 用户ID 用户名 密码 手机号 角色
+维修人员 员工ID 姓名 技能类型 联系电话 当前状态`}
+          onClose={() => setShowImport(false)}
+          onImport={(lines) => {
+            lines.forEach((words) => {
+              if (words.length >= 1) {
+                const entId = uid(); const entLabel = words[0]
+                const attrs = words.slice(1).map((w) => ({ id: uid(), label: w }))
+                setState((s) => ({ entities: [...s.entities, { id: entId, label: entLabel, attributes: attrs }] }))
+              }
+            })
+            setShowImport(false)
+          }} />
+      )}
+    </div>
+  )
+}
+function QuickImport({ title, example, onClose, onImport }: {
+  title: string; example: string; onClose: () => void
+  onImport: (lines: string[][]) => void
+}) {
+  const [text, setText] = useState('')
+  const handleImport = () => {
+    const lines = text.trim().split('\n').filter(Boolean).map((line) => line.trim().split(/\s+/))
+    if (lines.length > 0) onImport(lines)
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-xl p-5 w-[420px]" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold">{title}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-black text-lg leading-none">×</button>
+        </div>
+        <p className="text-xs text-gray-500 mb-2">每行一个角色/实体，空格分隔：第一个词为名称，后续为元素</p>
+        <textarea className="w-full h-28 text-xs font-mono border border-gray-300 rounded p-2 mb-2 focus:outline-none focus:ring-1 focus:ring-black"
+          placeholder={`示例:\n${example}`} value={text}
+          onChange={(e) => setText(e.target.value)} />
+        <div className="text-[10px] text-gray-400 mb-3 bg-gray-50 rounded p-2">
+          示例格式：{example.split('\n').map((line, i) => <span key={i}>{i > 0 && <br />}{line}</span>)}
+        </div>
+        <div className="flex gap-2">
+          <button onClick={handleImport} className="flex-1 py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">导入</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100">取消</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+function AttrList({ attributes, editingId, setEditingId, onAdd, onRemove, onRename, onMove }: {
+  attributes: { id: string; label: string }[]
+  editingId: string | null; setEditingId: (id: string | null) => void
+  onAdd: (id: string, label: string) => void; onRemove: (id: string) => void
+  onRename: (id: string, label: string) => void; onMove: (from: number, to: number) => void
+}) {
+  const [newLabel, setNewLabel] = useState('')
+  const [focusedIdx, setFocusedIdx] = useState<number | null>(null)
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const add = () => {
+    const label = newLabel.trim()
+    if (!label) return
+    onAdd(uid(), label)
+    setNewLabel('')
+  }
+  return (
+    <div>
+      <div className="flex gap-1 mb-2">
+        <input className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-black"
+          placeholder="添加属性..." value={newLabel}
+          onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add() }} />
+        <button onClick={add} className="px-2 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">添加</button>
+      </div>
+      <div className="space-y-1">
+        {attributes.map((a, i) => (
+          <div key={a.id} draggable={editingId !== a.id} tabIndex={0}
+            className={`flex items-center justify-between px-2 py-1 bg-gray-50 border rounded text-sm cursor-default transition-colors ${focusedIdx === i ? 'border-black ring-1 ring-black' : 'border-gray-200'} ${dragIdx === i ? 'opacity-40' : ''}`}
+            onDoubleClick={() => setEditingId(a.id)}
+            onFocus={() => setFocusedIdx(i)} onBlur={() => setFocusedIdx(null)}
+            onKeyDown={(e) => {
+              if ((e.key === 'Delete' || e.key === 'Backspace') && editingId !== a.id) onRemove(a.id)
+              if (e.key === 'Enter') setEditingId(a.id)
+            }}
+            onDragStart={() => { if (editingId === a.id) return; setDragIdx(i) }} onDragOver={(e) => e.preventDefault()}
+            onDrop={() => { if (dragIdx !== null && dragIdx !== i) onMove(dragIdx, i); setDragIdx(null) }}
+            onDragEnd={() => setDragIdx(null)}>
+            <span className="text-xs text-gray-300 mr-1 cursor-grab select-none">⋮⋮</span>
+            {editingId === a.id ? (
+              <InlineEdit value={a.label} className="flex-1"
+                onSave={(v) => { onRename(a.id, v); setEditingId(null) }}
+                onDelete={() => { onRemove(a.id); setEditingId(null) }}
+                onTab={() => {
+                  if (i + 1 < attributes.length) { setEditingId(attributes[i + 1].id) }
+                  else { const id = uid(); onAdd(id, ''); setTimeout(() => setEditingId(id), 0) }
+                }} />
+            ) : (<span className="flex-1">{a.label}</span>)}
+            <button onClick={() => onRemove(a.id)} className="text-gray-400 hover:text-red-500 text-sm ml-1 shrink-0" title="删除">×</button>
+          </div>
+        ))}
+        {attributes.length === 0 && (
+          <div className="text-xs text-gray-400 text-center py-2">尚无属性，在上方输入添加</div>
+        )}
+      </div>
+    </div>
+  )
+}
+import { useState, useEffect } from 'react'
+import { toPng } from 'html-to-image'
+import { useCaseSvg, structureSvg, entitySvg } from '../../utils/svgExport'
+import { useCaseDrawio, structureDrawio, entityDrawio } from '../../utils/drawioExport'
+import type { Node, Edge } from '@xyflow/react'
+import type { DiagramNodeData } from '../../types/diagram'
+interface Props {
+  active: string
+  config: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }
+  flowRef: React.RefObject<HTMLDivElement | null>
+  onClose: () => void
+}
+function buildGroups(nodes: Node<DiagramNodeData>[], edges: Edge[], active: string) {
+  if (active === 'structure') {
+    const childrenMap = new Map<string, string[]>()
+    const parentMap = new Map<string, string>()
+    edges.forEach((e) => {
+      const list = childrenMap.get(e.source) || []
+      list.push(e.target); childrenMap.set(e.source, list)
+      parentMap.set(e.target, e.source)
+    })
+    const rootId = nodes.find((n) => !parentMap.has(n.id))?.id
+    if (!rootId) return [{ ids: nodes.map((n) => n.id) }]
+    const lv1 = childrenMap.get(rootId) || []
+    return lv1.map((modId) => {
+      const ids = [modId]
+      const queue = [...(childrenMap.get(modId) || [])]
+      while (queue.length) { const c = queue.shift()!; ids.push(c); queue.push(...(childrenMap.get(c) || [])) }
+      return { ids }
+    })
+  }
+  const sources = nodes.filter((n) => active === 'usecase' ? n.type === 'actor' : n.type === 'rectangle')
+  return sources.map((src) => {
+    const ids = [src.id]
+    edges.filter((e) => e.source === src.id).forEach((e) => ids.push(e.target))
+    return { ids }
+  })
+}
+export default function ExportModal({ active, config, flowRef, onClose }: Props) {
+  const [fullUrl, setFullUrl] = useState('')
+  const [splitUrls, setSplitUrls] = useState<string[]>([])
+  const [splitLabels, setSplitLabels] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+  const groups = buildGroups(config.nodes, config.edges, active)
+  const nodeMap = new Map(config.nodes.map((n) => [n.id, n]))
+  const getBox = (nodeIds: string[]) => {
+    const el = flowRef.current?.querySelector('.react-flow') as HTMLElement | null
+    if (!el) return null
+    const flowRect = el.getBoundingClientRect()
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    nodeIds.forEach((id) => {
+      const dom = el.querySelector(`[data-id="${id}"]`) as HTMLElement | null
+      if (!dom) return
+      const r = dom.getBoundingClientRect()
+      minX = Math.min(minX, r.left - flowRect.left)
+      minY = Math.min(minY, r.top - flowRect.top)
+      maxX = Math.max(maxX, r.right - flowRect.left)
+      maxY = Math.max(maxY, r.bottom - flowRect.top)
+    })
+    return minX === Infinity ? null : { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
+  }
+  const crop = (img: HTMLImageElement, box: { x: number; y: number; w: number; h: number }, pad: number, scale = 2) => {
+    const sx = Math.max(0, box.x - pad) * scale
+    const sy = Math.max(0, box.y - pad) * scale
+    const sw = (box.w + pad * 2) * scale
+    const sh = (box.h + pad * 2) * scale
+    const canvas = document.createElement('canvas')
+    canvas.width = sw; canvas.height = sh
+    const ctx = canvas.getContext('2d')!
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh)
+    return canvas.toDataURL('image/png')
+  }
+  useEffect(() => {
+    ;(async () => {
+      setLoading(true)
+      const el = flowRef.current?.querySelector('.react-flow') as HTMLElement | null
+      if (!el) { setLoading(false); return }
+      const bg = el.querySelector('.react-flow__background') as HTMLElement | null
+      if (bg) bg.style.display = 'none'
+      let full = ''
+      try { full = await toPng(el, { backgroundColor: '#ffffff', pixelRatio: 2 }) }
+      finally { if (bg) bg.style.display = '' }
+      const img = new Image()
+      await new Promise<void>((r) => { img.onload = () => r(); img.src = full })
+      const allBox = getBox(config.nodes.map((n) => n.id))
+      setFullUrl(allBox ? crop(img, allBox, 20) : full)
+      const urls: string[] = []; const labels: string[] = []
+      groups.forEach((g) => {
+        const box = getBox(g.ids)
+        if (!box) return
+        urls.push(crop(img, box, 16))
+        labels.push((nodeMap.get(g.ids[0])?.data.label as string) || '')
+      })
+      setSplitUrls(urls); setSplitLabels(labels)
+      setLoading(false)
+    })()
+  }, [])
+  const dl = (url: string, name: string, ext = 'png') => {
+    const a = document.createElement('a'); a.download = `${name}.${ext}`; a.href = url; a.click()
+  }
+  const handleSvg = () => {
+    let svg = ''
+    if (active === 'usecase') svg = useCaseSvg(config.nodes, config.edges)
+    else if (active === 'structure') svg = structureSvg(config.nodes, config.edges)
+    else svg = entitySvg(config.nodes, config.edges)
+    if (!svg) return
+    const blob = new Blob([svg], { type: 'image/svg+xml' })
+    dl(URL.createObjectURL(blob), `diagram-${active}`, 'svg')
+    URL.revokeObjectURL(blob as unknown as string)
+  }
+  const splitCols = Math.ceil(Math.sqrt(splitUrls.length))
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-xl w-[96vw] max-w-[1400px] max-h-[94vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-semibold">导出图片</h3>
+            <button onClick={() => dl(fullUrl, `全图-${active}`)} disabled={!fullUrl}
+              className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800 disabled:opacity-30">下载全图 PNG</button>
+            <button onClick={handleSvg}
+              className="px-3 py-1 text-xs border border-black rounded hover:bg-gray-50">下载 SVG</button>
+            <button onClick={() => {
+              let xml = ''
+              if (active === 'usecase') xml = useCaseDrawio(config.nodes, config.edges)
+              else if (active === 'structure') xml = structureDrawio(config.nodes, config.edges)
+              else xml = entityDrawio(config.nodes, config.edges)
+              if (!xml) return
+              const blob = new Blob([xml], { type: 'application/xml' })
+              dl(URL.createObjectURL(blob), `diagram-${active}`, 'drawio')
+            }}
+              className="px-3 py-1 text-xs border border-black rounded hover:bg-gray-50">下载 Drawio</button>
+            <button onClick={() => splitUrls.forEach((url, i) => setTimeout(() => dl(url, `${splitLabels[i] || `分图${i + 1}`}`), i * 200))}
+              disabled={splitUrls.length === 0}
+              className="px-3 py-1 text-xs border border-black rounded hover:bg-gray-50 disabled:opacity-30">下载分图 ({splitUrls.length})</button>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-black text-lg leading-none">×</button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading && <div className="text-center text-sm text-gray-400 py-8">生成中...</div>}
+          {!loading && (
+            <div className="flex gap-4">
+              {}
+              <div className="flex-[2] min-w-0">
+                <p className="text-xs text-gray-500 mb-2 text-center font-medium">全图</p>
+                {fullUrl && <img src={fullUrl} alt="全图" className="w-full border border-gray-200 rounded" />}
+              </div>
+              <div className="w-px bg-gray-200 shrink-0" />
+              {}
+              <div className="flex-[3] min-w-0">
+                <p className="text-xs text-gray-500 mb-2 text-center font-medium">分图 ({splitUrls.length})</p>
+                <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${splitCols}, 1fr)` }}>
+                  {splitUrls.map((url, i) => (
+                    <div key={i}>
+                      <img src={url} alt={splitLabels[i]} className="w-full border border-gray-200 rounded" />
+                      <p className="text-[10px] text-gray-400 mt-0.5 text-center">{splitLabels[i]}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="bg-blue-50 border border-blue-200 text-blue-700 text-xs px-3 py-2 rounded mt-4 text-center">
+            右键图片 → 复制图片，直接在论文/文档中粘贴即可。分图下载较多时浏览器可能拦截，请留意地址栏提示。
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+import type { Node, Edge } from '@xyflow/react'
+import type { DiagramNodeData } from '../../types/diagram'
+interface Props {
+  configs: Record<string, { nodes: Node<DiagramNodeData>[]; edges: Edge[] }>
+  onClose: () => void
+}
+function configToQuickText(nodes: Node<DiagramNodeData>[], edges: Edge[], type: string): string {
+  if (type === 'structure') {
+    const childrenMap = new Map<string, string[]>()
+    const parentMap = new Map<string, string>()
+    edges.forEach((e) => {
+      const list = childrenMap.get(e.source) || []
+      list.push(e.target); childrenMap.set(e.source, list)
+      parentMap.set(e.target, e.source)
+    })
+    const rootId = nodes.find((n) => !parentMap.has(n.id))?.id
+    if (!rootId) return ''
+    const rootNode = nodes.find((n) => n.id === rootId)
+    const lines = [rootNode?.data.label || '系统']
+    const lv1 = childrenMap.get(rootId) || []
+    lv1.forEach((modId) => {
+      const modNode = nodes.find((n) => n.id === modId)
+      const funcs = (childrenMap.get(modId) || []).map((fid) => nodes.find((n) => n.id === fid)?.data.label || '')
+      lines.push([modNode?.data.label || '', ...funcs].join(' '))
+    })
+    return lines.join('\n')
+  }
+  const sourceType = type === 'usecase' ? 'actor' : 'rectangle'
+  const sources = nodes.filter((n) => n.type === sourceType)
+  return sources.map((src) => {
+    const targets = edges
+      .filter((e) => e.source === src.id)
+      .map((e) => nodes.find((n) => n.id === e.target)?.data.label || '')
+    return [src.data.label, ...targets].join(' ')
+  }).join('\n')
+}
+export default function ExportDataModal({ configs, onClose }: Props) {
+  const ucText = configToQuickText(configs.usecase.nodes, configs.usecase.edges, 'usecase')
+  const stText = configToQuickText(configs.structure.nodes, configs.structure.edges, 'structure')
+  const enText = configToQuickText(configs.entity.nodes, configs.entity.edges, 'entity')
+  const mdText = `# 用例图\n${ucText}\n\n# 功能结构图\n${stText}\n\n# 实体属性图\n${enText}\n`
+  const dl = (content: string, name: string, type: string) => {
+    const blob = new Blob([content], { type })
+    const a = document.createElement('a')
+    a.download = name; a.href = URL.createObjectURL(blob); a.click()
+    URL.revokeObjectURL(a.href)
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-xl w-[700px] max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-semibold">导出数据</h3>
+            <button onClick={() => {
+              const flat: Record<string, any> = {}
+              for (const [k, cfg] of Object.entries(configs)) {
+                flat[k] = {
+                  nodes: cfg.nodes.map((n) => ({ id: n.id, type: n.type, label: n.data.label, rx: n.data.rx, ry: n.data.ry, vertical: n.data.vertical })),
+                  edges: cfg.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+                }
+              }
+              dl(JSON.stringify(flat, null, 2), 'diagram-configs.json', 'application/json')
+            }}
+              className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">下载 JSON</button>
+            <button onClick={() => dl(mdText, 'diagram-quick-format.md', 'text/markdown')}
+              className="px-3 py-1 text-xs border border-black rounded hover:bg-gray-50">下载快速格式 (.md)</button>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-black text-lg leading-none">×</button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {[
+            { label: '用例图', text: ucText, placeholder: '管理员 业主管理 维修人员管理\n业主 个人中心 报修服务' },
+            { label: '功能结构图', text: stText, placeholder: '公寓报修管理系统\n管理员 业主管理 维修人员管理\n业主 个人中心 报修服务' },
+            { label: '实体属性图', text: enText, placeholder: '用户 用户ID 用户名 密码\n维修人员 员工ID 姓名 技能类型' },
+          ].map(({ label, text, placeholder }) => (
+            <div key={label}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-gray-600">{label}</span>
+                <button onClick={() => navigator.clipboard.writeText(text)}
+                  className="text-[10px] text-gray-400 hover:text-gray-600">复制</button>
+              </div>
+              <textarea readOnly className="w-full h-24 text-xs font-mono border border-gray-200 rounded p-2 bg-gray-50 resize-none focus:outline-none"
+                value={text} placeholder={placeholder} />
+            </div>
+          ))}
+          <p className="text-[10px] text-gray-400 text-center">
+            以上为快速导入格式：空格分隔，首词为主名称。可在对应图表编辑面板中一键导入。
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+import { memo } from 'react'
+import { Handle, Position } from '@xyflow/react'
+import type { NodeProps, Node } from '@xyflow/react'
+import type { DiagramNodeData } from '../../types/diagram'
+function UseCaseEllipseNode({ data }: NodeProps<Node<DiagramNodeData>>) {
+  const rx = (data.rx as number) ?? 60
+  const ry = (data.ry as number) ?? 15
+  const w = rx * 2
+  const h = ry * 2
+  return (
+    <div style={{ width: w, height: h, position: 'relative' }}>
+      <svg width={w} height={h} style={{ position: 'absolute', top: 0, left: 0, overflow: 'visible' }}>
+        <ellipse cx={rx} cy={ry} rx={rx} ry={ry} fill="#fff" stroke="#000" strokeWidth={1.2} />
+      </svg>
+      <div
+        style={{
+          position: 'absolute', top: 0, left: 0, width: w, height: h,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 14, whiteSpace: 'nowrap', pointerEvents: 'none',
+        }}
+      >
+        {data.label}
+      </div>
+      <Handle type="target" position={Position.Left} id="l" style={{ visibility: 'hidden' }} />
+    </div>
+  )
+}
+export default memo(UseCaseEllipseNode)
+import { memo } from 'react'
+import { Handle, Position } from '@xyflow/react'
+import type { NodeProps, Node } from '@xyflow/react'
+import type { DiagramNodeData } from '../../types/diagram'
+function RectangleNode({ data }: NodeProps<Node<DiagramNodeData>>) {
+  const vertical = data.vertical as boolean
+  const fs = (data.fontSize as number) || 14
+  const vh = (data.nodeH as number) || 110
+  const ls = Math.max(1, fs * 0.15)
+  if (vertical) {
+    return (
+      <div
+        style={{
+          width: Math.max(18, fs * 1.2), height: vh,
+          border: '1px solid #000', background: '#fff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          position: 'relative',
+        }}
+      >
+        <span style={{ writingMode: 'vertical-rl', letterSpacing: ls, fontSize: fs }}>
+          {data.label}
+        </span>
+        <Handle type="target" position={Position.Top} id="t" style={{ visibility: 'hidden' }} />
+        <Handle type="source" position={Position.Bottom} id="bs" style={{ visibility: 'hidden' }} />
+      </div>
+    )
+  }
+  const hh = (data.nodeH as number) || 0
+  return (
+    <div
+      style={{
+        border: '1px solid #000', background: '#fff',
+        padding: `${Math.round(fs * 0.4)}px ${Math.round(fs * 1.1)}px`,
+        minWidth: 80, height: hh || undefined,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: fs, position: 'relative',
+        boxSizing: 'border-box',
+      }}
+    >
+      <Handle type="target" position={Position.Top} id="t" style={{ visibility: 'hidden' }} />
+      <Handle type="source" position={Position.Bottom} id="bs" style={{ visibility: 'hidden' }} />
+      <span>{data.label}</span>
+    </div>
+  )
+}
+export default memo(RectangleNode)
+import { memo } from 'react'
+import { Handle, Position } from '@xyflow/react'
+import type { NodeProps, Node } from '@xyflow/react'
+import type { DiagramNodeData } from '../../types/diagram'
+function EntityNode({ data }: NodeProps<Node<DiagramNodeData>>) {
+  return (
+    <div
+      style={{
+        border: '1px solid #000',
+        background: '#fff',
+        padding: '6px 16px',
+        minWidth: 80,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 14,
+        position: 'relative',
+      }}
+    >
+      {}
+      <Handle
+        type="source"
+        position={Position.Left}
+        id="c"
+        style={{ top: '50%', left: '50%', visibility: 'hidden' }}
+      />
+      <span>{data.label}</span>
+    </div>
+  )
+}
+export default memo(EntityNode)
+import { memo } from 'react'
+import { Handle, Position } from '@xyflow/react'
+import type { NodeProps, Node } from '@xyflow/react'
+import type { DiagramNodeData } from '../../types/diagram'
+function AttributeEllipseNode({ data }: NodeProps<Node<DiagramNodeData>>) {
+  const rx = (data.rx as number) ?? 45
+  const ry = (data.ry as number) ?? 18
+  const w = rx * 2
+  const h = ry * 2
+  return (
+    <div style={{ width: w, height: h, position: 'relative' }}>
+      <svg width={w} height={h} style={{ position: 'absolute', top: 0, left: 0, overflow: 'visible' }}>
+        <ellipse cx={rx} cy={ry} rx={rx} ry={ry} fill="#fff" stroke="#000" strokeWidth={1.2} />
+      </svg>
+      <div
+        style={{
+          position: 'absolute', top: 0, left: 0, width: w, height: h,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 14, whiteSpace: 'nowrap', pointerEvents: 'none',
+        }}
+      >
+        {data.label}
+      </div>
+      <Handle type="target" position={Position.Left} id="c" style={{ top: '50%', left: '50%', visibility: 'hidden' }} />
+    </div>
+  )
+}
+export default memo(AttributeEllipseNode)
+import { memo } from 'react'
+import { Handle, Position } from '@xyflow/react'
+import type { NodeProps, Node } from '@xyflow/react'
+import type { DiagramNodeData } from '../../types/diagram'
+function ActorNode({ data }: NodeProps<Node<DiagramNodeData>>) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <div style={{ width: 55, height: 125, position: 'relative' }}>
+        <svg
+          viewBox="0 0 55 125"
+          width="55"
+          height="125"
+          fill="none"
+          stroke="#000"
+          strokeWidth="1.5"
+        >
+          <circle cx="27" cy="12" r="10" />
+          <line x1="27" y1="22" x2="27" y2="68" />
+          {}
+          <line x1="0" y1="40" x2="55" y2="40" />
+          <line x1="27" y1="68" x2="10" y2="102" />
+          <line x1="27" y1="68" x2="44" y2="102" />
+        </svg>
+        {}
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="arm"
+          style={{
+            top: 40,
+            width: 0,
+            height: 0,
+            minWidth: 0,
+            minHeight: 0,
+            border: 'none',
+            background: 'transparent',
+            transform: 'none',
+            visibility: 'hidden',
+          }}
+        />
+      </div>
+      <span style={{ fontSize: 14, marginTop: 4 }}>{data.label}</span>
+    </div>
+  )
+}
+export default memo(ActorNode)
+import { BaseEdge } from '@xyflow/react'
+import type { EdgeProps } from '@xyflow/react'
+export default function StructureEdge({
+  sourceX, sourceY,
+  targetX, targetY,
+  style,
+}: EdgeProps) {
+  const offset = Math.abs(targetY - sourceY) / 2
+  const path = `M ${sourceX} ${sourceY} L ${sourceX} ${sourceY + offset} L ${targetX} ${sourceY + offset} L ${targetX} ${targetY}`
+  return <BaseEdge path={path} style={style} />
+}
+import { useMemo } from 'react'
+import {
+  ReactFlow,
+  Background,
+  MarkerType,
+  type Edge,
+  type Node,
+} from '@xyflow/react'
+import '@xyflow/react/dist/style.css'
+import ActorNode from '../nodes/ActorNode'
+import UseCaseEllipseNode from '../nodes/UseCaseEllipseNode'
+import type { DiagramNodeData } from '../../types/diagram'
+const nodeTypes = { actor: ActorNode, usecase: UseCaseEllipseNode }
+interface ActorGroup {
+  actor: Node<DiagramNodeData>
+  useCases: Node<DiagramNodeData>[]
+  edges: Edge[]
+}
+interface Props {
+  groups: ActorGroup[]
+  showGrid?: boolean
+}
+export default function UseCaseDiagram({ groups, showGrid = true }: Props) {
+  const positionedNodes = useMemo(() => {
+    const textW = (s: string) => { let w = 0; for (const ch of s) w += ch.charCodeAt(0) > 127 ? 14 : 8; return w }
+    const cols = Math.ceil(Math.sqrt(groups.length))
+    const actorOff = 40
+    const ucOff = 280
+    const cellW = 380
+    const ucSpacing = 48
+    const ucMinH = 30
+    const rowGap = 50
+    const rows: ActorGroup[][] = []
+    for (let i = 0; i < groups.length; i += cols) {
+      rows.push(groups.slice(i, i + cols))
+    }
+    const rowHeights = rows.map((row) => {
+      const maxUc = Math.max(...row.map((g) => g.useCases.length), 1)
+      return (maxUc - 1) * ucSpacing + ucMinH + rowGap
+    })
+    const result: Node<DiagramNodeData>[] = []
+    let y = 40
+    rows.forEach((row, ri) => {
+      const rowH = rowHeights[ri]
+      const blockH = rowH - rowGap
+      row.forEach((g, ci) => {
+        const cx = ci * cellW
+        const totalH = (g.useCases.length - 1) * ucSpacing
+        const actorY = y + blockH / 2 - 70
+        const startY = y + blockH / 2 - totalH / 2
+        result.push({ ...g.actor, position: { x: cx + actorOff, y: actorY } })
+        const maxW = g.useCases.reduce((m, uc) => Math.max(m, textW(uc.data.label as string)), 0)
+        const rx = Math.max(55, Math.ceil(maxW / 2) + 18)
+        g.useCases.forEach((uc, ui) => {
+          const ry = (uc.data.ry as number) ?? 15
+          uc.data = { ...uc.data, rx, ry }
+          result.push({ ...uc, position: { x: cx + ucOff - rx, y: startY + ui * ucSpacing - ry } })
+        })
+      })
+      y += rowH
+    })
+    return result
+  }, [groups])
+  const styledEdges = useMemo(() => {
+    const all: Edge[] = []
+    groups.forEach((g) => {
+      g.edges.forEach((e) => {
+        all.push({
+          ...e,
+          type: 'straight' as const,
+          sourceHandle: 'arm',
+          targetHandle: 'l',
+          style: { stroke: '#000', strokeWidth: 1 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: '#000' },
+        })
+      })
+    })
+    return all
+  }, [groups])
+  return (
+    <ReactFlow
+      nodes={positionedNodes}
+      edges={styledEdges}
+      nodeTypes={nodeTypes}
+      fitView
+      fitViewOptions={{ padding: 0.3 }}
+      nodesDraggable={false}
+      nodesConnectable={false}
+      elementsSelectable={false}
+    >
+      {showGrid && <Background color="#e5e5e5" gap={20} />}
+    </ReactFlow>
+  )
+}
+import { useMemo } from 'react'
+import type { Edge, Node } from '@xyflow/react'
+import { structureSvg } from '../../utils/svgExport'
+import type { DiagramNodeData } from '../../types/diagram'
+interface Props {
+  nodes: Node<DiagramNodeData>[]
+  edges: Edge[]
+}
+export default function StructureDiagram({ nodes, edges }: Props) {
+  const svg = useMemo(() => structureSvg(nodes, edges), [nodes, edges])
+  const blobUrl = useMemo(() => {
+    const blob = new Blob([svg], { type: 'image/svg+xml' })
+    return URL.createObjectURL(blob)
+  }, [svg])
+  return (
+    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <img src={blobUrl} alt="功能结构图" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+    </div>
+  )
+}
+import { useMemo } from 'react'
+import {
+  ReactFlow,
+  Background,
+  type Edge,
+  type Node,
+} from '@xyflow/react'
+import '@xyflow/react/dist/style.css'
+import EntityNode from '../nodes/EntityNode'
+import AttributeEllipseNode from '../nodes/AttributeEllipseNode'
+import type { DiagramNodeData } from '../../types/diagram'
+const nodeTypes = { rectangle: EntityNode, ellipse: AttributeEllipseNode }
+interface EntityGroup {
+  entity: Node<DiagramNodeData>
+  attributes: Node<DiagramNodeData>[]
+  edges: Edge[]
+}
+interface Props {
+  groups: EntityGroup[]
+  showGrid?: boolean
+}
+export default function EntityAttributeDiagram({ groups, showGrid = true }: Props) {
+  const positionedNodes = useMemo(() => {
+    const cols = Math.ceil(Math.sqrt(groups.length))
+    const maxN = Math.max(...groups.map((g) => g.attributes.length), 1)
+    const orbitA = 100 + maxN * 10
+    const orbitB = Math.round(orbitA * 0.55)
+    const cellW = orbitA * 2 + 100
+    const cellH = orbitB * 2 + 180
+    const cxOff = cellW / 2
+    const cyOff = orbitB + 50
+    const rows: EntityGroup[][] = []
+    for (let i = 0; i < groups.length; i += cols) rows.push(groups.slice(i, i + cols))
+    const result: Node<DiagramNodeData>[] = []
+    rows.forEach((row, ri) => {
+      row.forEach((g, ci) => {
+        const baseX = ci * cellW
+        const baseY = ri * cellH
+        const cx = baseX + cxOff
+        const cy = baseY + cyOff
+        const n = g.attributes.length
+        const maxW = g.attributes.reduce((m, a) => {
+          const s = a.data.label as string
+          let w = 0; for (const ch of s) w += ch.charCodeAt(0) > 127 ? 14 : 8
+          return Math.max(m, w)
+        }, 0)
+        const dynRx = Math.max(45, Math.ceil(maxW / 2) + 14)
+        const dynRy = 18
+        const a = 100 + n * 10
+        const b = Math.round(a * 0.55)
+        const attrNodes = g.attributes.map((attr, i) => {
+          const angle = -Math.PI / 2 + (2 * Math.PI * i) / n
+          const nodeCx = cx + a * Math.cos(angle)
+          const nodeCy = cy + b * Math.sin(angle)
+          attr.data = { ...attr.data, rx: dynRx, ry: dynRy }
+          return { ...attr, position: { x: nodeCx - dynRx, y: nodeCy - dynRy }, zIndex: 10 }
+        })
+        const entityNode = { ...g.entity, position: { x: cx - 45, y: cy - 18 }, zIndex: 20 }
+        result.push(entityNode, ...attrNodes)
+      })
+    })
+    return result
+  }, [groups])
+  const styledEdges = useMemo(() => {
+    const all: Edge[] = []
+    groups.forEach((g) => {
+      g.edges.forEach((e) => {
+        all.push({
+          ...e,
+          type: 'straight' as const,
+          sourceHandle: 'c',
+          targetHandle: 'c',
+          style: { stroke: '#000', strokeWidth: 1.2 },
+          zIndex: 0,
+        })
+      })
+    })
+    return all
+  }, [groups])
+  return (
+    <ReactFlow nodes={positionedNodes} edges={styledEdges} nodeTypes={nodeTypes}
+      fitView fitViewOptions={{ padding: 0.3 }}
+      nodesDraggable={false} nodesConnectable={false} elementsSelectable={false}>
+      {showGrid && <Background color="#e5e5e5" gap={20} />}
+    </ReactFlow>
+  )
+}

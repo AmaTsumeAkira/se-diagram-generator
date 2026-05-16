@@ -446,7 +446,7 @@ function TreeNodeRow({ node, depth, editingId, onStartEdit, onAddChild, onDelete
           <span className={`flex-1 text-sm truncate cursor-default ${depth === 0 ? 'font-semibold' : ''}`}
             onDoubleClick={() => onStartEdit(node.id)}>{node.label}</span>
         )}
-        <button onClick={() => setAdding(!adding)} className="text-gray-400 hover:text-black text-sm px-1 opacity-0 group-hover:opacity-100 transition-opacity" title={t('tree.addChild')}>+</button>
+        {depth < 2 && <button onClick={() => setAdding(!adding)} className="text-gray-400 hover:text-black text-sm px-1 opacity-0 group-hover:opacity-100 transition-opacity" title={t('tree.addChild')}>+</button>}
         {depth > 0 && (
           <button onClick={() => onDelete(node.id)} className="text-gray-400 hover:text-red-500 text-sm px-1 opacity-0 group-hover:opacity-100 transition-opacity" title="删除">×</button>
         )}

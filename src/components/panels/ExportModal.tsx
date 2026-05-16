@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { toPng } from 'html-to-image'
 import { useCaseSvg, structureSvg, entitySvg } from '../../utils/svgExport'
+import { useCaseDrawio, structureDrawio, entityDrawio } from '../../utils/drawioExport'
 import type { Node, Edge } from '@xyflow/react'
 import type { DiagramNodeData } from '../../types/diagram'
 
@@ -48,7 +49,7 @@ export default function ExportModal({ active, config, flowRef, onClose }: Props)
   const nodeMap = new Map(config.nodes.map((n) => [n.id, n]))
 
   const getBox = (nodeIds: string[]) => {
-    const el = flowRef.current?.querySelector('.react-flow') as HTMLElement | null
+    const el = (flowRef.current?.querySelector('.react-flow') || flowRef.current?.querySelector('.drawio-wrapper')) as HTMLElement | null
     if (!el) return null
     const flowRect = el.getBoundingClientRect()
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
@@ -80,6 +81,27 @@ export default function ExportModal({ active, config, flowRef, onClose }: Props)
   useEffect(() => {
     ;(async () => {
       setLoading(true)
+
+      // 结构图：iframe 跨域无法截图，用 SVG 转 Canvas
+      if (active === 'structure') {
+        const svg = structureSvg(config.nodes, config.edges)
+        const img = new Image()
+        const svgBlob = new Blob([svg], { type: 'image/svg+xml' })
+        const url = URL.createObjectURL(svgBlob)
+        await new Promise<void>((r) => { img.onload = () => r(); img.src = url })
+        const canvas = document.createElement('canvas')
+        const scale = 2
+        canvas.width = img.naturalWidth * scale; canvas.height = img.naturalHeight * scale
+        const ctx = canvas.getContext('2d')!
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height)
+        ctx.drawImage(img, 0, 0)
+        setFullUrl(canvas.toDataURL('image/png'))
+        setSplitUrls([]); setSplitLabels([])
+        URL.revokeObjectURL(url)
+        setLoading(false)
+        return
+      }
+
       const el = flowRef.current?.querySelector('.react-flow') as HTMLElement | null
       if (!el) { setLoading(false); return }
 
@@ -92,11 +114,8 @@ export default function ExportModal({ active, config, flowRef, onClose }: Props)
       const img = new Image()
       await new Promise<void>((r) => { img.onload = () => r(); img.src = full })
 
-      // 全图裁剪到内容边界
       const allBox = getBox(config.nodes.map((n) => n.id))
       setFullUrl(allBox ? crop(img, allBox, 20) : full)
-
-      // 分图
       const urls: string[] = []; const labels: string[] = []
       groups.forEach((g) => {
         const box = getBox(g.ids)
@@ -135,10 +154,20 @@ export default function ExportModal({ active, config, flowRef, onClose }: Props)
             <button onClick={() => dl(fullUrl, `全图-${active}`)} disabled={!fullUrl}
               className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800 disabled:opacity-30">下载全图 PNG</button>
             <button onClick={handleSvg}
-              className="px-3 py-1 text-xs border border-black rounded hover:bg-gray-50">下载全图 SVG</button>
-            <button onClick={() => splitUrls.forEach((url, i) => setTimeout(() => dl(url, `${splitLabels[i] || `分图${i + 1}`}`), i * 200))}
+              className="px-3 py-1 text-xs border border-black rounded hover:bg-gray-50">下载 SVG</button>
+            <button onClick={() => {
+              let xml = ''
+              if (active === 'usecase') xml = useCaseDrawio(config.nodes, config.edges)
+              else if (active === 'structure') xml = structureDrawio(config.nodes, config.edges)
+              else xml = entityDrawio(config.nodes, config.edges)
+              if (!xml) return
+              const blob = new Blob([xml], { type: 'application/xml' })
+              dl(URL.createObjectURL(blob), `diagram-${active}`, 'drawio')
+            }}
+              className="px-3 py-1 text-xs border border-black rounded hover:bg-gray-50">下载 Drawio</button>
+            {active !== 'structure' && <button onClick={() => splitUrls.forEach((url, i) => setTimeout(() => dl(url, `${splitLabels[i] || `分图${i + 1}`}`), i * 200))}
               disabled={splitUrls.length === 0}
-              className="px-3 py-1 text-xs border border-black rounded hover:bg-gray-50 disabled:opacity-30">下载分图 ({splitUrls.length})</button>
+              className="px-3 py-1 text-xs border border-black rounded hover:bg-gray-50 disabled:opacity-30">下载分图 ({splitUrls.length})</button>}
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-black text-lg leading-none">×</button>
         </div>
@@ -149,15 +178,15 @@ export default function ExportModal({ active, config, flowRef, onClose }: Props)
           {!loading && (
             <div className="flex gap-4">
               {/* 左：全图 */}
-              <div className="flex-[2] min-w-0">
+              <div className={active === 'structure' ? 'w-full' : 'flex-[2] min-w-0'}>
                 <p className="text-xs text-gray-500 mb-2 text-center font-medium">全图</p>
                 {fullUrl && <img src={fullUrl} alt="全图" className="w-full border border-gray-200 rounded" />}
               </div>
 
-              <div className="w-px bg-gray-200 shrink-0" />
+              {active !== 'structure' && <div className="w-px bg-gray-200 shrink-0" />}
 
               {/* 右：分图网格 */}
-              <div className="flex-[3] min-w-0">
+              {active !== 'structure' && <div className="flex-[3] min-w-0">
                 <p className="text-xs text-gray-500 mb-2 text-center font-medium">分图 ({splitUrls.length})</p>
                 <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${splitCols}, 1fr)` }}>
                   {splitUrls.map((url, i) => (
@@ -167,7 +196,7 @@ export default function ExportModal({ active, config, flowRef, onClose }: Props)
                     </div>
                   ))}
                 </div>
-              </div>
+              </div>}
             </div>
           )}
 
