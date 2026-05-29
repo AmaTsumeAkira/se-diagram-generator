@@ -14,8 +14,10 @@
     "@vercount/react": "^0.1.4",
     "@xyflow/react": "^12.10.2",
     "dagre": "^0.8.5",
+    "file-saver": "^2.0.5",
     "html-to-image": "^1.11.13",
     "i18next": "^26.0.8",
+    "jszip": "^3.10.1",
     "lucide-react": "^1.14.0",
     "pako": "^2.1.0",
     "react": "^19.2.5",
@@ -26,6 +28,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/dagre": "^0.7.54",
+    "@types/file-saver": "^2.0.7",
     "@types/node": "^24.12.2",
     "@types/pako": "^2.0.4",
     "@types/react": "^19.2.14",

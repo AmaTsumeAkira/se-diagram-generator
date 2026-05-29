@@ -5,6 +5,14 @@ export function useUndoRedo<T>(initial: T) {
   const [present, setPresent] = useState<T>(initial)
   const [future, setFuture] = useState<T[]>([])
   const skipRef = useRef(false)
+  const presentRef = useRef(present)
+  const pastRef = useRef(past)
+  const futureRef = useRef(future)
+
+  // Keep refs in sync
+  useEffect(() => { presentRef.current = present }, [present])
+  useEffect(() => { pastRef.current = past }, [past])
+  useEffect(() => { futureRef.current = future }, [future])
 
   const push = useCallback((val: T) => {
     if (skipRef.current) {
@@ -12,28 +20,30 @@ export function useUndoRedo<T>(initial: T) {
       setPresent(val)
       return
     }
-    setPast((p) => [...p, present])
+    setPast((p) => [...p, presentRef.current])
     setPresent(val)
     setFuture([])
-  }, [present])
+  }, [])
 
   const undo = useCallback(() => {
-    if (past.length === 0) return
-    const prev = past[past.length - 1]
-    setPast((p) => p.slice(0, -1))
-    setFuture((f) => [present, ...f])
+    const p = pastRef.current
+    if (p.length === 0) return
+    const prev = p[p.length - 1]
+    setPast((pp) => pp.slice(0, -1))
+    setFuture((f) => [presentRef.current, ...f])
     skipRef.current = true
     setPresent(prev)
-  }, [past, present])
+  }, [])
 
   const redo = useCallback(() => {
-    if (future.length === 0) return
-    const next = future[0]
-    setFuture((f) => f.slice(1))
-    setPast((p) => [...p, present])
+    const f = futureRef.current
+    if (f.length === 0) return
+    const next = f[0]
+    setFuture((ff) => ff.slice(1))
+    setPast((p) => [...p, presentRef.current])
     skipRef.current = true
     setPresent(next)
-  }, [future, present])
+  }, [])
 
   // Ctrl+Z / Ctrl+Y
   useEffect(() => {

@@ -3,7 +3,15 @@ import { initReactI18next } from 'react-i18next'
 import zh from './zh'
 import en from './en'
 
-const saved = localStorage.getItem('lang') || 'zh'
+function safeGetItem(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+const saved = safeGetItem('lang') || 'zh'
 
 i18n.use(initReactI18next).init({
   resources: { zh: { translation: zh }, en: { translation: en } },

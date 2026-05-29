@@ -69,8 +69,8 @@ export default function UseCaseDiagram({ groups, showGrid = true }: Props) {
 
         g.useCases.forEach((uc, ui) => {
           const ry = (uc.data.ry as number) ?? 15
-          uc.data = { ...uc.data, rx, ry }
-          result.push({ ...uc, position: { x: cx + ucOff - rx, y: startY + ui * ucSpacing - ry } })
+          const updatedUc = { ...uc, data: { ...uc.data, rx, ry } }
+          result.push({ ...updatedUc, position: { x: cx + ucOff - rx, y: startY + ui * ucSpacing - ry } })
         })
       })
 

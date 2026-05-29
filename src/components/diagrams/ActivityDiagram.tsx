@@ -2,12 +2,13 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as pako from 'pako'
 import type { Edge, Node } from '@xyflow/react'
-import { structureDrawio } from '../../utils/drawioExport'
+import { activityDrawio } from '../../utils/drawioExport'
 import type { DiagramNodeData } from '../../types/diagram'
 
 interface Props {
   nodes: Node<DiagramNodeData>[]
   edges: Edge[]
+  showGrid?: boolean
 }
 
 function encodeDiagram(xml: string): string {
@@ -17,9 +18,9 @@ function encodeDiagram(xml: string): string {
   return encodeURIComponent(btoa(bin))
 }
 
-export default function StructureDiagram({ nodes, edges }: Props) {
+export default function ActivityDiagram({ nodes, edges }: Props) {
   const { t } = useTranslation()
-  const xml = useMemo(() => structureDrawio(nodes, edges), [nodes, edges])
+  const xml = useMemo(() => activityDrawio(nodes, edges), [nodes, edges])
   const src = useMemo(() => {
     const enc = encodeDiagram(xml)
     return `https://viewer.diagrams.net/?lightbox=1&layers=0&nav=0#R${enc}`
@@ -29,7 +30,7 @@ export default function StructureDiagram({ nodes, edges }: Props) {
     <iframe
       src={src}
       style={{ width: '100%', height: '100%', border: 'none' }}
-      title={t('app.structure')}
+      title={t('app.activity')}
     />
   )
 }

@@ -89,30 +89,35 @@ export function layoutTreeStructure(
 
   // 构建父子关系
   const childrenMap = new Map<string, string[]>()
-  const parentMap = new Map<string, string | null>()
+  const parentMap = new Map<string, string[]>()
 
-  nodes.forEach((n) => parentMap.set(n.id, null))
+  nodes.forEach((n) => parentMap.set(n.id, []))
   edges.forEach((e) => {
     const list = childrenMap.get(e.source) || []
     list.push(e.target)
     childrenMap.set(e.source, list)
-    parentMap.set(e.target, e.source)
+    const parents = parentMap.get(e.target) || []
+    parents.push(e.source)
+    parentMap.set(e.target, parents)
   })
 
-  const rootId = nodes.find((n) => parentMap.get(n.id) === null)?.id
-  if (!rootId) return { nodes, edges }
+  // 支持多根（森林）
+  const rootIds = nodes.filter((n) => (parentMap.get(n.id) || []).length === 0).map((n) => n.id)
+  if (rootIds.length === 0) return { nodes, edges }
 
-  // BFS 分层
+  // BFS 分层（带已访问检查）
   const levels = new Map<string, number>()
-  const queue: string[] = [rootId]
-  levels.set(rootId, 0)
+  const queue: string[] = [...rootIds]
+  rootIds.forEach((id) => levels.set(id, 0))
 
   while (queue.length > 0) {
     const id = queue.shift()!
     const lv = levels.get(id)!
     ;(childrenMap.get(id) || []).forEach((cid) => {
-      levels.set(cid, lv + 1)
-      queue.push(cid)
+      if (!levels.has(cid)) {
+        levels.set(cid, lv + 1)
+        queue.push(cid)
+      }
     })
   }
 
@@ -123,11 +128,11 @@ export function layoutTreeStructure(
     levelNodes.set(lv, list)
   })
 
-  const maxLevel = Math.max(...levelNodes.keys())
+  const maxLevel = levelNodes.size > 0 ? Math.max(...levelNodes.keys()) : 0
   const nodeMap = new Map(nodes.map((n) => [n.id, { ...n, data: { ...n.data } }]))
 
-  // 读取根节点的设置参数
-  const rootNd = nodeMap.get(rootId)
+  // 读取第一个根节点的设置参数
+  const rootNd = nodeMap.get(rootIds[0])
   const userFontSize = (rootNd?.data?.fontSize as number) || 14
   const userSpacing = (rootNd?.data?.spacing as number) || 26
   if (userSpacing !== o.lv3Gap) o.lv3Gap = userSpacing
@@ -156,7 +161,8 @@ export function layoutTreeStructure(
   const textW = (s: string) => { let w = 0; for (const ch of s) w += ch.charCodeAt(0) > 127 ? userFontSize : userFontSize * 0.6; return Math.ceil(w) }
   let maxRootW = o.rootW; let maxLv2W = o.lv2W
   nodeMap.forEach((nd, id) => {
-    const lv = levels.get(id)!
+    const lv = levels.get(id)
+    if (lv === undefined) return
     nd.data = { ...nd.data, fontSize: userFontSize }
     if (lv === 0) { nd.data.nodeH = o.rootH; nd.data.nodeW = textW(String(nd.data.label)) + padH * 2; maxRootW = Math.max(maxRootW, nd.data.nodeW as number) }
     else if (lv === 1) { nd.data.nodeH = o.lv2H; nd.data.nodeW = textW(String(nd.data.label)) + padH * 2; maxLv2W = Math.max(maxLv2W, nd.data.nodeW as number) }
@@ -165,15 +171,20 @@ export function layoutTreeStructure(
 
   const positioned = new Map<string, { x: number; y: number }>()
 
-  // 计算子树宽度 (叶子用 lv3W，其它用 lv2W)
+  // 计算子树宽度 (叶子用 lv3W，其它用 lv2W) - 带环检测
+  const calcVisited = new Set<string>()
   function calcSubtreeWidth(id: string): number {
+    if (calcVisited.has(id)) return o.lv3W
+    calcVisited.add(id)
     const kids = childrenMap.get(id) || []
     if (kids.length === 0) {
       const lv = levels.get(id) || 0
+      calcVisited.delete(id)
       return lv >= 2 ? o.lv3W : o.lv2W
     }
     const sum = kids.reduce((s, k) => s + calcSubtreeWidth(k), 0)
     const gaps = (kids.length - 1) * o.lv3Gap
+    calcVisited.delete(id)
     return Math.max(o.lv2W, sum + gaps)
   }
 
@@ -186,9 +197,9 @@ export function layoutTreeStructure(
 
   // 动态计算根节点 X，使其居中对齐整棵树
   const rootX = lv1TotalW / 2
-  const rootNd2 = nodeMap.get(rootId)
+  const rootNd2 = nodeMap.get(rootIds[0])
   const rw = (rootNd2?.data?.nodeW as number) || o.rootW
-  positioned.set(rootId, { x: rootX - rw / 2, y: o.rootY })
+  positioned.set(rootIds[0], { x: rootX - rw / 2, y: o.rootY })
 
   let currentX = 0
   lv1Ids.forEach((id, i) => {
@@ -206,8 +217,9 @@ export function layoutTreeStructure(
 
     const groups = new Map<string, string[]>()
     ids.forEach((id) => {
-      const p = parentMap.get(id)
-      if (!p) return
+      const parents = parentMap.get(id) || []
+      if (parents.length === 0) return
+      const p = parents[0]
       const list = groups.get(p) || []
       list.push(id)
       groups.set(p, list)

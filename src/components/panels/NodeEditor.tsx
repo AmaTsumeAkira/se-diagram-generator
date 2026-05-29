@@ -29,13 +29,74 @@ export interface EntityState {
   }[]
 }
 
-export type DiagramType = 'usecase' | 'structure' | 'entity'
+// ====== 新增图表状态接口 ======
+
+export interface SequenceState {
+  participants: {
+    id: string
+    label: string
+    participantType: 'actor' | 'system' | 'database'
+  }[]
+  messages: {
+    id: string
+    source: string
+    target: string
+    label: string
+    messageType: 'sync' | 'async' | 'return'
+  }[]
+}
+
+export interface ClassState {
+  classes: {
+    id: string
+    label: string
+    attributes: string[]
+    methods: string[]
+    isAbstract?: boolean
+    stereotype?: string
+  }[]
+}
+
+export interface ActivityState {
+  nodes: {
+    id: string
+    label: string
+    nodeType: 'start' | 'end' | 'action' | 'decision'
+  }[]
+  edges: {
+    id: string
+    source: string
+    target: string
+    guard?: string
+  }[]
+}
+
+export interface DeploymentState {
+  nodes: {
+    id: string
+    label: string
+    nodeType: 'server' | 'database'
+    technology?: string
+  }[]
+  edges: {
+    id: string
+    source: string
+    target: string
+    label?: string
+  }[]
+}
+
+export type DiagramType = 'usecase' | 'structure' | 'entity' | 'sequence' | 'class' | 'activity' | 'deployment'
 
 interface Props {
   type: DiagramType
   useCase?: UseCaseState
   tree?: TreeNode
   entity?: EntityState
+  sequence?: SequenceState
+  classState?: ClassState
+  activity?: ActivityState
+  deployment?: DeploymentState
   onApply: (json: string) => void
 }
 
@@ -87,12 +148,454 @@ function entityToJson(state: EntityState): string {
   return JSON.stringify({ nodes, edges }, null, 2)
 }
 
+// ====== 新增图表 JSON generators ======
+
+function sequenceToJson(state: SequenceState): string {
+  const nodes: any[] = []
+  state.participants.forEach((p) => {
+    nodes.push({ id: p.id, type: 'participant', label: p.label, participantType: p.participantType })
+  })
+  const edges: any[] = (state.messages || []).map((m) => ({
+    id: m.id,
+    source: m.source,
+    target: m.target,
+    label: m.label,
+    data: { messageType: m.messageType || 'sync' },
+  }))
+  return JSON.stringify({ nodes, edges }, null, 2)
+}
+
+function classToJson(state: ClassState, relations?: { id: string; source: string; target: string; relationType: string; label?: string }[]): string {
+  const nodes: any[] = []
+  state.classes.forEach((cls) => {
+    nodes.push({
+      id: cls.id,
+      type: 'class',
+      label: cls.label,
+      attributes: cls.attributes,
+      methods: cls.methods,
+      isAbstract: cls.isAbstract,
+      stereotype: cls.stereotype,
+    })
+  })
+  const edges: any[] = (relations || []).map((r) => ({
+    id: r.id,
+    source: r.source,
+    target: r.target,
+    data: { relationType: r.relationType, label: r.label || '' },
+  }))
+  return JSON.stringify({ nodes, edges }, null, 2)
+}
+
+function activityToJson(state: ActivityState): string {
+  const nodes: any[] = []
+  state.nodes.forEach((n) => {
+    nodes.push({ id: n.id, type: n.nodeType, label: n.label })
+  })
+  const edges: any[] = (state.edges || []).map((e) => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+    ...(e.guard && { data: { guard: e.guard } }),
+  }))
+  return JSON.stringify({ nodes, edges }, null, 2)
+}
+
+function deploymentToJson(state: DeploymentState): string {
+  const nodes: any[] = []
+  state.nodes.forEach((n) => {
+    nodes.push({ id: n.id, type: n.nodeType, label: n.label, technology: n.technology })
+  })
+  const edges: any[] = (state.edges || []).map((e) => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+    ...(e.label && { label: e.label }),
+  }))
+  return JSON.stringify({ nodes, edges }, null, 2)
+}
+
+// ====== Mermaid Parser ======
+
+// Name pattern: supports Chinese, Japanese, Korean + ASCII word chars
+const NAME_RE = '[\\u4e00-\\u9fff\\u3040-\\u309f\\u30a0-\\u30ff\\uac00-\\ud7af\\w]+'
+
+function parseMermaid(code: string): SequenceState | null {
+  const lines = code.split('\n').map((l) => l.trim()).filter(Boolean)
+  if (lines.length === 0) return null
+
+  // Find sequenceDiagram block
+  let startIdx = lines.findIndex((l) => l.startsWith('sequenceDiagram'))
+  if (startIdx === -1) {
+    startIdx = 0
+  } else {
+    startIdx += 1
+  }
+
+  const participants: { id: string; label: string; participantType: 'actor' | 'system' | 'database' }[] = []
+  const messages: { id: string; source: string; target: string; label: string; messageType: 'sync' | 'async' | 'return' }[] = []
+  const nameToId = new Map<string, string>()
+
+  const getOrCreateParticipant = (name: string): string => {
+    if (nameToId.has(name)) return nameToId.get(name)!
+    const id = uid()
+    nameToId.set(name, id)
+    participants.push({ id, label: name, participantType: 'system' })
+    return id
+  }
+
+  for (let i = startIdx; i < lines.length; i++) {
+    const line = lines[i]
+
+    // Skip block keywords (with optional labels like "alt 验证成功")
+    if (/^(loop|alt|opt|par|else|end|break|critical|rect|box)\b/.test(line)) continue
+
+    // participant declaration: "participant 客户端" or "participant Alice as A"
+    const partRe = new RegExp(`^participant\\s+(${NAME_RE})(?:\\s+as\\s+(.+))?$`)
+    const partMatch = line.match(partRe)
+    if (partMatch) {
+      const name = partMatch[1]
+      const alias = partMatch[2]?.trim() || name
+      if (!nameToId.has(name)) {
+        const id = uid()
+        nameToId.set(name, id)
+        if (alias !== name) nameToId.set(alias, id)
+        participants.push({ id, label: alias, participantType: 'system' })
+      }
+      continue
+    }
+
+    // Note line: skip
+    if (/^Note\b/i.test(line)) continue
+
+    // autonumber: skip
+    if (/^autonumber\b/i.test(line)) continue
+
+    // activate/deactivate: skip
+    if (/^(activate|deactivate)\b/i.test(line)) continue
+
+    // Message line: "客户端->>服务器: 发送登录请求" or "数据库-->>服务器: 返回数据"
+    const msgRe = new RegExp(`^(${NAME_RE})\\s*(--?>>?|-{1,2}>|-x)\\s*(${NAME_RE})\\s*:\\s*(.+)$`)
+    const msgMatch = line.match(msgRe)
+    if (msgMatch) {
+      const src = msgMatch[1]
+      const arrow = msgMatch[2]
+      const tgt = msgMatch[3]
+      const label = msgMatch[4].trim()
+
+      let messageType: 'sync' | 'async' | 'return' = 'sync'
+      if (arrow.startsWith('--')) messageType = 'return'
+
+      const srcId = getOrCreateParticipant(src)
+      const tgtId = getOrCreateParticipant(tgt)
+      messages.push({ id: uid(), source: srcId, target: tgtId, label, messageType })
+    }
+  }
+
+  if (participants.length === 0) return null
+  return { participants, messages }
+}
+
+function parseMermaidClass(code: string): { classes: { id: string; label: string; attributes: string[]; methods: string[]; isAbstract?: boolean; stereotype?: string }[]; relations: { id: string; source: string; target: string; relationType: string; label?: string }[] } | null {
+  const lines = code.split('\n').map((l) => l.trim()).filter(Boolean)
+  if (lines.length === 0) return null
+
+  let startIdx = lines.findIndex((l) => l.startsWith('classDiagram'))
+  if (startIdx === -1) return null
+  startIdx += 1
+
+  const classes: { id: string; label: string; attributes: string[]; methods: string[]; isAbstract?: boolean; stereotype?: string }[] = []
+  const relations: { id: string; source: string; target: string; relationType: string; label?: string }[] = []
+  const nameToId = new Map<string, string>()
+
+  const getOrCreateClass = (name: string): string => {
+    if (nameToId.has(name)) return nameToId.get(name)!
+    const id = uid()
+    nameToId.set(name, id)
+    classes.push({ id, label: name, attributes: [], methods: [] })
+    return id
+  }
+
+  let currentClass: string | null = null
+  let currentClassId: string | null = null
+
+  const relationPatterns: [RegExp, string][] = [
+    [/\s*<\|--\s*/, 'inheritance'],
+    [/\s*\*--\s*/, 'composition'],
+    [/\s*o--\s*/, 'aggregation'],
+    [/\s*-->\s*/, 'association'],
+    [/\s*\.\.>\s*/, 'dependency'],
+    [/\s*<\|\.\.\s*/, 'implementation'],
+  ]
+
+  for (let i = startIdx; i < lines.length; i++) {
+    const line = lines[i]
+
+    // Class block start: "class ClassName {"
+    const classStartMatch = line.match(/^class\s+(\w[\w]*)\s*\{?$/)
+    if (classStartMatch) {
+      currentClass = classStartMatch[1]
+      currentClassId = getOrCreateClass(currentClass)
+      continue
+    }
+
+    // Class block end
+    if (line === '}') {
+      currentClass = null
+      currentClassId = null
+      continue
+    }
+
+    // Inside a class block: attribute or method
+    if (currentClassId && currentClass) {
+      const cls = classes.find((c) => c.id === currentClassId)
+      if (cls) {
+        // Method: contains parentheses like "+makeSound() void"
+        const methodMatch = line.match(/^[+#-]\s*([\w]+)\s*\([^)]*\)\s*(.*)?$/)
+        if (methodMatch) {
+          cls.methods.push(line.replace(/^[+#-]\s*/, ''))
+          continue
+        }
+        // Attribute: "+String name" or "-int age"
+        const attrMatch = line.match(/^[+#-]\s*(.+)$/)
+        if (attrMatch) {
+          cls.attributes.push(attrMatch[1].trim())
+          continue
+        }
+      }
+    }
+
+    // Relation lines
+    let foundRelation = false
+    for (const [pattern, relType] of relationPatterns) {
+      const relRe = new RegExp(`^(\\w[\\w]*)${pattern.source}(\\w[\\w]*)(?:\\s*:\\s*(.+))?$`)
+      const relMatch = line.match(relRe)
+      if (relMatch) {
+        const srcName = relMatch[1]
+        const tgtName = relMatch[2]
+        const relLabel = relMatch[3]?.trim() || undefined
+        const srcId = getOrCreateClass(srcName)
+        const tgtId = getOrCreateClass(tgtName)
+        relations.push({ id: uid(), source: srcId, target: tgtId, relationType: relType, label: relLabel })
+        foundRelation = true
+        break
+      }
+    }
+    if (foundRelation) continue
+  }
+
+  if (classes.length === 0) return null
+  return { classes, relations }
+}
+
+function parseMermaidActivity(code: string): ActivityState | null {
+  const lines = code.split('\n').map((l) => l.trim()).filter(Boolean)
+  if (lines.length === 0) return null
+
+  let startIdx = lines.findIndex((l) => /^(flowchart|graph)\s+TD/i.test(l))
+  if (startIdx === -1) return null
+  startIdx += 1
+
+  const nodes: ActivityState['nodes'] = []
+  const edges: ActivityState['edges'] = []
+  const nameToId = new Map<string, string>()
+
+  // Parse a node reference like "Start([开始])", "Action1[用户输入]", "Decision{验证?}"
+  // Returns the node ID, creating the node if needed
+  const parseNodeRef = (ref: string): string | null => {
+    ref = ref.trim()
+    if (!ref) return null
+
+    // ([text]) → start/end node
+    let m = ref.match(/^(\w+)\(\[(.+?)\]\)$/)
+    if (m) {
+      const nodeId = m[1]
+      if (!nameToId.has(nodeId)) {
+        const id = uid()
+        nameToId.set(nodeId, id)
+        nodes.push({ id, label: m[2], nodeType: 'start' })
+      }
+      return nameToId.get(nodeId)!
+    }
+
+    // [text] → action node
+    m = ref.match(/^(\w+)\[(.+?)\]$/)
+    if (m) {
+      const nodeId = m[1]
+      if (!nameToId.has(nodeId)) {
+        const id = uid()
+        nameToId.set(nodeId, id)
+        nodes.push({ id, label: m[2], nodeType: 'action' })
+      }
+      return nameToId.get(nodeId)!
+    }
+
+    // {text} → decision node
+    m = ref.match(/^(\w+)\{(.+?)\}$/)
+    if (m) {
+      const nodeId = m[1]
+      if (!nameToId.has(nodeId)) {
+        const id = uid()
+        nameToId.set(nodeId, id)
+        nodes.push({ id, label: m[2], nodeType: 'decision' })
+      }
+      return nameToId.get(nodeId)!
+    }
+
+    // Bare ID (no shape) → action node
+    m = ref.match(/^(\w+)$/)
+    if (m) {
+      const nodeId = m[1]
+      if (!nameToId.has(nodeId)) {
+        const id = uid()
+        nameToId.set(nodeId, id)
+        nodes.push({ id, label: nodeId, nodeType: 'action' })
+      }
+      return nameToId.get(nodeId)!
+    }
+
+    return null
+  }
+
+  for (let i = startIdx; i < lines.length; i++) {
+    const line = lines[i]
+
+    // Split by --> to get edge parts
+    const arrowParts = line.split(/\s*-->\s*/)
+    if (arrowParts.length < 2) continue
+
+    for (let p = 0; p < arrowParts.length - 1; p++) {
+      let leftPart = arrowParts[p]
+      let rightPart = arrowParts[p + 1]
+
+      // Extract guard from rightPart: "|label| NodeRef"
+      let guard: string | undefined
+      const guardMatch = rightPart.match(/^\|([^|]+)\|\s*(.+)$/)
+      if (guardMatch) {
+        guard = guardMatch[1].trim()
+        rightPart = guardMatch[2]
+      }
+
+      // For the first part, the left side might have a guard from previous split - not typical
+      // Parse node references
+      const srcId = parseNodeRef(leftPart)
+      const tgtId = parseNodeRef(rightPart)
+      if (srcId && tgtId) {
+        edges.push({ id: uid(), source: srcId, target: tgtId, guard })
+      }
+    }
+  }
+
+  // Refine start/end: first node with "start" type → start, last → end
+  const startEndNodes = nodes.filter((n) => n.nodeType === 'start')
+  if (startEndNodes.length >= 1) {
+    startEndNodes[0].nodeType = 'start'
+    if (startEndNodes.length >= 2) {
+      startEndNodes[startEndNodes.length - 1].nodeType = 'end'
+    }
+  }
+
+  if (nodes.length === 0) return null
+  return { nodes, edges }
+}
+
+function parseMermaidDeployment(code: string): DeploymentState | null {
+  const lines = code.split('\n').map((l) => l.trim()).filter(Boolean)
+  if (lines.length === 0) return null
+
+  let startIdx = lines.findIndex((l) => /^(flowchart|graph)\s+TD/i.test(l))
+  if (startIdx === -1) return null
+  startIdx += 1
+
+  const nodes: DeploymentState['nodes'] = []
+  const edges: DeploymentState['edges'] = []
+  const nameToId = new Map<string, string>()
+
+  // Parse a node reference like "server[Web服务器]", "db[(MySQL)]"
+  const parseNodeRef = (ref: string): string | null => {
+    ref = ref.trim()
+    if (!ref) return null
+
+    // [(text)] → database node
+    let m = ref.match(/^(\w+)\[\((.+?)\)\]$/)
+    if (m) {
+      const nodeId = m[1]
+      if (!nameToId.has(nodeId)) {
+        const id = uid()
+        nameToId.set(nodeId, id)
+        let label = m[2]
+        let technology: string | undefined
+        const techMatch = label.match(/^(.+?):::(.+)$/)
+        if (techMatch) { label = techMatch[1]; technology = techMatch[2] }
+        nodes.push({ id, label, nodeType: 'database', technology })
+      }
+      return nameToId.get(nodeId)!
+    }
+
+    // [text] → server node
+    m = ref.match(/^(\w+)\[(.+?)\]$/)
+    if (m) {
+      const nodeId = m[1]
+      if (!nameToId.has(nodeId)) {
+        const id = uid()
+        nameToId.set(nodeId, id)
+        let label = m[2]
+        let technology: string | undefined
+        const techMatch = label.match(/^(.+?):::(.+)$/)
+        if (techMatch) { label = techMatch[1]; technology = techMatch[2] }
+        nodes.push({ id, label, nodeType: 'server', technology })
+      }
+      return nameToId.get(nodeId)!
+    }
+
+    // Bare ID → server node
+    m = ref.match(/^(\w+)$/)
+    if (m) {
+      const nodeId = m[1]
+      if (!nameToId.has(nodeId)) {
+        const id = uid()
+        nameToId.set(nodeId, id)
+        nodes.push({ id, label: nodeId, nodeType: 'server' })
+      }
+      return nameToId.get(nodeId)!
+    }
+
+    return null
+  }
+
+  for (let i = startIdx; i < lines.length; i++) {
+    const line = lines[i]
+    const arrowParts = line.split(/\s*-->\s*/)
+    if (arrowParts.length < 2) continue
+
+    for (let p = 0; p < arrowParts.length - 1; p++) {
+      const srcId = parseNodeRef(arrowParts[p])
+      const tgtId = parseNodeRef(arrowParts[p + 1])
+      if (srcId && tgtId) {
+        edges.push({ id: uid(), source: srcId, target: tgtId })
+      }
+    }
+  }
+
+  if (nodes.length === 0) return null
+  return { nodes, edges }
+}
+
 // ====== Main ======
 
-export default function NodeEditor({ type, useCase, tree, entity, onApply }: Props) {
+export default function NodeEditor({ type, useCase, tree, entity, sequence, onApply }: Props) {
   const { t } = useTranslation()
   const { sitePv, pagePv, siteUv } = useVercount()
-  const titleKey = type === 'usecase' ? 'editor.usecaseTitle' : type === 'structure' ? 'editor.structureTitle' : 'editor.entityTitle'
+  const titleKeys: Record<DiagramType, string> = {
+    usecase: 'editor.usecaseTitle',
+    structure: 'editor.structureTitle',
+    entity: 'editor.entityTitle',
+    sequence: 'editor.sequenceTitle',
+    class: 'editor.classTitle',
+    activity: 'editor.activityTitle',
+    deployment: 'editor.deploymentTitle',
+  }
+  const titleKey = titleKeys[type] || 'editor.usecaseTitle'
   return (
     <div className="w-[420px] shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col h-full">
       <div className="px-4 py-3 border-b border-gray-200 bg-white">
@@ -103,6 +606,10 @@ export default function NodeEditor({ type, useCase, tree, entity, onApply }: Pro
         {type === 'usecase' && useCase && <UseCaseEditor state={useCase} onApply={onApply} />}
         {type === 'structure' && tree && <TreeEditor root={tree} onApply={onApply} />}
         {type === 'entity' && entity && <EntityEditor state={entity} onApply={onApply} />}
+        {type === 'sequence' && <SequenceEditor state={sequence} onApply={onApply} />}
+        {type === 'class' && <ClassEditor onApply={onApply} />}
+        {type === 'activity' && <ActivityEditor onApply={onApply} />}
+        {type === 'deployment' && <DeploymentEditor onApply={onApply} />}
       </div>
       <div className="px-3 py-2 border-t border-gray-200 bg-white text-[10px] text-gray-400 text-center">
         <div className="mb-1">{t('stats.sitePv')}: {sitePv} &nbsp; {t('stats.pagePv')}: {pagePv} &nbsp; {t('stats.siteUv')}: {siteUv}</div>
@@ -217,7 +724,7 @@ function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApp
       </button>
 
       {showImport && (
-        <QuickImport title="{t('editor.quickImport')}用例" example={`管理员 业主管理 维修人员管理 公寓设施管理
+        <QuickImport title={t('quickImport.usecaseTitle')} example={`管理员 业主管理 维修人员管理 公寓设施管理
 业主 个人中心 报修服务 维修评价`}
           onClose={() => setShowImport(false)}
           onImport={(lines) => {
@@ -243,6 +750,7 @@ function ActorSection({ actor, editingId, setEditingId, onRename, onRemove, onAd
   onRenameUc: (id: string, label: string) => void
   onMoveUc: (from: number, to: number) => void
 }) {
+  const { t } = useTranslation()
   const [newLabel, setNewLabel] = useState('')
   const [focusedIdx, setFocusedIdx] = useState<number | null>(null)
   const [dragIdx, setDragIdx] = useState<number | null>(null)
@@ -257,18 +765,18 @@ function ActorSection({ actor, editingId, setEditingId, onRename, onRemove, onAd
   return (
     <div className="border border-gray-200 rounded-lg bg-white">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
-        <span className="text-xs text-gray-400 mr-1">角色</span>
+        <span className="text-xs text-gray-400 mr-1">{t('editor.actorLabel')}</span>
         <input className="flex-1 text-sm bg-transparent focus:outline-none font-medium"
           value={actor.label} onChange={(e) => onRename(e.target.value)} />
         <span className="text-xs text-gray-400">({actor.useCases.length})</span>
-        <button onClick={onRemove} className="text-gray-400 hover:text-red-500 text-sm ml-1" title="删除角色">×</button>
+        <button onClick={onRemove} className="text-gray-400 hover:text-red-500 text-sm ml-1" title={t('editor.deleteRole')}>×</button>
       </div>
       <div className="px-3 py-2">
         <div className="flex gap-1 mb-2">
           <input className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-black"
-            placeholder="添加用例..." value={newLabel}
+            placeholder={t('editor.addUseCase')} value={newLabel}
             onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add() }} />
-          <button onClick={add} className="px-2 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">添加</button>
+          <button onClick={add} className="px-2 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">{t('editor.add')}</button>
         </div>
         <div className="space-y-1">
           {actor.useCases.map((uc, i) => (
@@ -293,11 +801,11 @@ function ActorSection({ actor, editingId, setEditingId, onRename, onRemove, onAd
                     else { const id = uid(); onAddUc(id, ''); setTimeout(() => setEditingId(id), 0) }
                   }} />
               ) : (<span className="flex-1">{uc.label}</span>)}
-              <button onClick={() => onRemoveUc(uc.id)} className="text-gray-400 hover:text-red-500 text-sm ml-1 shrink-0" title="删除">×</button>
+              <button onClick={() => onRemoveUc(uc.id)} className="text-gray-400 hover:text-red-500 text-sm ml-1 shrink-0" title={t('editor.delete')}>×</button>
             </div>
           ))}
           {actor.useCases.length === 0 && (
-            <div className="text-xs text-gray-400 text-center py-2">尚无用例，在上方输入添加</div>
+            <div className="text-xs text-gray-400 text-center py-2">{t('editor.noUc')}</div>
           )}
         </div>
       </div>
@@ -363,12 +871,12 @@ function TreeEditor({ root: initialRoot, onApply }: { root: TreeNode; onApply: (
 
       <div className="flex items-center gap-3 mb-3 px-1 text-xs text-gray-500">
         <label className="flex items-center gap-1">
-          字号 <input type="number" min={10} max={22} value={fontSize}
+          {t('editor.fontSize')} <input type="number" min={10} max={22} value={fontSize}
             className="w-12 px-1 py-0.5 border border-gray-300 rounded text-center text-xs"
             onChange={(e) => setFontSize(Number(e.target.value) || 14)} />
         </label>
         <label className="flex items-center gap-1">
-          间距 <input type="number" min={16} max={50} value={spacing}
+          {t('editor.spacing')} <input type="number" min={16} max={50} value={spacing}
             className="w-12 px-1 py-0.5 border border-gray-300 rounded text-center text-xs"
             onChange={(e) => setSpacing(Number(e.target.value) || 26)} />
         </label>
@@ -382,7 +890,7 @@ function TreeEditor({ root: initialRoot, onApply }: { root: TreeNode; onApply: (
       </button>
 
       {showImport && (
-        <QuickImport title="{t('editor.quickImport')}结构" example={`公寓报修管理系统
+        <QuickImport title={t('quickImport.structureTitle')} example={`公寓报修管理系统
 管理员 业主管理 维修人员管理 公寓设施管理 报修服务管理 维修服务评价 修改密码
 业主 个人中心 报修服务 维修评价 修改密码
 维修人员 个人资料管理 报修服务订单 维修评价 修改密码`}
@@ -448,16 +956,16 @@ function TreeNodeRow({ node, depth, editingId, onStartEdit, onAddChild, onDelete
         )}
         {depth < 2 && <button onClick={() => setAdding(!adding)} className="text-gray-400 hover:text-black text-sm px-1 opacity-0 group-hover:opacity-100 transition-opacity" title={t('tree.addChild')}>+</button>}
         {depth > 0 && (
-          <button onClick={() => onDelete(node.id)} className="text-gray-400 hover:text-red-500 text-sm px-1 opacity-0 group-hover:opacity-100 transition-opacity" title="删除">×</button>
+          <button onClick={() => onDelete(node.id)} className="text-gray-400 hover:text-red-500 text-sm px-1 opacity-0 group-hover:opacity-100 transition-opacity" title={t('editor.delete')}>×</button>
         )}
       </div>
       {adding && (
         <div className="flex gap-1 my-1" style={{ marginLeft: depth >= 2 ? 16 : (depth + 1) * 16 }}>
           <input autoFocus className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-black"
-            placeholder={depth < 1 ? '模块名称...' : '功能名称...'} value={childLabel}
+            placeholder={depth < 1 ? t('editor.addModule') : t('editor.addFunction')} value={childLabel}
             onChange={(e) => setChildLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') confirmAdd(); if (e.key === 'Escape') { setAdding(false); setChildLabel('') } }} />
-          <button onClick={confirmAdd} className="px-2 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">确定</button>
-          <button onClick={() => { setAdding(false); setChildLabel('') }} className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100">取消</button>
+          <button onClick={confirmAdd} className="px-2 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">{t('editor.confirm')}</button>
+          <button onClick={() => { setAdding(false); setChildLabel('') }} className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100">{t('editor.cancel')}</button>
         </div>
       )}
       {node.children.length > 0 && (
@@ -483,7 +991,7 @@ function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply
   const [showImport, setShowImport] = useState(false)
 
   const addEntity = () => {
-    setState((s) => ({ entities: [...s.entities, { id: uid(), label: '新实体', attributes: [] }] }))
+    setState((s) => ({ entities: [...s.entities, { id: uid(), label: t('editor.newEntity'), attributes: [] }] }))
   }
   const removeEntity = (entId: string) => {
     setState((s) => ({ entities: s.entities.filter((e) => e.id !== entId) }))
@@ -523,7 +1031,7 @@ function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply
     <div className="space-y-4">
       <div className="flex gap-2">
         <button onClick={addEntity} className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
-          + 添加实体
+          {t('editor.addEntity')}
         </button>
         <button onClick={() => setShowImport(true)} className="px-3 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 text-gray-500">
           {t('editor.quickImport')}
@@ -533,11 +1041,11 @@ function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply
       {state.entities.map((ent) => (
         <div key={ent.id} className="border border-gray-200 rounded-lg bg-white">
           <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
-            <span className="text-xs text-gray-400 mr-1">实体</span>
+            <span className="text-xs text-gray-400 mr-1">{t('editor.entityLabel')}</span>
             <input className="flex-1 text-sm bg-transparent focus:outline-none font-medium"
               value={ent.label} onChange={(e) => renameEntity(ent.id, e.target.value)} />
             <span className="text-xs text-gray-400">({ent.attributes.length})</span>
-            <button onClick={() => removeEntity(ent.id)} className="text-gray-400 hover:text-red-500 text-sm ml-1" title="删除实体">×</button>
+            <button onClick={() => removeEntity(ent.id)} className="text-gray-400 hover:text-red-500 text-sm ml-1" title={t('editor.deleteEntity')}>×</button>
           </div>
           <div className="px-3 py-2">
             <AttrList attributes={ent.attributes} editingId={editingId} setEditingId={setEditingId}
@@ -553,7 +1061,7 @@ function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply
       </button>
 
       {showImport && (
-        <QuickImport title="{t('editor.quickImport')}实体" example={`用户 用户ID 用户名 密码 手机号 角色
+        <QuickImport title={t('quickImport.entityTitle')} example={`用户 用户ID 用户名 密码 手机号 角色
 维修人员 员工ID 姓名 技能类型 联系电话 当前状态`}
           onClose={() => setShowImport(false)}
           onImport={(lines) => {
@@ -577,6 +1085,7 @@ function QuickImport({ title, example, onClose, onImport }: {
   title: string; example: string; onClose: () => void
   onImport: (lines: string[][]) => void
 }) {
+  const { t } = useTranslation()
   const [text, setText] = useState('')
 
   const handleImport = () => {
@@ -591,16 +1100,16 @@ function QuickImport({ title, example, onClose, onImport }: {
           <h3 className="text-sm font-semibold">{title}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-black text-lg leading-none">×</button>
         </div>
-        <p className="text-xs text-gray-500 mb-2">每行一个角色/实体，空格分隔：第一个词为名称，后续为元素</p>
+        <p className="text-xs text-gray-500 mb-2">{t('quickImport.hint')}</p>
         <textarea className="w-full h-28 text-xs font-mono border border-gray-300 rounded p-2 mb-2 focus:outline-none focus:ring-1 focus:ring-black"
           placeholder={`示例:\n${example}`} value={text}
           onChange={(e) => setText(e.target.value)} />
         <div className="text-[10px] text-gray-400 mb-3 bg-gray-50 rounded p-2">
-          示例格式：{example.split('\n').map((line, i) => <span key={i}>{i > 0 && <br />}{line}</span>)}
+          {t('quickImport.formatExample')}{example.split('\n').map((line, i) => <span key={i}>{i > 0 && <br />}{line}</span>)}
         </div>
         <div className="flex gap-2">
-          <button onClick={handleImport} className="flex-1 py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">导入</button>
-          <button onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100">取消</button>
+          <button onClick={handleImport} className="flex-1 py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">{t('quickImport.import')}</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100">{t('quickImport.cancel')}</button>
         </div>
       </div>
     </div>
@@ -613,6 +1122,7 @@ function AttrList({ attributes, editingId, setEditingId, onAdd, onRemove, onRena
   onAdd: (id: string, label: string) => void; onRemove: (id: string) => void
   onRename: (id: string, label: string) => void; onMove: (from: number, to: number) => void
 }) {
+  const { t } = useTranslation()
   const [newLabel, setNewLabel] = useState('')
   const [focusedIdx, setFocusedIdx] = useState<number | null>(null)
   const [dragIdx, setDragIdx] = useState<number | null>(null)
@@ -628,9 +1138,9 @@ function AttrList({ attributes, editingId, setEditingId, onAdd, onRemove, onRena
     <div>
       <div className="flex gap-1 mb-2">
         <input className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-black"
-          placeholder="添加属性..." value={newLabel}
+          placeholder={t('editor.addAttribute')} value={newLabel}
           onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add() }} />
-        <button onClick={add} className="px-2 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">添加</button>
+        <button onClick={add} className="px-2 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">{t('editor.add')}</button>
       </div>
       <div className="space-y-1">
         {attributes.map((a, i) => (
@@ -655,13 +1165,657 @@ function AttrList({ attributes, editingId, setEditingId, onAdd, onRemove, onRena
                   else { const id = uid(); onAdd(id, ''); setTimeout(() => setEditingId(id), 0) }
                 }} />
             ) : (<span className="flex-1">{a.label}</span>)}
-            <button onClick={() => onRemove(a.id)} className="text-gray-400 hover:text-red-500 text-sm ml-1 shrink-0" title="删除">×</button>
+            <button onClick={() => onRemove(a.id)} className="text-gray-400 hover:text-red-500 text-sm ml-1 shrink-0" title={t('editor.delete')}>×</button>
           </div>
         ))}
         {attributes.length === 0 && (
-          <div className="text-xs text-gray-400 text-center py-2">尚无属性，在上方输入添加</div>
+          <div className="text-xs text-gray-400 text-center py-2">{t('editor.noAttr')}</div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ====== Sequence Editor ======
+
+function SequenceEditor({ state: initial, onApply }: { state?: SequenceState; onApply: (json: string) => void }) {
+  const { t } = useTranslation()
+  const [participants, setParticipants] = useState<{ id: string; label: string; participantType: 'actor' | 'system' | 'database' }[]>(initial?.participants || [])
+  const [messages, setMessages] = useState<{ id: string; source: string; target: string; label: string; messageType: 'sync' | 'async' | 'return' }[]>(initial?.messages || [])
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [msgSource, setMsgSource] = useState('')
+  const [msgTarget, setMsgTarget] = useState('')
+  const [msgLabel, setMsgLabel] = useState('')
+  const [dragMsgIdx, setDragMsgIdx] = useState<number | null>(null)
+  const [showMermaid, setShowMermaid] = useState(false)
+  const [mermaidText, setMermaidText] = useState('')
+
+  const addParticipant = () => {
+    const id = uid()
+    setParticipants((p) => [...p, { id, label: t('editor.newParticipant'), participantType: 'system' }])
+    return id
+  }
+
+  const removeParticipant = (id: string) => {
+    setParticipants((p) => p.filter((item) => item.id !== id))
+    setMessages((m) => m.filter((msg) => msg.source !== id && msg.target !== id))
+    if (editingId === id) setEditingId(null)
+  }
+
+  const renameParticipant = (id: string, label: string) => {
+    setParticipants((p) => p.map((item) => item.id === id ? { ...item, label } : item))
+  }
+
+  const setType = (id: string, participantType: 'actor' | 'system' | 'database') => {
+    setParticipants((p) => p.map((item) => item.id === id ? { ...item, participantType } : item))
+  }
+
+  const addMessage = () => {
+    if (!msgSource || !msgTarget || !msgLabel.trim()) return
+    setMessages((m) => [...m, { id: uid(), source: msgSource, target: msgTarget, label: msgLabel.trim(), messageType: 'sync' }])
+    setMsgLabel('')
+  }
+
+  const removeMessage = (id: string) => {
+    setMessages((m) => m.filter((msg) => msg.id !== id))
+  }
+
+  const renameMessage = (id: string, label: string) => {
+    setMessages((m) => m.map((msg) => msg.id === id ? { ...msg, label } : msg))
+  }
+
+  const setMessageType = (id: string, messageType: 'sync' | 'async' | 'return') => {
+    setMessages((m) => m.map((msg) => msg.id === id ? { ...msg, messageType } : msg))
+  }
+
+  const moveMessage = (from: number, to: number) => {
+    setMessages((m) => {
+      const arr = [...m]; const [item] = arr.splice(from, 1); arr.splice(to, 0, item); return arr
+    })
+  }
+
+  const handleApply = () => {
+    onApply(sequenceToJson({ participants, messages }))
+  }
+
+  const handleMermaidImport = () => {
+    const result = parseMermaid(mermaidText)
+    if (result) {
+      setParticipants(result.participants)
+      setMessages(result.messages)
+      setShowMermaid(false)
+      setMermaidText('')
+    } else {
+      alert(t('editor.mermaidError'))
+    }
+  }
+
+  const getLabel = (id: string) => participants.find((p) => p.id === id)?.label || id
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <button onClick={addParticipant}
+          className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
+          {t('editor.addParticipant')}
+        </button>
+        <button onClick={() => setShowMermaid(true)}
+          className="px-3 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 text-gray-500">
+          {t('editor.importMermaid')}
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {participants.map((p, i) => (
+          <div key={p.id} className="bg-white border border-gray-200 rounded p-2">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-gray-400">{t('editor.participantLabel')}</span>
+              <button onClick={() => removeParticipant(p.id)} className="text-gray-400 hover:text-red-500 text-sm" title={t('editor.deleteParticipant')}>×</button>
+            </div>
+            {editingId === p.id ? (
+              <InlineEdit value={p.label}
+                onSave={(v) => { renameParticipant(p.id, v); setEditingId(null) }}
+                onDelete={() => { removeParticipant(p.id); setEditingId(null) }}
+                onTab={() => {
+                  if (i + 1 < participants.length) setEditingId(participants[i + 1].id)
+                  else { const newId = addParticipant(); setTimeout(() => setEditingId(newId), 0) }
+                }} />
+            ) : (
+              <div className="text-sm cursor-pointer" onDoubleClick={() => setEditingId(p.id)}>{p.label}</div>
+            )}
+            <div className="flex gap-1 mt-2">
+              {(['actor', 'system', 'database'] as const).map((type) => (
+                <button key={type} onClick={() => setType(p.id, type)}
+                  className={`px-2 py-0.5 text-xs rounded ${p.participantType === type ? 'bg-black text-white' : 'bg-gray-100 hover:bg-gray-200'}`}>
+                  {type}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Messages section */}
+      {participants.length >= 2 && (
+        <div className="border-t border-gray-200 pt-3">
+          <div className="text-xs font-medium text-gray-500 mb-2">{t('editor.messageSection')}</div>
+
+          {/* Add message form */}
+          <div className="flex gap-1 mb-2">
+            <select value={msgSource} onChange={(e) => setMsgSource(e.target.value)}
+              className="flex-1 px-1 py-0.5 text-xs border border-gray-300 rounded bg-white">
+              <option value="">{t('editor.msgFrom')}</option>
+              {participants.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+            <span className="text-xs text-gray-400 self-center">→</span>
+            <select value={msgTarget} onChange={(e) => setMsgTarget(e.target.value)}
+              className="flex-1 px-1 py-0.5 text-xs border border-gray-300 rounded bg-white">
+              <option value="">{t('editor.msgTo')}</option>
+              {participants.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+          </div>
+          <div className="flex gap-1 mb-2">
+            <input className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-black"
+              placeholder={t('editor.msgPlaceholder')} value={msgLabel}
+              onChange={(e) => setMsgLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addMessage() }} />
+            <button onClick={addMessage} className="px-2 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">{t('editor.add')}</button>
+          </div>
+
+          {/* Message list */}
+          <div className="space-y-1">
+            {messages.map((msg, i) => (
+              <div key={msg.id} draggable={editingId !== msg.id}
+                className={`flex items-center gap-1 px-2 py-1 bg-gray-50 border border-gray-200 rounded text-xs ${dragMsgIdx === i ? 'opacity-40' : ''}`}
+                onDragStart={() => { if (editingId === msg.id) return; setDragMsgIdx(i) }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => { if (dragMsgIdx !== null && dragMsgIdx !== i) moveMessage(dragMsgIdx, i); setDragMsgIdx(null) }}
+                onDragEnd={() => setDragMsgIdx(null)}>
+                <span className="text-xs text-gray-300 mr-1 cursor-grab select-none">⋮⋮</span>
+                <span className="text-gray-500 truncate">{getLabel(msg.source)}</span>
+                <span className="text-gray-400">→</span>
+                <span className="text-gray-500 truncate">{getLabel(msg.target)}</span>
+                {editingId === msg.id ? (
+                  <InlineEdit value={msg.label} className="flex-1 min-w-0"
+                    onSave={(v) => { renameMessage(msg.id, v); setEditingId(null) }}
+                    onDelete={() => { removeMessage(msg.id); setEditingId(null) }} />
+                ) : (
+                  <span className="flex-1 min-w-0 truncate cursor-pointer" onDoubleClick={() => setEditingId(msg.id)}>: {msg.label}</span>
+                )}
+                <div className="flex gap-0.5 shrink-0">
+                  {(['sync', 'async', 'return'] as const).map((type) => (
+                    <button key={type} onClick={() => setMessageType(msg.id, type)}
+                      className={`px-1 text-[10px] rounded ${msg.messageType === type ? 'bg-black text-white' : 'bg-gray-100 hover:bg-gray-200'}`}>
+                      {type === 'sync' ? 'S' : type === 'async' ? 'A' : 'R'}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => removeMessage(msg.id)} className="text-gray-400 hover:text-red-500 text-xs shrink-0">×</button>
+              </div>
+            ))}
+            {messages.length === 0 && (
+              <div className="text-xs text-gray-400 text-center py-1">{t('editor.noMessages')}</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <button onClick={handleApply}
+        className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
+        {t('editor.apply')}
+      </button>
+
+      {/* Mermaid Import Modal */}
+      {showMermaid && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowMermaid(false)}>
+          <div className="bg-white rounded-lg shadow-xl p-5 w-[460px]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold">{t('editor.mermaidTitle')}</h3>
+              <button onClick={() => setShowMermaid(false)} className="text-gray-400 hover:text-black text-lg leading-none">×</button>
+            </div>
+            <pre className="text-[10px] text-gray-400 mb-2 whitespace-pre-wrap">{t('editor.mermaidHint')}</pre>
+            <textarea
+              className="w-full h-40 text-xs font-mono border border-gray-300 rounded p-2 mb-3 focus:outline-none focus:ring-1 focus:ring-black"
+              placeholder={t('editor.mermaidPlaceholder')}
+              value={mermaidText}
+              onChange={(e) => setMermaidText(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <button onClick={handleMermaidImport}
+                className="flex-1 py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
+                {t('quickImport.import')}
+              </button>
+              <button onClick={() => { setShowMermaid(false); setMermaidText('') }}
+                className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100">
+                {t('quickImport.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ====== Class Editor ======
+
+function ClassEditor({ onApply }: { onApply: (json: string) => void }) {
+  const { t } = useTranslation()
+  const [classes, setClasses] = useState<{ id: string; label: string; attributes: string[]; methods: string[]; isAbstract?: boolean; stereotype?: string }[]>([])
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingField, setEditingField] = useState<'label' | 'attr' | 'method' | null>(null)
+  const [newAttr, setNewAttr] = useState('')
+  const [newMethod, setNewMethod] = useState('')
+  const [showMermaid, setShowMermaid] = useState(false)
+  const [mermaidText, setMermaidText] = useState('')
+  const [relations, setRelations] = useState<{ id: string; source: string; target: string; relationType: string; label?: string }[]>([])
+
+  const addClass = () => {
+    setClasses((c) => [...c, { id: uid(), label: t('editor.newClass'), attributes: [], methods: [] }])
+  }
+
+  const removeClass = (id: string) => {
+    setClasses((c) => c.filter((item) => item.id !== id))
+    if (editingId === id) { setEditingId(null); setEditingField(null) }
+  }
+
+  const renameClass = (id: string, label: string) => {
+    setClasses((c) => c.map((item) => item.id === id ? { ...item, label } : item))
+  }
+
+  const addAttribute = (classId: string) => {
+    const label = newAttr.trim()
+    if (!label) return
+    setClasses((c) => c.map((item) => item.id === classId ? { ...item, attributes: [...item.attributes, label] } : item))
+    setNewAttr('')
+  }
+
+  const removeAttribute = (classId: string, index: number) => {
+    setClasses((c) => c.map((item) => item.id === classId ? { ...item, attributes: item.attributes.filter((_, i) => i !== index) } : item))
+  }
+
+  const addMethod = (classId: string) => {
+    const label = newMethod.trim()
+    if (!label) return
+    setClasses((c) => c.map((item) => item.id === classId ? { ...item, methods: [...item.methods, label] } : item))
+    setNewMethod('')
+  }
+
+  const removeMethod = (classId: string, index: number) => {
+    setClasses((c) => c.map((item) => item.id === classId ? { ...item, methods: item.methods.filter((_, i) => i !== index) } : item))
+  }
+
+  const handleApply = () => {
+    onApply(classToJson({ classes }, relations))
+  }
+
+  const handleMermaidImport = () => {
+    const result = parseMermaidClass(mermaidText)
+    if (result) {
+      setClasses(result.classes)
+      setRelations(result.relations)
+      setShowMermaid(false)
+      setMermaidText('')
+    } else {
+      alert(t('editor.mermaidError'))
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <button onClick={addClass}
+          className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
+          {t('editor.addClass')}
+        </button>
+        <button onClick={() => setShowMermaid(true)}
+          className="px-3 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 text-gray-500">
+          {t('editor.importMermaid')}
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {classes.map((cls) => (
+          <div key={cls.id} className="bg-white border border-gray-200 rounded p-2">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-gray-400">{t('editor.classLabel')}</span>
+              <button onClick={() => removeClass(cls.id)} className="text-gray-400 hover:text-red-500 text-sm" title={t('editor.deleteClass')}>×</button>
+            </div>
+            {editingId === cls.id && editingField === 'label' ? (
+              <InlineEdit value={cls.label}
+                onSave={(v) => { renameClass(cls.id, v); setEditingId(null); setEditingField(null) }}
+                onDelete={() => { removeClass(cls.id) }} />
+            ) : (
+              <div className="text-sm font-medium cursor-pointer" onDoubleClick={() => { setEditingId(cls.id); setEditingField('label') }}>{cls.label}</div>
+            )}
+
+            {/* 属性 */}
+            <div className="mt-2">
+              <div className="text-xs text-gray-400 mb-1">{t('editor.attribute')}</div>
+              {cls.attributes.map((attr, i) => (
+                <div key={i} className="flex items-center text-xs py-0.5">
+                  <span className="flex-1">{attr}</span>
+                  <button onClick={() => removeAttribute(cls.id, i)} className="text-gray-400 hover:text-red-500">×</button>
+                </div>
+              ))}
+              <div className="flex gap-1 mt-1">
+                <input className="flex-1 px-1 py-0.5 text-xs border border-gray-300 rounded"
+                  placeholder={t('editor.addAttribute')} value={editingId === cls.id ? newAttr : ''}
+                  onChange={(e) => { setEditingId(cls.id); setNewAttr(e.target.value) }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') addAttribute(cls.id) }} />
+                <button onClick={() => { setEditingId(cls.id); addAttribute(cls.id) }} className="px-1 py-0.5 text-xs bg-black text-white rounded">{t('editor.add')}</button>
+              </div>
+            </div>
+
+            {/* 方法 */}
+            <div className="mt-2">
+              <div className="text-xs text-gray-400 mb-1">{t('editor.method')}</div>
+              {cls.methods.map((method, i) => (
+                <div key={i} className="flex items-center text-xs py-0.5">
+                  <span className="flex-1">{method}</span>
+                  <button onClick={() => removeMethod(cls.id, i)} className="text-gray-400 hover:text-red-500">×</button>
+                </div>
+              ))}
+              <div className="flex gap-1 mt-1">
+                <input className="flex-1 px-1 py-0.5 text-xs border border-gray-300 rounded"
+                  placeholder={t('editor.addMethod')} value={editingId === cls.id ? newMethod : ''}
+                  onChange={(e) => { setEditingId(cls.id); setNewMethod(e.target.value) }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') addMethod(cls.id) }} />
+                <button onClick={() => { setEditingId(cls.id); addMethod(cls.id) }} className="px-1 py-0.5 text-xs bg-black text-white rounded">{t('editor.add')}</button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button onClick={handleApply}
+        className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
+        {t('editor.apply')}
+      </button>
+
+      {/* Mermaid Import Modal */}
+      {showMermaid && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowMermaid(false)}>
+          <div className="bg-white rounded-lg shadow-xl p-5 w-[460px]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold">{t('editor.mermaidClassTitle')}</h3>
+              <button onClick={() => setShowMermaid(false)} className="text-gray-400 hover:text-black text-lg leading-none">×</button>
+            </div>
+            <pre className="text-[10px] text-gray-400 mb-2 whitespace-pre-wrap">{t('editor.mermaidClassHint')}</pre>
+            <textarea
+              className="w-full h-40 text-xs font-mono border border-gray-300 rounded p-2 mb-3 focus:outline-none focus:ring-1 focus:ring-black"
+              placeholder={t('editor.mermaidClassPlaceholder')}
+              value={mermaidText}
+              onChange={(e) => setMermaidText(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <button onClick={handleMermaidImport}
+                className="flex-1 py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
+                {t('quickImport.import')}
+              </button>
+              <button onClick={() => { setShowMermaid(false); setMermaidText('') }}
+                className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100">
+                {t('quickImport.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ====== Activity Editor ======
+
+function ActivityEditor({ onApply }: { onApply: (json: string) => void }) {
+  const { t } = useTranslation()
+  const [nodes, setNodes] = useState<{ id: string; label: string; nodeType: 'start' | 'end' | 'action' | 'decision' }[]>([])
+  const [edges, setEdges] = useState<{ id: string; source: string; target: string; guard?: string }[]>([])
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [showMermaid, setShowMermaid] = useState(false)
+  const [mermaidText, setMermaidText] = useState('')
+
+  const addNode = (nodeType: 'action' | 'decision') => {
+    setNodes((n) => [...n, { id: uid(), label: nodeType === 'action' ? t('editor.newAction') : t('editor.decisionNode'), nodeType }])
+  }
+
+  const addStartEnd = (nodeType: 'start' | 'end') => {
+    setNodes((n) => [...n, { id: uid(), label: '', nodeType }])
+  }
+
+  const removeNode = (id: string) => {
+    setNodes((n) => n.filter((item) => item.id !== id))
+    setEdges((e) => e.filter((edge) => edge.source !== id && edge.target !== id))
+    if (editingId === id) setEditingId(null)
+  }
+
+  const renameNode = (id: string, label: string) => {
+    setNodes((n) => n.map((item) => item.id === id ? { ...item, label } : item))
+  }
+
+  const handleApply = () => {
+    onApply(activityToJson({ nodes, edges }))
+  }
+
+  const handleMermaidImport = () => {
+    const result = parseMermaidActivity(mermaidText)
+    if (result) {
+      setNodes(result.nodes)
+      setEdges(result.edges)
+      setShowMermaid(false)
+      setMermaidText('')
+    } else {
+      alert(t('editor.mermaidError'))
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <button onClick={() => addStartEnd('start')}
+          className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
+          {t('editor.addStart')}
+        </button>
+        <button onClick={() => addStartEnd('end')}
+          className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
+          {t('editor.addEnd')}
+        </button>
+        <button onClick={() => setShowMermaid(true)}
+          className="px-3 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 text-gray-500">
+          {t('editor.importMermaid')}
+        </button>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={() => addNode('action')}
+          className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
+          {t('editor.addAction')}
+        </button>
+        <button onClick={() => addNode('decision')}
+          className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
+          {t('editor.addDecision')}
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {nodes.map((node, i) => (
+          <div key={node.id} className="bg-white border border-gray-200 rounded p-2">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-gray-400">{node.nodeType}</span>
+              <button onClick={() => removeNode(node.id)} className="text-gray-400 hover:text-red-500 text-sm" title={t('editor.deleteAction')}>×</button>
+            </div>
+            {node.nodeType === 'start' || node.nodeType === 'end' ? (
+              <div className="text-sm text-gray-500">{node.nodeType === 'start' ? t('editor.startNode') : t('editor.endNode')}</div>
+            ) : (
+              editingId === node.id ? (
+                <InlineEdit value={node.label}
+                  onSave={(v) => { renameNode(node.id, v); setEditingId(null) }}
+                  onDelete={() => { removeNode(node.id) }}
+                  onTab={() => {
+                    if (i + 1 < nodes.length) setEditingId(nodes[i + 1].id)
+                  }} />
+              ) : (
+                <div className="text-sm cursor-pointer" onDoubleClick={() => setEditingId(node.id)}>{node.label}</div>
+              )
+            )}
+          </div>
+        ))}
+      </div>
+
+      <button onClick={handleApply}
+        className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
+        {t('editor.apply')}
+      </button>
+
+      {/* Mermaid Import Modal */}
+      {showMermaid && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowMermaid(false)}>
+          <div className="bg-white rounded-lg shadow-xl p-5 w-[460px]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold">{t('editor.mermaidActivityTitle')}</h3>
+              <button onClick={() => setShowMermaid(false)} className="text-gray-400 hover:text-black text-lg leading-none">×</button>
+            </div>
+            <pre className="text-[10px] text-gray-400 mb-2 whitespace-pre-wrap">{t('editor.mermaidActivityHint')}</pre>
+            <textarea
+              className="w-full h-40 text-xs font-mono border border-gray-300 rounded p-2 mb-3 focus:outline-none focus:ring-1 focus:ring-black"
+              placeholder={t('editor.mermaidActivityPlaceholder')}
+              value={mermaidText}
+              onChange={(e) => setMermaidText(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <button onClick={handleMermaidImport}
+                className="flex-1 py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
+                {t('quickImport.import')}
+              </button>
+              <button onClick={() => { setShowMermaid(false); setMermaidText('') }}
+                className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100">
+                {t('quickImport.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ====== Deployment Editor ======
+
+function DeploymentEditor({ onApply }: { onApply: (json: string) => void }) {
+  const { t } = useTranslation()
+  const [nodes, setNodes] = useState<{ id: string; label: string; nodeType: 'server' | 'database'; technology?: string }[]>([])
+  const [edges, setEdges] = useState<{ id: string; source: string; target: string; label?: string }[]>([])
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [showMermaid, setShowMermaid] = useState(false)
+  const [mermaidText, setMermaidText] = useState('')
+
+  const addNode = (nodeType: 'server' | 'database') => {
+    setNodes((n) => [...n, { id: uid(), label: t('editor.newServer'), nodeType, technology: '' }])
+  }
+
+  const removeNode = (id: string) => {
+    setNodes((n) => n.filter((item) => item.id !== id))
+    setEdges((e) => e.filter((edge) => edge.source !== id && edge.target !== id))
+    if (editingId === id) setEditingId(null)
+  }
+
+  const renameNode = (id: string, label: string) => {
+    setNodes((n) => n.map((item) => item.id === id ? { ...item, label } : item))
+  }
+
+  const setTechnology = (id: string, technology: string) => {
+    setNodes((n) => n.map((item) => item.id === id ? { ...item, technology } : item))
+  }
+
+  const handleApply = () => {
+    onApply(deploymentToJson({ nodes, edges }))
+  }
+
+  const handleMermaidImport = () => {
+    const result = parseMermaidDeployment(mermaidText)
+    if (result) {
+      setNodes(result.nodes)
+      setEdges(result.edges)
+      setShowMermaid(false)
+      setMermaidText('')
+    } else {
+      alert(t('editor.mermaidError'))
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <button onClick={() => addNode('server')}
+          className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
+          {t('editor.addServer')}
+        </button>
+        <button onClick={() => addNode('database')}
+          className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
+          {t('editor.addDatabase')}
+        </button>
+        <button onClick={() => setShowMermaid(true)}
+          className="px-3 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 text-gray-500">
+          {t('editor.importMermaid')}
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {nodes.map((node, i) => (
+          <div key={node.id} className="bg-white border border-gray-200 rounded p-2">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-gray-400">{node.nodeType}</span>
+              <button onClick={() => removeNode(node.id)} className="text-gray-400 hover:text-red-500 text-sm" title={t('editor.deleteServer')}>×</button>
+            </div>
+            {editingId === node.id ? (
+              <InlineEdit value={node.label}
+                onSave={(v) => { renameNode(node.id, v); setEditingId(null) }}
+                onDelete={() => { removeNode(node.id) }}
+                onTab={() => {
+                  if (i + 1 < nodes.length) setEditingId(nodes[i + 1].id)
+                }} />
+            ) : (
+              <div className="text-sm cursor-pointer" onDoubleClick={() => setEditingId(node.id)}>{node.label}</div>
+            )}
+            <input className="w-full mt-1 px-1 py-0.5 text-xs border border-gray-300 rounded"
+              placeholder={t('editor.techPlaceholder')}
+              value={node.technology || ''}
+              onChange={(e) => setTechnology(node.id, e.target.value)} />
+          </div>
+        ))}
+      </div>
+
+      <button onClick={handleApply}
+        className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
+        {t('editor.apply')}
+      </button>
+
+      {/* Mermaid Import Modal */}
+      {showMermaid && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowMermaid(false)}>
+          <div className="bg-white rounded-lg shadow-xl p-5 w-[460px]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold">{t('editor.mermaidDeploymentTitle')}</h3>
+              <button onClick={() => setShowMermaid(false)} className="text-gray-400 hover:text-black text-lg leading-none">×</button>
+            </div>
+            <pre className="text-[10px] text-gray-400 mb-2 whitespace-pre-wrap">{t('editor.mermaidDeploymentHint')}</pre>
+            <textarea
+              className="w-full h-40 text-xs font-mono border border-gray-300 rounded p-2 mb-3 focus:outline-none focus:ring-1 focus:ring-black"
+              placeholder={t('editor.mermaidDeploymentPlaceholder')}
+              value={mermaidText}
+              onChange={(e) => setMermaidText(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <button onClick={handleMermaidImport}
+                className="flex-1 py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
+                {t('quickImport.import')}
+              </button>
+              <button onClick={() => { setShowMermaid(false); setMermaidText('') }}
+                className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100">
+                {t('quickImport.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

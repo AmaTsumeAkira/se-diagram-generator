@@ -5,24 +5,52 @@ import type { Edge, Node } from '@xyflow/react'
 import UseCaseDiagram from './components/diagrams/UseCaseDiagram'
 import StructureDiagram from './components/diagrams/StructureDiagram'
 import EntityAttributeDiagram from './components/diagrams/EntityAttributeDiagram'
+import SequenceDiagram from './components/diagrams/SequenceDiagram'
+import ClassDiagram from './components/diagrams/ClassDiagram'
+import ActivityDiagram from './components/diagrams/ActivityDiagram'
+import DeploymentDiagram from './components/diagrams/DeploymentDiagram'
 import NodeEditor from './components/panels/NodeEditor'
 import ExportModal from './components/panels/ExportModal'
 import ExportDataModal from './components/panels/ExportDataModal'
 import { useUndoRedo } from './hooks/useUndoRedo'
-import type { DiagramNodeData } from './types/diagram'
-import type { UseCaseState, TreeNode, EntityState } from './components/panels/NodeEditor'
+import type { DiagramNodeData, DiagramType, ConfigMap } from './types/diagram'
+import type { UseCaseState, TreeNode, EntityState, SequenceState } from './components/panels/NodeEditor'
 import { useCasePresets, structureNodes, structureEdges, userEntityPreset } from './data/mockData'
 import i18n from './i18n'
 
-type DiagramType = 'usecase' | 'structure' | 'entity'
-
 const LS_KEY = 'diagram-editor-configs'
 
-const tabKeys: DiagramType[] = ['usecase', 'structure', 'entity']
+const tabKeys: DiagramType[] = ['usecase', 'structure', 'entity', 'sequence', 'class', 'activity', 'deployment']
 
-// ====== JSON ↔ config ======
+// localStorage 安全操作
+function safeGetItem(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch (e) {
+    console.warn('Failed to read from localStorage:', e)
+    return null
+  }
+}
 
-export type ConfigMap = Record<DiagramType, { nodes: Node<DiagramNodeData>[]; edges: Edge[] }>
+function safeSetItem(key: string, value: string): boolean {
+  try {
+    localStorage.setItem(key, value)
+    return true
+  } catch (e) {
+    console.warn('Failed to write to localStorage:', e)
+    return false
+  }
+}
+
+function safeRemoveItem(key: string): boolean {
+  try {
+    localStorage.removeItem(key)
+    return true
+  } catch (e) {
+    console.warn('Failed to remove from localStorage:', e)
+    return false
+  }
+}
 
 function parseConfigJson(text: string): { nodes: Node<DiagramNodeData>[]; edges: Edge[] } {
   const data = JSON.parse(text)
@@ -35,8 +63,17 @@ function parseConfigJson(text: string): { nodes: Node<DiagramNodeData>[]; edges:
       ry: n.ry as number | undefined,
       vertical: n.vertical as boolean | undefined,
       nodeH: n.nodeH as number | undefined,
+      nodeW: n.nodeW as number | undefined,
       fontSize: n.fontSize as number | undefined,
       spacing: n.spacing as number | undefined,
+      // diagram-specific fields
+      ...(n.attributes && { attributes: n.attributes }),
+      ...(n.methods && { methods: n.methods }),
+      ...(n.isAbstract !== undefined && { isAbstract: n.isAbstract }),
+      ...(n.stereotype && { stereotype: n.stereotype }),
+      ...(n.participantType && { participantType: n.participantType }),
+      ...(n.technology && { technology: n.technology }),
+      ...(n.nodeType && { nodeType: n.nodeType }),
     },
     position: { x: 0, y: 0 },
   }))
@@ -44,6 +81,8 @@ function parseConfigJson(text: string): { nodes: Node<DiagramNodeData>[]; edges:
     id: e.id ?? `edge_${i}`,
     source: String(e.source),
     target: String(e.target),
+    ...(e.data && { data: e.data }),
+    ...(e.label && { label: e.label }),
   }))
   return { nodes, edges }
 }
@@ -53,8 +92,24 @@ function configsToJson(configs: ConfigMap): string {
   for (const key of Object.keys(configs)) {
     const cfg = configs[key as DiagramType]
     flat[key] = {
-      nodes: cfg.nodes.map((n) => ({ id: n.id, type: n.type, label: n.data.label, rx: n.data.rx, ry: n.data.ry, vertical: n.data.vertical, fontSize: n.data.fontSize, spacing: n.data.spacing })),
-      edges: cfg.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+      nodes: cfg.nodes.map((n) => {
+        const base: any = { id: n.id, type: n.type, label: n.data.label, rx: n.data.rx, ry: n.data.ry, vertical: n.data.vertical, fontSize: n.data.fontSize, spacing: n.data.spacing, nodeH: n.data.nodeH, nodeW: (n.data as any).nodeW }
+        const d = n.data as any
+        if (d.attributes) base.attributes = d.attributes
+        if (d.methods) base.methods = d.methods
+        if (d.isAbstract !== undefined) base.isAbstract = d.isAbstract
+        if (d.stereotype) base.stereotype = d.stereotype
+        if (d.participantType) base.participantType = d.participantType
+        if (d.technology) base.technology = d.technology
+        if (d.nodeType) base.nodeType = d.nodeType
+        return base
+      }),
+      edges: cfg.edges.map((e) => {
+        const base: any = { id: e.id, source: e.source, target: e.target }
+        if ((e as any).data) base.data = (e as any).data
+        if (e.label) base.label = e.label
+        return base
+      }),
     }
   }
   return JSON.stringify(flat, null, 2)
@@ -63,11 +118,20 @@ function configsToJson(configs: ConfigMap): string {
 function jsonToConfigs(json: string): ConfigMap | null {
   try {
     const flat = JSON.parse(json)
-    const configs: any = {}
-    for (const key of ['usecase', 'structure', 'entity']) {
+    const emptyConfig = { nodes: [], edges: [] }
+    const configs: ConfigMap = {
+      usecase: emptyConfig,
+      structure: emptyConfig,
+      entity: emptyConfig,
+      sequence: emptyConfig,
+      class: emptyConfig,
+      activity: emptyConfig,
+      deployment: emptyConfig,
+    }
+    for (const key of tabKeys) {
       if (flat[key]) configs[key] = parseConfigJson(JSON.stringify(flat[key]))
     }
-    return configs as ConfigMap
+    return configs
   } catch { return null }
 }
 
@@ -131,7 +195,25 @@ function configToEntityState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[
   }
 }
 
+function configToSequenceState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): SequenceState {
+  const participants = cfg.nodes.filter((n) => n.type === 'participant').map((p) => ({
+    id: p.id,
+    label: (p.data.label as string) || '',
+    participantType: ((p.data as any).participantType || 'system') as 'actor' | 'system' | 'database',
+  }))
+  const messages = cfg.edges.map((e) => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+    label: (e.label as string) || (e as any).data?.label || '',
+    messageType: (((e as any).data?.messageType || 'sync') as 'sync' | 'async' | 'return'),
+  }))
+  return { participants, messages }
+}
+
 // ====== Initial data ======
+
+const emptyConfig = { nodes: [], edges: [] }
 
 const initialConfigs: ConfigMap = {
   usecase: parseConfigJson(useCasePresets.admin.json),
@@ -146,16 +228,20 @@ const initialConfigs: ConfigMap = {
     ],
     edges: userEntityPreset.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
   })),
+  sequence: emptyConfig,
+  class: emptyConfig,
+  activity: emptyConfig,
+  deployment: emptyConfig,
 }
 
 function loadConfigs(): ConfigMap {
-  try {
-    const raw = localStorage.getItem(LS_KEY)
-    if (raw) {
+  const raw = safeGetItem(LS_KEY)
+  if (raw) {
+    try {
       const restored = jsonToConfigs(raw)
-      if (restored?.usecase && restored?.structure && restored?.entity) return restored
-    }
-  } catch { /* ignore */ }
+      if (restored) return restored
+    } catch { /* ignore */ }
+  }
   return initialConfigs
 }
 
@@ -169,13 +255,13 @@ function App() {
   const [configVersion, setConfigVersion] = useState(0)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const flowRef = useRef<HTMLDivElement>(null)
-  const toggleLang = () => { const next = i18n.language === 'zh' ? 'en' : 'zh'; i18n.changeLanguage(next); localStorage.setItem('lang', next) }
+  const toggleLang = () => { const next = i18n.language === 'zh' ? 'en' : 'zh'; i18n.changeLanguage(next); safeSetItem('lang', next) }
 
   const { present: configs, push: pushConfigs, undo, redo, canUndo, canRedo } = useUndoRedo<ConfigMap>(loadConfigs())
 
   // Persist to localStorage
   useEffect(() => {
-    localStorage.setItem(LS_KEY, configsToJson(configs))
+    safeSetItem(LS_KEY, configsToJson(configs))
   }, [configs])
 
   // Increment version when configs change (apply / undo / redo / import)
@@ -209,6 +295,7 @@ function App() {
   const ucState = useMemo(() => configToUseCaseState(configs.usecase), [configs.usecase])
   const treeState = useMemo(() => configToTreeState(configs.structure), [configs.structure])
   const entityState = useMemo(() => configToEntityState(configs.entity), [configs.entity])
+  const seqState = useMemo(() => configToSequenceState(configs.sequence), [configs.sequence])
 
   // ====== Derive diagram data ======
   const useCaseGroups = useMemo(() => {
@@ -248,7 +335,7 @@ function App() {
   // ====== Reset ======
   const handleReset = () => {
     if (!window.confirm(t('reset.confirm'))) return
-    localStorage.removeItem(LS_KEY)
+    safeRemoveItem(LS_KEY)
     pushConfigs(initialConfigs)
   }
 
@@ -292,7 +379,15 @@ function App() {
   }
 
   const emptyConfig = { nodes: [], edges: [] }
-  const mdSectionMap: Record<string, DiagramType> = { '用例图': 'usecase', '功能结构图': 'structure', '实体属性图': 'entity' }
+  const mdSectionMap: Record<string, DiagramType> = {
+    '用例图': 'usecase', 'Use Case': 'usecase',
+    '功能结构图': 'structure', 'Structure': 'structure',
+    '实体属性图': 'entity', 'Entity': 'entity',
+    '时序图': 'sequence', 'Sequence': 'sequence',
+    '类图': 'class', 'Class': 'class',
+    '活动图': 'activity', 'Activity': 'activity',
+    '部署图': 'deployment', 'Deployment': 'deployment',
+  }
 
   const handleImport = () => {
     const input = document.createElement('input')
@@ -330,7 +425,7 @@ function App() {
         // Plain quick format
         else {
           const result = parseQuickFormat(text, active)
-          if (result) importConfigs = { usecase: emptyConfig, structure: emptyConfig, entity: emptyConfig, [active]: result }
+          if (result) importConfigs = { usecase: emptyConfig, structure: emptyConfig, entity: emptyConfig, sequence: emptyConfig, class: emptyConfig, activity: emptyConfig, deployment: emptyConfig, [active]: result }
           else { alert(t('import.quickError')); return }
         }
         setPendingImport(importConfigs)
@@ -361,7 +456,7 @@ function App() {
           <button onClick={() => setShowExport(true)} className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">{t('toolbar.exportImage')}</button>
           <button onClick={handleReset} className="px-2 py-1 text-xs text-red-400 border border-red-200 rounded hover:bg-red-50 ml-1">{t('toolbar.reset')}</button>
           <button onClick={() => setShowShortcuts(true)} className="px-2 py-1 text-xs text-gray-400 border rounded hover:bg-gray-50 ml-1" title={t('toolbar.shortcuts')}>?</button>
-          <button onClick={() => setShowGrid(!showGrid)} className={`px-2 py-1 text-xs border rounded hover:bg-gray-50 ml-1 ${!showGrid ? 'text-red-400 border-red-200' : ''}`}>{showGrid ? '背景' : '纯白'}</button>
+          <button onClick={() => setShowGrid(!showGrid)} className={`px-2 py-1 text-xs border rounded hover:bg-gray-50 ml-1 ${!showGrid ? 'text-red-400 border-red-200' : ''}`}>{showGrid ? t('toolbar.gridOn') : t('toolbar.gridOff')}</button>
           <button onClick={toggleLang} className="px-2 py-1 text-xs border rounded hover:bg-gray-50 ml-1">{t('toolbar.lang')}</button>
         </div>
       </header>
@@ -371,6 +466,10 @@ function App() {
         {active === 'usecase' && <NodeEditor key={`usecase-${configVersion}`} type="usecase" useCase={ucState} onApply={handleApply} />}
         {active === 'structure' && <NodeEditor key={`structure-${configVersion}`} type="structure" tree={treeState} onApply={handleApply} />}
         {active === 'entity' && <NodeEditor key={`entity-${configVersion}`} type="entity" entity={entityState} onApply={handleApply} />}
+        {active === 'sequence' && <NodeEditor key={`sequence-${configVersion}`} type="sequence" sequence={seqState} onApply={handleApply} />}
+        {active === 'class' && <NodeEditor key={`class-${configVersion}`} type="class" onApply={handleApply} />}
+        {active === 'activity' && <NodeEditor key={`activity-${configVersion}`} type="activity" onApply={handleApply} />}
+        {active === 'deployment' && <NodeEditor key={`deployment-${configVersion}`} type="deployment" onApply={handleApply} />}
 
         <div className="flex-1" ref={flowRef}>
           <ReactFlowProvider>
@@ -384,11 +483,36 @@ function App() {
               <EntityAttributeDiagram groups={entityGroups} showGrid={showGrid} />
             )}
             {active === 'entity' && entityGroups.length === 0 && (
-              <div className="flex items-center justify-center h-full text-gray-400">请添加实体节点</div>
+              <div className="flex items-center justify-center h-full text-gray-400">{t('editor.addEntityNode')}</div>
             )}
           </ReactFlowProvider>
+          {/* drawio iframe diagrams */}
           {active === 'structure' && (
-            <StructureDiagram nodes={configs.structure.nodes} edges={configs.structure.edges} />
+            <StructureDiagram key={`structure-${configVersion}`} nodes={configs.structure.nodes} edges={configs.structure.edges} />
+          )}
+          {active === 'sequence' && configs.sequence.nodes.length > 0 && (
+            <SequenceDiagram key={`sequence-${configVersion}`} nodes={configs.sequence.nodes} edges={configs.sequence.edges} />
+          )}
+          {active === 'sequence' && configs.sequence.nodes.length === 0 && (
+            <div className="flex items-center justify-center h-full text-gray-400">{t('editor.addParticipantHint')}</div>
+          )}
+          {active === 'class' && configs.class.nodes.length > 0 && (
+            <ClassDiagram key={`class-${configVersion}`} nodes={configs.class.nodes} edges={configs.class.edges} />
+          )}
+          {active === 'class' && configs.class.nodes.length === 0 && (
+            <div className="flex items-center justify-center h-full text-gray-400">{t('editor.addClassHint')}</div>
+          )}
+          {active === 'activity' && configs.activity.nodes.length > 0 && (
+            <ActivityDiagram key={`activity-${configVersion}`} nodes={configs.activity.nodes} edges={configs.activity.edges} />
+          )}
+          {active === 'activity' && configs.activity.nodes.length === 0 && (
+            <div className="flex items-center justify-center h-full text-gray-400">{t('editor.addActivityHint')}</div>
+          )}
+          {active === 'deployment' && configs.deployment.nodes.length > 0 && (
+            <DeploymentDiagram key={`deployment-${configVersion}`} nodes={configs.deployment.nodes} edges={configs.deployment.edges} />
+          )}
+          {active === 'deployment' && configs.deployment.nodes.length === 0 && (
+            <div className="flex items-center justify-center h-full text-gray-400">{t('editor.addDeploymentHint')}</div>
           )}
         </div>
       </div>

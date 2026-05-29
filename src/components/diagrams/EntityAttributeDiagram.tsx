@@ -65,8 +65,8 @@ export default function EntityAttributeDiagram({ groups, showGrid = true }: Prop
           const angle = -Math.PI / 2 + (2 * Math.PI * i) / n
           const nodeCx = cx + a * Math.cos(angle)
           const nodeCy = cy + b * Math.sin(angle)
-          attr.data = { ...attr.data, rx: dynRx, ry: dynRy }
-          return { ...attr, position: { x: nodeCx - dynRx, y: nodeCy - dynRy }, zIndex: 10 }
+          const newData = { ...attr.data, rx: dynRx, ry: dynRy }
+          return { ...attr, data: newData, position: { x: nodeCx - dynRx, y: nodeCy - dynRy }, zIndex: 10 }
         })
 
         const entityNode = { ...g.entity, position: { x: cx - 45, y: cy - 18 }, zIndex: 20 }

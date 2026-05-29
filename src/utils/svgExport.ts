@@ -6,7 +6,19 @@ type DNode = Node<DiagramNodeData>
 
 // ====== Helpers ======
 
-function esc(s: string) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
+function esc(s: string) {
+  if (!s) return ''
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function safeLabel(data: Record<string, unknown>): string {
+  return (data.label as string) || ''
+}
 
 function bounds(nodes: { x: number; y: number; w?: number; h?: number }[]) {
   if (nodes.length === 0) return { x: 0, y: 0, w: 400, h: 300 }
@@ -45,7 +57,8 @@ export function useCaseSvg(nodes: DNode[], edges: Edge[]): string {
     const startY = baseY + 140 - ucBlockH / 2
     const ucCx = baseX + 280
     const maxW = g.useCases.reduce((m, uc) => {
-      let w = 0; for (const ch of (uc.data.label as string)) w += ch.charCodeAt(0) > 127 ? 14 : 8
+      const lbl = safeLabel(uc.data)
+      let w = 0; for (const ch of lbl) w += ch.charCodeAt(0) > 127 ? 14 : 8
       return Math.max(m, w)
     }, 0)
     const rx = Math.max(55, Math.ceil(maxW / 2) + 18)
@@ -53,14 +66,14 @@ export function useCaseSvg(nodes: DNode[], edges: Edge[]): string {
     // stick figure
     const ax = baseX + 40; const ay = actorY
     svg += `<g stroke="#000" stroke-width="1.5" fill="none"><circle cx="${ax + 27}" cy="${ay + 12}" r="10"/><line x1="${ax + 27}" y1="${ay + 22}" x2="${ax + 27}" y2="${ay + 68}"/><line x1="${ax + 27}" y1="${ay + 40}" x2="${ax}" y2="${ay + 40}"/><line x1="${ax + 27}" y1="${ay + 68}" x2="${ax + 10}" y2="${ay + 102}"/><line x1="${ax + 27}" y1="${ay + 68}" x2="${ax + 44}" y2="${ay + 102}"/></g>`
-    svg += `<text x="${ax + 27}" y="${ay + 120}" font-family="sans-serif" font-size="14" text-anchor="middle" fill="#000">${esc(g.actor.data.label as string)}</text>`
+    svg += `<text x="${ax + 27}" y="${ay + 120}" font-family="sans-serif" font-size="14" text-anchor="middle" fill="#000">${esc(safeLabel(g.actor.data))}</text>`
 
     // use case ellipses + lines
     g.useCases.forEach((uc, ui) => {
       const ucy = startY + ui * spacing
       svg += `<line x1="${ax + 55}" y1="${ay + 40}" x2="${ucCx - rx}" y2="${ucy}" stroke="#000" stroke-width="1" marker-end="url(#arrow)"/>`
       svg += `<ellipse cx="${ucCx}" cy="${ucy}" rx="${rx}" ry="15" fill="#fff" stroke="#000" stroke-width="1"/>`
-      svg += `<text x="${ucCx}" y="${ucy + 5}" font-family="sans-serif" font-size="14" text-anchor="middle" fill="#000">${esc(uc.data.label as string)}</text>`
+      svg += `<text x="${ucCx}" y="${ucy + 5}" font-family="sans-serif" font-size="14" text-anchor="middle" fill="#000">${esc(safeLabel(uc.data))}</text>`
     })
 
     boxes.push({ x: baseX, y: baseY, w: cellW, h: 360 })
@@ -80,7 +93,8 @@ export function structureSvg(nodes: DNode[], edges: Edge[]): string {
 
   ln.forEach((n) => {
     const x = n.position.x; const y = n.position.y
-    const label = esc(n.data.label as string)
+    const rawLabel = safeLabel(n.data)
+    const label = esc(rawLabel)
     const vert = n.data.vertical as boolean
     const fs = (n.data.fontSize as number) || 14
     const vh = (n.data.nodeH as number) || 110
@@ -89,7 +103,7 @@ export function structureSvg(nodes: DNode[], edges: Edge[]): string {
     if (vert) {
       svg += `<rect x="${x}" y="${y}" width="${vw}" height="${vh}" fill="#fff" stroke="#000" stroke-width="1"/>`
       // vertical text char by char
-      const chars = (n.data.label as string).split('')
+      const chars = rawLabel.split('')
       const ls = Math.max(1, fs * 0.15)
       const charH = fs + ls
       const startY = y + (vh - chars.length * charH + ls) / 2 + fs * 0.8
@@ -148,7 +162,7 @@ export function entitySvg(nodes: DNode[], edges: Edge[]): string {
     // entity rectangle
     const ew = 90; const eh = 36
     svg += `<rect x="${cx - ew / 2}" y="${cy - eh / 2}" width="${ew}" height="${eh}" fill="#fff" stroke="#000" stroke-width="1.5"/>`
-    svg += `<text x="${cx}" y="${cy + 5}" font-family="sans-serif" font-size="14" text-anchor="middle" fill="#000">${esc(ent.data.label as string)}</text>`
+    svg += `<text x="${cx}" y="${cy + 5}" font-family="sans-serif" font-size="14" text-anchor="middle" fill="#000">${esc(safeLabel(ent.data))}</text>`
 
     // attributes + lines
     attrs.forEach((attr, ai) => {
@@ -157,7 +171,7 @@ export function entitySvg(nodes: DNode[], edges: Edge[]): string {
       const rx = 45; const ry = 18
       svg += `<line x1="${cx}" y1="${cy}" x2="${ax}" y2="${ay}" stroke="#000" stroke-width="1.2"/>`
       svg += `<ellipse cx="${ax}" cy="${ay}" rx="${rx}" ry="${ry}" fill="#fff" stroke="#000" stroke-width="1.2"/>`
-      svg += `<text x="${ax}" y="${ay + 5}" font-family="sans-serif" font-size="14" text-anchor="middle" fill="#000">${esc(attr.data.label as string)}</text>`
+      svg += `<text x="${ax}" y="${ay + 5}" font-family="sans-serif" font-size="14" text-anchor="middle" fill="#000">${esc(safeLabel(attr.data))}</text>`
     })
 
     boxes.push({ x: baseX, y: baseY, w: cellW, h: cellH })
@@ -169,4 +183,320 @@ export function entitySvg(nodes: DNode[], edges: Edge[]): string {
 
 function wrapSvg(content: string, x: number, y: number, w: number, h: number) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x} ${y} ${w} ${h}" width="${w}" height="${h}">${content}</svg>`
+}
+
+// ====== Sequence SVG ======
+
+export function sequenceSvg(nodes: DNode[], edges: Edge[]): string {
+  let svg = ''
+  const boxes: { x: number; y: number; w: number; h: number }[] = []
+  const participants = nodes.filter(n => n.type === 'participant')
+  const spacing = 200
+  const startX = 100
+  const startY = 50
+
+  // 参与者
+  participants.forEach((p, i) => {
+    const x = startX + i * spacing
+    const y = startY
+
+    svg += `<rect x="${x}" y="${y}" width="120" height="50" fill="#fff" stroke="#000" stroke-width="1.5"/>`
+    svg += `<text x="${x + 60}" y="${y + 30}" font-family="sans-serif" font-size="12" text-anchor="middle" fill="#000">${esc(safeLabel(p.data))}</text>`
+
+    // 生命线
+    const lifelineX = x + 60
+    svg += `<line x1="${lifelineX}" y1="${y + 50}" x2="${lifelineX}" y2="${y + 50 + edges.length * 60 + 100}" stroke="#000" stroke-width="1" stroke-dasharray="5,5"/>`
+
+    boxes.push({ x, y, w: 120, h: 50 + edges.length * 60 + 100 })
+  })
+
+  // 消息
+  edges.forEach((msg, i) => {
+    const srcIdx = participants.findIndex(p => p.id === msg.source)
+    const tgtIdx = participants.findIndex(p => p.id === msg.target)
+    if (srcIdx === -1 || tgtIdx === -1) return
+
+    const srcX = startX + srcIdx * spacing + 60
+    const tgtX = startX + tgtIdx * spacing + 60
+    const y = startY + 80 + i * 60
+
+    const msgData = (msg.data as any) || {}
+    const msgType = msgData.messageType || 'sync'
+    const dashAttr = msgType === 'async' ? ' stroke-dasharray="6,3"' : ''
+    svg += `<line x1="${srcX}" y1="${y}" x2="${tgtX}" y2="${y}" stroke="#000" stroke-width="1.5" marker-end="url(#arrow)"${dashAttr}/>`
+
+    // 消息文字标签
+    const msgLabel = msgData.label || ''
+    if (msgLabel) {
+      const midX = (srcX + tgtX) / 2
+      svg += `<text x="${midX}" y="${y - 8}" font-family="sans-serif" font-size="11" text-anchor="middle" fill="#333">${esc(msgLabel)}</text>`
+    }
+  })
+
+  const bb = bounds(boxes)
+  const pad = 40
+  return wrapSvg(markerDef('arrow') + svg, bb.x - pad, bb.y - pad, bb.w + pad * 2, bb.h + pad * 2)
+}
+
+// ====== Class SVG ======
+
+export function classSvg(nodes: DNode[], edges: Edge[]): string {
+  let svg = ''
+  const boxes: { x: number; y: number; w: number; h: number }[] = []
+  const cols = Math.ceil(Math.sqrt(nodes.length))
+  const spacing = 200
+  const startX = 100
+  const startY = 60
+
+  // 跟踪节点位置用于边渲染
+  const nodeBounds = new Map<string, { cx: number; cy: number; x: number; y: number; w: number; h: number }>()
+
+  nodes.forEach((node, i) => {
+    const x = startX + (i % cols) * spacing
+    const y = startY + Math.floor(i / cols) * 250
+    const width = 180
+    const attrs = (node.data as any).attributes || []
+    const methods = (node.data as any).methods || []
+    const attrHeight = Math.max(attrs.length * 18 + 8, 30)
+    const methodHeight = Math.max(methods.length * 18 + 8, 30)
+    const totalHeight = 26 + attrHeight + methodHeight
+
+    // 类容器
+    svg += `<rect x="${x}" y="${y}" width="${width}" height="${totalHeight}" fill="#fff" stroke="#000" stroke-width="1.5"/>`
+
+    // 类名区域
+    svg += `<rect x="${x}" y="${y}" width="${width}" height="26" fill="#f0f0f0" stroke="#000" stroke-width="1"/>`
+    svg += `<text x="${x + width / 2}" y="${y + 18}" font-family="sans-serif" font-size="12" text-anchor="middle" fill="#000">${esc(safeLabel(node.data))}</text>`
+
+    // 属性区域
+    svg += `<line x1="${x}" y1="${y + 26}" x2="${x + width}" y2="${y + 26}" stroke="#000" stroke-width="1"/>`
+    attrs.forEach((attr: string, j: number) => {
+      svg += `<text x="${x + 4}" y="${y + 42 + j * 18}" font-family="sans-serif" font-size="10" fill="#000">${esc(attr)}</text>`
+    })
+
+    // 方法区域
+    svg += `<line x1="${x}" y1="${y + 26 + attrHeight}" x2="${x + width}" y2="${y + 26 + attrHeight}" stroke="#000" stroke-width="1"/>`
+    methods.forEach((method: string, j: number) => {
+      svg += `<text x="${x + 4}" y="${y + 42 + attrHeight + j * 18}" font-family="sans-serif" font-size="10" fill="#000">${esc(method)}</text>`
+    })
+
+    boxes.push({ x, y, w: width, h: totalHeight })
+    nodeBounds.set(node.id, { cx: x + width / 2, cy: y + totalHeight / 2, x, y, w: width, h: totalHeight })
+  })
+
+  // 渲染类关系边
+  const markers: string[] = []
+  markers.push(markerDef('arrow'))
+  markers.push(`<marker id="hollow-arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#fff" stroke="#000" stroke-width="1"/></marker>`)
+  markers.push(`<marker id="diamond" viewBox="0 0 12 8" refX="0" refY="4" markerWidth="10" markerHeight="8" orient="auto"><path d="M 0 4 L 6 0 L 12 4 L 6 8 z" fill="#fff" stroke="#000" stroke-width="1"/></marker>`)
+  markers.push(`<marker id="filled-diamond" viewBox="0 0 12 8" refX="0" refY="4" markerWidth="10" markerHeight="8" orient="auto"><path d="M 0 4 L 6 0 L 12 4 L 6 8 z" fill="#000" stroke="#000" stroke-width="1"/></marker>`)
+
+  edges.forEach((edge) => {
+    const src = nodeBounds.get(edge.source)
+    const tgt = nodeBounds.get(edge.target)
+    if (!src || !tgt) return
+
+    // 计算从源中心到目标中心的连线，裁剪到节点边界
+    const dx = tgt.cx - src.cx
+    const dy = tgt.cy - src.cy
+    const len = Math.sqrt(dx * dx + dy * dy)
+    if (len === 0) return
+
+    // 简化：使用中心连线
+    const sx = src.cx
+    const sy = src.cy
+    const tx = tgt.cx
+    const ty = tgt.cy
+
+    const relData = (edge.data as any) || {}
+    const relType = relData.relationType || 'association'
+
+    let strokeAttr = 'stroke="#000" stroke-width="1.5"'
+    let dashAttr = ''
+    let markerStart = ''
+    let markerEnd = `marker-end="url(#arrow)"`
+
+    switch (relType) {
+      case 'inheritance':
+        // 继承：实线 + 空心三角箭头
+        markerEnd = `marker-end="url(#hollow-arrow)"`
+        break
+      case 'implementation':
+        // 实现：虚线 + 空心三角箭头
+        dashAttr = ' stroke-dasharray="8,4"'
+        markerEnd = `marker-end="url(#hollow-arrow)"`
+        break
+      case 'dependency':
+        // 依赖：虚线 + 箭头
+        dashAttr = ' stroke-dasharray="8,4"'
+        break
+      case 'aggregation':
+        // 聚合：实线 + 空心菱形（源端）
+        markerStart = `marker-start="url(#diamond)"`
+        markerEnd = ''
+        break
+      case 'composition':
+        // 组合：实线 + 实心菱形（源端）
+        markerStart = `marker-start="url(#filled-diamond)"`
+        markerEnd = ''
+        break
+      default:
+        // 关联：实线 + 箭头
+        break
+    }
+
+    svg += `<line x1="${sx}" y1="${sy}" x2="${tx}" y2="${ty}" ${strokeAttr}${dashAttr} ${markerStart} ${markerEnd}/>`
+
+    // 边标签（如多重性标注）
+    const edgeLabel = relData.label || ''
+    if (edgeLabel) {
+      const midX = (sx + tx) / 2
+      const midY = (sy + ty) / 2
+      svg += `<text x="${midX}" y="${midY - 6}" font-family="sans-serif" font-size="10" text-anchor="middle" fill="#555">${esc(edgeLabel)}</text>`
+    }
+  })
+
+  const bb = bounds(boxes)
+  const pad = 40
+  return wrapSvg(markers.join('') + svg, bb.x - pad, bb.y - pad, bb.w + pad * 2, bb.h + pad * 2)
+}
+
+// ====== Activity SVG ======
+
+export function activitySvg(nodes: DNode[], edges: Edge[]): string {
+  let svg = ''
+  const boxes: { x: number; y: number; w: number; h: number }[] = []
+  const cols = Math.ceil(Math.sqrt(nodes.length))
+  const spacing = 150
+  const startX = 100
+  const startY = 60
+
+  // 跟踪节点位置用于边渲染
+  const nodeBounds = new Map<string, { cx: number; cy: number }>()
+
+  nodes.forEach((node, i) => {
+    const x = startX + (i % cols) * spacing
+    const y = startY + Math.floor(i / cols) * 120
+
+    switch (node.type) {
+      case 'start':
+        svg += `<circle cx="${x + 15}" cy="${y + 15}" r="14" fill="#000" stroke="#000" stroke-width="2"/>`
+        boxes.push({ x, y, w: 30, h: 30 })
+        nodeBounds.set(node.id, { cx: x + 15, cy: y + 15 })
+        break
+      case 'end':
+        svg += `<circle cx="${x + 15}" cy="${y + 15}" r="14" fill="none" stroke="#000" stroke-width="2"/>`
+        svg += `<circle cx="${x + 15}" cy="${y + 15}" r="10" fill="#000"/>`
+        boxes.push({ x, y, w: 30, h: 30 })
+        nodeBounds.set(node.id, { cx: x + 15, cy: y + 15 })
+        break
+      case 'decision':
+        svg += `<polygon points="${x + 30},${y} ${x + 60},${y + 30} ${x + 30},${y + 60} ${x},${y + 30}" fill="#fff" stroke="#000" stroke-width="2"/>`
+        svg += `<text x="${x + 30}" y="${y + 35}" font-family="sans-serif" font-size="11" text-anchor="middle" fill="#000">${esc(safeLabel(node.data))}</text>`
+        boxes.push({ x, y, w: 60, h: 60 })
+        nodeBounds.set(node.id, { cx: x + 30, cy: y + 30 })
+        break
+      default:
+        svg += `<rect x="${x}" y="${y}" width="140" height="50" rx="10" ry="10" fill="#fff" stroke="#000" stroke-width="2"/>`
+        svg += `<text x="${x + 70}" y="${y + 30}" font-family="sans-serif" font-size="12" text-anchor="middle" fill="#000">${esc(safeLabel(node.data))}</text>`
+        boxes.push({ x, y, w: 140, h: 50 })
+        nodeBounds.set(node.id, { cx: x + 70, cy: y + 25 })
+    }
+  })
+
+  // 渲染活动流程边
+  edges.forEach((edge) => {
+    const src = nodeBounds.get(edge.source)
+    const tgt = nodeBounds.get(edge.target)
+    if (!src || !tgt) return
+
+    const flowData = (edge.data as any) || {}
+    const flowType = flowData.flowType || flowData.activityEdgeType || 'flow'
+    const dashAttr = flowType === 'condition' ? ' stroke-dasharray="6,3"' : ''
+
+    svg += `<line x1="${src.cx}" y1="${src.cy}" x2="${tgt.cx}" y2="${tgt.cy}" stroke="#000" stroke-width="1.5" marker-end="url(#arrow)"${dashAttr}/>`
+
+    // 守卫条件标签
+    const guard = flowData.guard || flowData.label || ''
+    if (guard) {
+      const midX = (src.cx + tgt.cx) / 2
+      const midY = (src.cy + tgt.cy) / 2
+      svg += `<text x="${midX}" y="${midY - 6}" font-family="sans-serif" font-size="10" text-anchor="middle" fill="#555">${esc(guard)}</text>`
+    }
+  })
+
+  const bb = bounds(boxes)
+  const pad = 40
+  return wrapSvg(markerDef('arrow') + svg, bb.x - pad, bb.y - pad, bb.w + pad * 2, bb.h + pad * 2)
+}
+
+// ====== Deployment SVG ======
+
+export function deploymentSvg(nodes: DNode[], edges: Edge[]): string {
+  let svg = ''
+  const boxes: { x: number; y: number; w: number; h: number }[] = []
+  const cols = Math.ceil(Math.sqrt(nodes.length))
+  const spacing = 200
+  const startX = 100
+  const startY = 60
+
+  // 跟踪节点位置用于边渲染
+  const nodeBounds = new Map<string, { cx: number; cy: number }>()
+
+  nodes.forEach((node, i) => {
+    const x = startX + (i % cols) * spacing
+    const y = startY + Math.floor(i / cols) * 200
+    const width = 140
+    const height = 100
+
+    switch (node.type) {
+      case 'server':
+        svg += `<path d="M ${x + 10} ${y + 25} L ${x + 10} ${y + height - 10} L ${x + width - 10} ${y + height - 10} L ${x + width - 10} ${y + 25} L ${x + width / 2} ${y + 5} L ${x + 10} ${y + 25} Z" fill="#fff" stroke="#000" stroke-width="2"/>`
+        svg += `<line x1="${x + 10}" y1="${y + 25}" x2="${x + width - 10}" y2="${y + 25}" stroke="#000" stroke-width="1"/>`
+        svg += `<text x="${x + width / 2}" y="${y + 60}" font-family="sans-serif" font-size="12" text-anchor="middle" fill="#000">${esc(safeLabel(node.data))}</text>`
+        break
+      case 'database': {
+        const ry = 12
+        svg += `<ellipse cx="${x + width / 2}" cy="${y + ry}" rx="${width / 2 - 5}" ry="${ry}" fill="#fff" stroke="#000" stroke-width="2"/>`
+        svg += `<line x1="${x + 5}" y1="${y + ry}" x2="${x + 5}" y2="${y + height - ry}" stroke="#000" stroke-width="2"/>`
+        svg += `<line x1="${x + width - 5}" y1="${y + ry}" x2="${x + width - 5}" y2="${y + height - ry}" stroke="#000" stroke-width="2"/>`
+        svg += `<path d="M ${x + 5} ${y + height - ry} A ${width / 2 - 5} ${ry} 0 0 0 ${x + width - 5} ${y + height - ry}" fill="#fff" stroke="#000" stroke-width="2"/>`
+        svg += `<text x="${x + width / 2}" y="${y + height / 2 + 5}" font-family="sans-serif" font-size="11" text-anchor="middle" fill="#000">${esc(safeLabel(node.data))}</text>`
+        break
+      }
+      default:
+        svg += `<rect x="${x}" y="${y}" width="120" height="60" fill="#fff" stroke="#000" stroke-width="1.5"/>`
+        svg += `<text x="${x + 60}" y="${y + 35}" font-family="sans-serif" font-size="12" text-anchor="middle" fill="#000">${esc(safeLabel(node.data))}</text>`
+    }
+
+    boxes.push({ x, y, w: width, h: height })
+    nodeBounds.set(node.id, { cx: x + width / 2, cy: y + height / 2 })
+  })
+
+  // 渲染部署节点之间的通信路径（虚线）
+  edges.forEach((edge) => {
+    const src = nodeBounds.get(edge.source)
+    const tgt = nodeBounds.get(edge.target)
+    if (!src || !tgt) return
+
+    const edgeData = (edge.data as any) || {}
+    const edgeType = edgeData.deploymentEdgeType || edgeData.edgeType || 'communication'
+
+    // 通信路径用虚线，关联用实线
+    const dashAttr = edgeType === 'communication' ? ' stroke-dasharray="8,4"' : ''
+
+    svg += `<line x1="${src.cx}" y1="${src.cy}" x2="${tgt.cx}" y2="${tgt.cy}" stroke="#000" stroke-width="1.5"${dashAttr}/>`
+
+    // 边标签
+    const edgeLabel = edgeData.label || ''
+    if (edgeLabel) {
+      const midX = (src.cx + tgt.cx) / 2
+      const midY = (src.cy + tgt.cy) / 2
+      svg += `<text x="${midX}" y="${midY - 6}" font-family="sans-serif" font-size="10" text-anchor="middle" fill="#555">${esc(edgeLabel)}</text>`
+    }
+  })
+
+  const bb = bounds(boxes)
+  const pad = 40
+  return wrapSvg(svg, bb.x - pad, bb.y - pad, bb.w + pad * 2, bb.h + pad * 2)
 }
