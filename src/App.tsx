@@ -5,6 +5,7 @@ import type { Edge, Node } from '@xyflow/react'
 import UseCaseDiagram from './components/diagrams/UseCaseDiagram'
 import StructureDiagram from './components/diagrams/StructureDiagram'
 import EntityAttributeDiagram from './components/diagrams/EntityAttributeDiagram'
+import ERDiagram from './components/diagrams/ERDiagram'
 import SequenceDiagram from './components/diagrams/SequenceDiagram'
 import ClassDiagram from './components/diagrams/ClassDiagram'
 import ActivityDiagram from './components/diagrams/ActivityDiagram'
@@ -12,15 +13,16 @@ import DeploymentDiagram from './components/diagrams/DeploymentDiagram'
 import NodeEditor from './components/panels/NodeEditor'
 import ExportModal from './components/panels/ExportModal'
 import ExportDataModal from './components/panels/ExportDataModal'
+import SettingsModal from './components/panels/SettingsModal'
 import { useUndoRedo } from './hooks/useUndoRedo'
 import type { DiagramNodeData, DiagramType, ConfigMap } from './types/diagram'
-import type { UseCaseState, TreeNode, EntityState, SequenceState } from './components/panels/NodeEditor'
+import type { UseCaseState, TreeNode, EntityState, SequenceState, ERState } from './components/panels/NodeEditor'
 import { useCasePresets, structureNodes, structureEdges, userEntityPreset } from './data/mockData'
 import i18n from './i18n'
 
 const LS_KEY = 'diagram-editor-configs'
 
-const tabKeys: DiagramType[] = ['usecase', 'structure', 'entity', 'sequence', 'class', 'activity', 'deployment']
+const tabKeys: DiagramType[] = ['usecase', 'structure', 'entity', 'er', 'sequence', 'class', 'activity', 'deployment']
 
 // localStorage 安全操作
 function safeGetItem(key: string): string | null {
@@ -75,6 +77,8 @@ function parseConfigJson(text: string): { nodes: Node<DiagramNodeData>[]; edges:
       ...(n.participantType && { participantType: n.participantType }),
       ...(n.technology && { technology: n.technology }),
       ...(n.nodeType && { nodeType: n.nodeType }),
+      ...(n.row !== undefined && { row: n.row }),
+      ...(n.col !== undefined && { col: n.col }),
     },
     position: { x: 0, y: 0 },
   }))
@@ -94,7 +98,7 @@ function configsToJson(configs: ConfigMap): string {
     const cfg = configs[key as DiagramType]
     flat[key] = {
       nodes: cfg.nodes.map((n) => {
-        const base: any = { id: n.id, type: n.type, label: n.data.label, rx: n.data.rx, ry: n.data.ry, vertical: n.data.vertical, fontSize: n.data.fontSize, fontFamily: n.data.fontFamily, spacing: n.data.spacing, nodeH: n.data.nodeH, nodeW: (n.data as any).nodeW }
+        const base: any = { id: n.id, type: n.type, label: n.data.label, rx: n.data.rx, ry: n.data.ry, vertical: n.data.vertical, fontSize: n.data.fontSize, fontFamily: n.data.fontFamily, spacing: n.data.spacing, nodeH: n.data.nodeH, nodeW: (n.data as any).nodeW, row: n.data.row, col: n.data.col }
         const d = n.data as any
         if (d.attributes) base.attributes = d.attributes
         if (d.methods) base.methods = d.methods
@@ -124,6 +128,7 @@ function jsonToConfigs(json: string): ConfigMap | null {
       usecase: emptyConfig,
       structure: emptyConfig,
       entity: emptyConfig,
+      er: emptyConfig,
       sequence: emptyConfig,
       class: emptyConfig,
       activity: emptyConfig,
@@ -219,6 +224,37 @@ function configToSequenceState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edg
   return { participants, messages }
 }
 
+function configToERState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): ERState {
+  const entities = cfg.nodes.filter((n) => n.type === 'erEntity').map((n) => ({
+    id: n.id,
+    label: (n.data.label as string) || '',
+    row: n.data.row as number | undefined,
+    col: n.data.col as number | undefined,
+  }))
+
+  // Reconstruct relationships from diamond nodes + edges
+  const diamonds = cfg.nodes.filter((n) => n.type === 'erDiamond')
+  const relationships: ERState['relationships'] = []
+
+  for (const dia of diamonds) {
+    // Find edges: entity -> diamond, diamond -> entity
+    const inEdge = cfg.edges.find((e) => e.target === dia.id)
+    const outEdge = cfg.edges.find((e) => e.source === dia.id)
+    if (inEdge && outEdge) {
+      relationships.push({
+        id: dia.id,
+        label: (dia.data.label as string) || '',
+        source: inEdge.source,
+        target: outEdge.target,
+        sourceCard: (inEdge as any).data?.sourceCard || '1',
+        targetCard: (outEdge as any).data?.targetCard || 'N',
+      })
+    }
+  }
+
+  return { entities, relationships }
+}
+
 // ====== Initial data ======
 
 const emptyConfig = { nodes: [], edges: [] }
@@ -236,6 +272,7 @@ const initialConfigs: ConfigMap = {
     ],
     edges: userEntityPreset.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
   })),
+  er: emptyConfig,
   sequence: emptyConfig,
   class: emptyConfig,
   activity: emptyConfig,
@@ -303,6 +340,7 @@ function App() {
   const ucState = useMemo(() => configToUseCaseState(configs.usecase), [configs.usecase])
   const treeState = useMemo(() => configToTreeState(configs.structure), [configs.structure])
   const entityState = useMemo(() => configToEntityState(configs.entity), [configs.entity])
+  const erState = useMemo(() => configToERState(configs.er), [configs.er])
   const seqState = useMemo(() => configToSequenceState(configs.sequence), [configs.sequence])
 
   // ====== Derive diagram data ======
@@ -337,6 +375,7 @@ function App() {
   // ====== Modal state ======
   const [showExport, setShowExport] = useState(false)
   const [showDataExport, setShowDataExport] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [pendingImport, setPendingImport] = useState<ConfigMap | null>(null)
   const [showGrid, setShowGrid] = useState(true)
 
@@ -391,6 +430,7 @@ function App() {
     '用例图': 'usecase', 'Use Case': 'usecase',
     '功能结构图': 'structure', 'Structure': 'structure',
     '实体属性图': 'entity', 'Entity': 'entity',
+    '总体ER图': 'er', 'ER Diagram': 'er',
     '时序图': 'sequence', 'Sequence': 'sequence',
     '类图': 'class', 'Class': 'class',
     '活动图': 'activity', 'Activity': 'activity',
@@ -433,7 +473,7 @@ function App() {
         // Plain quick format
         else {
           const result = parseQuickFormat(text, active)
-          if (result) importConfigs = { usecase: emptyConfig, structure: emptyConfig, entity: emptyConfig, sequence: emptyConfig, class: emptyConfig, activity: emptyConfig, deployment: emptyConfig, [active]: result }
+          if (result) importConfigs = { usecase: emptyConfig, structure: emptyConfig, entity: emptyConfig, er: emptyConfig, sequence: emptyConfig, class: emptyConfig, activity: emptyConfig, deployment: emptyConfig, [active]: result }
           else { alert(t('import.quickError')); return }
         }
         setPendingImport(importConfigs)
@@ -462,6 +502,8 @@ function App() {
           <button onClick={handleImport} className="px-2 py-1 text-xs border rounded hover:bg-gray-50">{t('toolbar.import')}</button>
           <button onClick={() => setShowDataExport(true)} className="px-2 py-1 text-xs border rounded hover:bg-gray-50">{t('toolbar.exportData')}</button>
           <button onClick={() => setShowExport(true)} className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">{t('toolbar.exportImage')}</button>
+          <span className="w-px h-5 bg-gray-300 mx-1" />
+          <button onClick={() => setShowSettings(true)} className="px-2 py-1 text-xs border rounded hover:bg-gray-50" title={t('toolbar.settings')}>{t('toolbar.settings')}</button>
           <button onClick={handleReset} className="px-2 py-1 text-xs text-red-400 border border-red-200 rounded hover:bg-red-50 ml-1">{t('toolbar.reset')}</button>
           <button onClick={() => setShowShortcuts(true)} className="px-2 py-1 text-xs text-gray-400 border rounded hover:bg-gray-50 ml-1" title={t('toolbar.shortcuts')}>?</button>
           <button onClick={() => setShowGrid(!showGrid)} className={`px-2 py-1 text-xs border rounded hover:bg-gray-50 ml-1 ${!showGrid ? 'text-red-400 border-red-200' : ''}`}>{showGrid ? t('toolbar.gridOn') : t('toolbar.gridOff')}</button>
@@ -474,6 +516,7 @@ function App() {
         {active === 'usecase' && <NodeEditor key={`usecase-${configVersion}`} type="usecase" useCase={ucState} onApply={handleApply} />}
         {active === 'structure' && <NodeEditor key={`structure-${configVersion}`} type="structure" tree={treeState} onApply={handleApply} />}
         {active === 'entity' && <NodeEditor key={`entity-${configVersion}`} type="entity" entity={entityState} onApply={handleApply} />}
+        {active === 'er' && <NodeEditor key={`er-${configVersion}`} type="er" er={erState} onApply={handleApply} />}
         {active === 'sequence' && <NodeEditor key={`sequence-${configVersion}`} type="sequence" sequence={seqState} onApply={handleApply} />}
         {active === 'class' && <NodeEditor key={`class-${configVersion}`} type="class" onApply={handleApply} />}
         {active === 'activity' && <NodeEditor key={`activity-${configVersion}`} type="activity" onApply={handleApply} />}
@@ -497,6 +540,12 @@ function App() {
           {/* drawio iframe diagrams */}
           {active === 'structure' && (
             <StructureDiagram key={`structure-${configVersion}`} nodes={configs.structure.nodes} edges={configs.structure.edges} />
+          )}
+          {active === 'er' && configs.er.nodes.length > 0 && (
+            <ERDiagram key={`er-${configVersion}`} nodes={configs.er.nodes} edges={configs.er.edges} />
+          )}
+          {active === 'er' && configs.er.nodes.length === 0 && (
+            <div className="flex items-center justify-center h-full text-gray-400">{t('editor.addErEntityHint')}</div>
           )}
           {active === 'sequence' && configs.sequence.nodes.length > 0 && (
             <SequenceDiagram key={`sequence-${configVersion}`} nodes={configs.sequence.nodes} edges={configs.sequence.edges} />
@@ -525,10 +574,10 @@ function App() {
         </div>
       </div>
 
-      {/* Export Modal */}
-      {showExport && <ExportModal active={active} config={configs[active]} flowRef={flowRef} onClose={() => setShowExport(false)} />}
+      {/* Modals */}
+      {showExport && <ExportModal active={active} config={configs[active as DiagramType]} flowRef={flowRef} onClose={() => setShowExport(false)} />}
       {showDataExport && <ExportDataModal configs={configs} onClose={() => setShowDataExport(false)} />}
-
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {/* Import confirm modal */}
       {pendingImport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">

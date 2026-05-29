@@ -285,6 +285,7 @@ export function autoLayout(
     usecase: { algorithm: 'dagre', dagre: { rankdir: 'LR', nodesep: 100, ranksep: 120 } },
     structure: { algorithm: 'dagre', dagre: { rankdir: 'TB', nodesep: 80, ranksep: 100 } },
     entity: { algorithm: 'dagre', dagre: { rankdir: 'TB', nodesep: 100, ranksep: 120 } },
+    er: { algorithm: 'grid' },
     sequence: { algorithm: 'sequence', sequence: { participantGap: 200, messageGap: 60 } },
     class: { algorithm: 'class', class: { direction: 'TB', classGap: 100 } },
     activity: { algorithm: 'activity', activity: { direction: 'TB', actionSpacing: 80 } },

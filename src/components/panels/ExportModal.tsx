@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toPng } from 'html-to-image'
-import { useCaseSvg, structureSvg, entitySvg, sequenceSvg, classSvg, activitySvg, deploymentSvg } from '../../utils/svgExport'
-import { useCaseDrawio, structureDrawio, entityDrawio, sequenceDrawio, classDrawio, activityDrawio, deploymentDrawio } from '../../utils/drawioExport'
+import { useCaseSvg, structureSvg, entitySvg, erSvg, sequenceSvg, classSvg, activitySvg, deploymentSvg } from '../../utils/svgExport'
+import { useCaseDrawio, structureDrawio, entityDrawio, erDrawio, sequenceDrawio, classDrawio, activityDrawio, deploymentDrawio } from '../../utils/drawioExport'
 import { useCaseVisio, structureVisio, entityVisio, sequenceVisio, classVisio, activityVisio, deploymentVisio } from '../../utils/visioExport'
 import type { Node, Edge } from '@xyflow/react'
 import type { DiagramNodeData } from '../../types/diagram'
@@ -46,6 +46,7 @@ function buildSvg(active: string, nodes: Node<DiagramNodeData>[], edges: Edge[])
     case 'usecase': return useCaseSvg(nodes, edges)
     case 'structure': return structureSvg(nodes, edges)
     case 'entity': return entitySvg(nodes, edges)
+    case 'er': return erSvg(nodes, edges)
     case 'sequence': return sequenceSvg(nodes, edges)
     case 'class': return classSvg(nodes, edges)
     case 'activity': return activitySvg(nodes, edges)
@@ -59,6 +60,7 @@ function buildDrawio(active: string, nodes: Node<DiagramNodeData>[], edges: Edge
     case 'usecase': return useCaseDrawio(nodes, edges)
     case 'structure': return structureDrawio(nodes, edges)
     case 'entity': return entityDrawio(nodes, edges)
+    case 'er': return erDrawio(nodes, edges)
     case 'sequence': return sequenceDrawio(nodes, edges)
     case 'class': return classDrawio(nodes, edges)
     case 'activity': return activityDrawio(nodes, edges)
@@ -67,7 +69,7 @@ function buildDrawio(active: string, nodes: Node<DiagramNodeData>[], edges: Edge
   }
 }
 
-const svgPngExportTypes = new Set(['structure', 'sequence', 'class', 'activity', 'deployment'])
+const svgPngExportTypes = new Set(['structure', 'er', 'sequence', 'class', 'activity', 'deployment'])
 
 export default function ExportModal({ active, config, flowRef, onClose }: Props) {
   const { t } = useTranslation()

@@ -8,9 +8,10 @@ export type SequenceNodeType = 'participant' | 'activation'
 export type ClassNodeType = 'class' | 'interface' | 'enum'
 export type ActivityNodeType = 'start' | 'end' | 'action' | 'decision' | 'fork' | 'join'
 export type DeploymentNodeType = 'server' | 'database' | 'node' | 'artifact' | 'component'
+export type ERNodeType = 'erEntity' | 'erDiamond'
 
 // 联合类型
-export type AllNodeType = NodeType | SequenceNodeType | ClassNodeType | ActivityNodeType | DeploymentNodeType
+export type AllNodeType = NodeType | SequenceNodeType | ClassNodeType | ActivityNodeType | DeploymentNodeType | ERNodeType
 
 // ====== 边类型 ======
 export type SequenceEdgeType = 'sync' | 'async' | 'return'
@@ -30,6 +31,8 @@ export interface DiagramNodeData extends Record<string, unknown> {
   fontFamily?: string
   spacing?: number
   nodeW?: number
+  row?: number
+  col?: number
 }
 
 // 时序图参与者数据
@@ -61,6 +64,12 @@ export interface DiagramEdgeData extends Record<string, unknown> {
   label?: string
 }
 
+// ER图边数据
+export interface EREdgeData extends DiagramEdgeData {
+  sourceCard?: string
+  targetCard?: string
+}
+
 // 时序图消息数据
 export interface MessageEdgeData extends DiagramEdgeData {
   messageType?: 'sync' | 'async' | 'return'
@@ -85,7 +94,7 @@ export interface DiagramConfig {
 }
 
 // ====== 图表类型枚举 ======
-export type DiagramType = 'usecase' | 'structure' | 'entity' | 'sequence' | 'class' | 'activity' | 'deployment'
+export type DiagramType = 'usecase' | 'structure' | 'entity' | 'er' | 'sequence' | 'class' | 'activity' | 'deployment'
 
 // ====== 配置映射 ======
 export type ConfigMap = Record<DiagramType, DiagramConfig>

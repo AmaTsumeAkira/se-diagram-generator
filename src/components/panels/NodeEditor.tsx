@@ -91,13 +91,26 @@ export interface DeploymentState {
   }[]
 }
 
-export type DiagramType = 'usecase' | 'structure' | 'entity' | 'sequence' | 'class' | 'activity' | 'deployment'
+export interface ERState {
+  entities: { id: string; label: string; row?: number; col?: number }[]
+  relationships: {
+    id: string
+    label: string
+    source: string
+    target: string
+    sourceCard: string
+    targetCard: string
+  }[]
+}
+
+export type DiagramType = 'usecase' | 'structure' | 'entity' | 'er' | 'sequence' | 'class' | 'activity' | 'deployment'
 
 interface Props {
   type: DiagramType
   useCase?: UseCaseState
   tree?: TreeNode
   entity?: EntityState
+  er?: ERState
   sequence?: SequenceState
   classState?: ClassState
   activity?: ActivityState
@@ -267,6 +280,31 @@ function activityToJson(state: ActivityState): string {
     target: e.target,
     ...(e.guard && { data: { guard: e.guard } }),
   }))
+  return JSON.stringify({ nodes, edges }, null, 2)
+}
+
+function erToJson(state: ERState): string {
+  const nodes: any[] = []
+  const edges: any[] = []
+  state.entities.forEach((ent) => {
+    nodes.push({ id: ent.id, type: 'erEntity', label: ent.label, row: ent.row, col: ent.col })
+  })
+  state.relationships.forEach((rel) => {
+    const diamondId = `dia_${rel.id}`
+    nodes.push({ id: diamondId, type: 'erDiamond', label: rel.label })
+    edges.push({
+      id: `e_${rel.source}_${diamondId}`,
+      source: rel.source,
+      target: diamondId,
+      data: { sourceCard: rel.sourceCard, targetCard: '' },
+    })
+    edges.push({
+      id: `e_${diamondId}_${rel.target}`,
+      source: diamondId,
+      target: rel.target,
+      data: { sourceCard: '', targetCard: rel.targetCard },
+    })
+  })
   return JSON.stringify({ nodes, edges }, null, 2)
 }
 
@@ -652,13 +690,14 @@ function parseMermaidDeployment(code: string): DeploymentState | null {
 
 // ====== Main ======
 
-export default function NodeEditor({ type, useCase, tree, entity, sequence, onApply }: Props) {
+export default function NodeEditor({ type, useCase, tree, entity, er, sequence, onApply }: Props) {
   const { t } = useTranslation()
   const { sitePv, pagePv, siteUv } = useVercount()
   const titleKeys: Record<DiagramType, string> = {
     usecase: 'editor.usecaseTitle',
     structure: 'editor.structureTitle',
     entity: 'editor.entityTitle',
+    er: 'editor.erTitle',
     sequence: 'editor.sequenceTitle',
     class: 'editor.classTitle',
     activity: 'editor.activityTitle',
@@ -669,12 +708,13 @@ export default function NodeEditor({ type, useCase, tree, entity, sequence, onAp
     <div className="w-[420px] shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col h-full">
       <div className="px-4 py-3 border-b border-gray-200 bg-white">
         <h2 className="text-sm font-semibold">{t(titleKey)}</h2>
-        <p className="text-xs text-gray-500 mt-0.5">{t('editor.hint')}</p>
+        <p className="text-xs text-gray-500 mt-0.5">{type === 'er' ? t('editor.sqlImportHint') : t('editor.hint')}</p>
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {type === 'usecase' && useCase && <UseCaseEditor state={useCase} onApply={onApply} />}
         {type === 'structure' && tree && <TreeEditor root={tree} onApply={onApply} />}
         {type === 'entity' && entity && <EntityEditor state={entity} onApply={onApply} />}
+        {type === 'er' && <EREditor state={er} onApply={onApply} />}
         {type === 'sequence' && <SequenceEditor state={sequence} onApply={onApply} />}
         {type === 'class' && <ClassEditor onApply={onApply} />}
         {type === 'activity' && <ActivityEditor onApply={onApply} />}
@@ -1909,6 +1949,285 @@ function DeploymentEditor({ onApply }: { onApply: (json: string) => void }) {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+// ====== ER Editor (SQL Import) ======
+
+function EREditor({ state: initial, onApply }: { state?: ERState; onApply: (json: string) => void }) {
+  const { t } = useTranslation()
+  const [state, setState] = useState<ERState>(initial || { entities: [], relationships: [] })
+  const [sqlText, setSqlText] = useState('')
+  const [parseError, setParseError] = useState('')
+  const [isParsing, setIsParsing] = useState(false)
+  const [parsePreview, setParsePreview] = useState<{ tables: number; relations: number; source: string } | null>(null)
+
+  const handleParseSql = async () => {
+    setParseError('')
+    setParsePreview(null)
+    setIsParsing(true)
+
+    try {
+      const { getApiKey } = await import('./SettingsModal')
+      const apiKey = getApiKey()
+
+      if (apiKey) {
+        // AI Parsing
+        const { generateERFromAI } = await import('../../utils/aiService')
+        const aiState = await generateERFromAI(sqlText, apiKey)
+        setState(aiState)
+        setParsePreview({ tables: aiState.entities.length, relations: aiState.relationships.length, source: 'AI' })
+      } else {
+        // Fallback to local regex parser
+        const { parseSql, deriveRelationships } = await import('../../utils/sqlParser')
+        const result = parseSql(sqlText)
+        if (result.errors.length > 0 && result.tables.length === 0) {
+          setParseError(result.errors.join('\n') + '\n\n' + t('editor.sqlAiFallback'))
+          setIsParsing(false)
+          return
+        }
+
+        const relationships = deriveRelationships(result.tables)
+        const entities = result.tables.map(table => ({
+          id: `ent_${table.name}`,
+          label: table.name,
+        }))
+        const rels = relationships.map(rel => ({
+          id: uid(),
+          label: rel.label,
+          source: `ent_${rel.sourceTable}`,
+          target: `ent_${rel.targetTable}`,
+          sourceCard: rel.sourceCardinality,
+          targetCard: rel.targetCardinality,
+        }))
+
+        setState({ entities, relationships: rels })
+        setParsePreview({ tables: entities.length, relations: rels.length, source: 'Local' })
+      }
+    } catch (err: any) {
+      setParseError(err.message || 'Parsing failed')
+    } finally {
+      setIsParsing(false)
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    const file = e.dataTransfer.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        if (ev.target?.result) {
+          setSqlText(ev.target.result as string)
+        }
+      }
+      reader.readAsText(file)
+    }
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+  }
+
+  const addEntity = () => {
+    setState(s => ({
+      ...s,
+      entities: [...s.entities, { id: `ent_${uid()}`, label: t('editor.newErEntity') }],
+    }))
+  }
+
+  const removeEntity = (entId: string) => {
+    setState(s => ({
+      ...s,
+      entities: s.entities.filter(e => e.id !== entId),
+      relationships: s.relationships.filter(r => r.source !== entId && r.target !== entId),
+    }))
+  }
+
+  const renameEntity = (entId: string, label: string) => {
+    setState(s => ({
+      ...s,
+      entities: s.entities.map(e => e.id === entId ? { ...e, label } : e),
+    }))
+  }
+
+  const addRelation = () => {
+    const src = state.entities[0]?.id || ''
+    const tgt = state.entities[1]?.id || state.entities[0]?.id || ''
+    setState(s => ({
+      ...s,
+      relationships: [...s.relationships, {
+        id: uid(),
+        label: t('editor.erRelationLabel'),
+        source: src,
+        target: tgt,
+        sourceCard: '1',
+        targetCard: 'N',
+      }],
+    }))
+  }
+
+  const removeRelation = (relId: string) => {
+    setState(s => ({
+      ...s,
+      relationships: s.relationships.filter(r => r.id !== relId),
+    }))
+  }
+
+  const updateRelation = (relId: string, updates: Partial<ERState['relationships'][0]>) => {
+    setState(s => ({
+      ...s,
+      relationships: s.relationships.map(r => r.id === relId ? { ...r, ...updates } : r),
+    }))
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* SQL Input */}
+      <div className="border border-gray-200 rounded-lg bg-white p-3">
+        <h3 className="text-xs font-semibold text-gray-600 mb-2">{t('editor.importSql')}</h3>
+        <textarea
+          className="w-full h-40 text-xs font-mono border border-gray-300 rounded p-2 mb-2 focus:outline-none focus:ring-1 focus:ring-black resize-y"
+          placeholder={t('editor.sqlExample').replace(/\\n/g, '\n') + '\n\n(支持将 .sql 文件拖拽到此处)'}
+          value={sqlText}
+          onChange={(e) => setSqlText(e.target.value)}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+        />
+        {parseError && (
+          <div className="text-xs text-red-500 mb-2 bg-red-50 rounded p-2">{parseError}</div>
+        )}
+        {parsePreview && (
+          <div className="text-xs text-green-600 mb-2 bg-green-50 rounded p-2">
+            ✓ {t('editor.sqlPreview')} ({parsePreview.source}): {parsePreview.tables} {t('editor.sqlTables')}, {parsePreview.relations} {t('editor.sqlRelations')}
+          </div>
+        )}
+        <button
+          onClick={handleParseSql}
+          disabled={!sqlText.trim() || isParsing}
+          className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800 disabled:opacity-30"
+        >
+          {isParsing ? t('editor.sqlAiParsing') : t('editor.sqlGenerate')}
+        </button>
+      </div>
+
+      {/* Entity List */}
+      <div>
+        <button onClick={addEntity} className="w-full py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500 mb-3">
+          {t('editor.addErEntity')}
+        </button>
+        <div className="space-y-2">
+          {state.entities.map((ent) => (
+            <div key={ent.id} className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg bg-white">
+              <span className="text-xs text-gray-400 shrink-0">▪</span>
+              <input
+                className="flex-1 text-sm bg-transparent focus:outline-none font-medium"
+                value={ent.label}
+                onChange={(e) => renameEntity(ent.id, e.target.value)}
+              />
+              <button
+                onClick={() => removeEntity(ent.id)}
+                className="text-gray-400 hover:text-red-500 text-sm"
+                title={t('editor.deleteErEntity')}
+              >×</button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Relationship List */}
+      {state.entities.length >= 2 && (
+        <div>
+          <button onClick={addRelation} className="w-full py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500 mb-3">
+            {t('editor.addErRelation')}
+          </button>
+          <div className="space-y-2">
+            {state.relationships.map((rel) => (
+              <div key={rel.id} className="border border-gray-200 rounded-lg bg-white p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs text-gray-400 shrink-0">◇</span>
+                  <input
+                    className="flex-1 text-sm bg-transparent focus:outline-none font-medium"
+                    value={rel.label}
+                    placeholder={t('editor.erRelationName')}
+                    onChange={(e) => updateRelation(rel.id, { label: e.target.value })}
+                  />
+                  <button
+                    onClick={() => removeRelation(rel.id)}
+                    className="text-gray-400 hover:text-red-500 text-sm"
+                    title={t('editor.deleteErRelation')}
+                  >×</button>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <label className="text-gray-400 block mb-1">{t('editor.erSource')}</label>
+                    <select
+                      className="w-full px-1 py-1 border border-gray-300 rounded text-xs bg-white"
+                      value={rel.source}
+                      onChange={(e) => updateRelation(rel.id, { source: e.target.value })}
+                    >
+                      {state.entities.map(e => (
+                        <option key={e.id} value={e.id}>{e.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-gray-400 block mb-1">{t('editor.erTarget')}</label>
+                    <select
+                      className="w-full px-1 py-1 border border-gray-300 rounded text-xs bg-white"
+                      value={rel.target}
+                      onChange={(e) => updateRelation(rel.id, { target: e.target.value })}
+                    >
+                      {state.entities.map(e => (
+                        <option key={e.id} value={e.id}>{e.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-gray-400 block mb-1">{t('editor.erSourceCard')}</label>
+                    <select
+                      className="w-full px-1 py-1 border border-gray-300 rounded text-xs bg-white"
+                      value={rel.sourceCard}
+                      onChange={(e) => updateRelation(rel.id, { sourceCard: e.target.value })}
+                    >
+                      <option value="1">1</option>
+                      <option value="N">N</option>
+                      <option value="M">M</option>
+                      <option value="0..1">0..1</option>
+                      <option value="0..N">0..N</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-gray-400 block mb-1">{t('editor.erTargetCard')}</label>
+                    <select
+                      className="w-full px-1 py-1 border border-gray-300 rounded text-xs bg-white"
+                      value={rel.targetCard}
+                      onChange={(e) => updateRelation(rel.id, { targetCard: e.target.value })}
+                    >
+                      <option value="1">1</option>
+                      <option value="N">N</option>
+                      <option value="M">M</option>
+                      <option value="0..1">0..1</option>
+                      <option value="0..N">0..N</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Apply Button */}
+      {state.entities.length > 0 && (
+        <button
+          onClick={() => onApply(erToJson(state))}
+          className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800"
+        >
+          {t('editor.apply')}
+        </button>
       )}
     </div>
   )

@@ -1,0 +1,97 @@
+<svg width="1000" height="680" xmlns="http://www.w3.org/2000/svg">
+
+ <g>
+  <title>Layer 1</title>
+  <!-- ==================== 1. 全正交且零交叉的物理连线 (Paths) ==================== -->
+  <!-- P1: 用户 -> 地址 (1:N, 左侧水平) -->
+  <path id="svg_2" stroke-linecap="square" stroke-width="2" stroke="#000000" fill="none" d="m420,113l-140,0" class="line"/>
+  <!-- P2: 用户 -> 技师档案 (1:1, 右侧水平) -->
+  <path id="svg_3" stroke-linecap="square" stroke-width="2" stroke="#000000" fill="none" d="m580,113l140,0" class="line"/>
+  <!-- P3: 维修类别 -> 维修订单 (1:N, 左侧水平) -->
+  <path id="svg_4" stroke-linecap="square" stroke-width="2" stroke="#000000" fill="none" d="m280,353l140,0" class="line"/>
+  <!-- P4: 维修订单 -> 评价 (1:1, 右侧水平) -->
+  <path id="svg_5" stroke-linecap="square" stroke-width="2" stroke="#000000" fill="none" d="m580,353l140,0" class="line"/>
+  <!-- P5: 维修订单 -> 订单日志 (1:N, 中轴垂直向下) -->
+  <path id="svg_6" stroke-linecap="square" stroke-width="2" stroke="#000000" fill="none" d="m500,376l0,194" class="line"/>
+  <!-- ==================== 复杂双轨路由逻辑 (Dual-Track Routing) ==================== -->
+  <!-- P6: 用户(客户身份) -> 维修订单 (1:N, 内轨直达) -->
+  <path id="svg_7" stroke-linecap="square" stroke-width="2" stroke="#000000" fill="none" d="m500,136l0,194" class="line"/>
+  <!-- P7: 用户(技师身份) -> 维修订单 (1:N, 左外轨平行下沉) -->
+  <path id="svg_8" stroke-linecap="square" stroke-width="2" stroke="#000000" fill="none" d="m450,136l0,194" class="line"/>
+  <!-- P8: 用户(客户身份) -> 评价表 (1:N, 右内轨折线) -->
+  <path id="svg_9" stroke-linecap="square" stroke-width="2" stroke="#000000" fill="none" d="m550,136l0,94l210,0l0,100" class="line"/>
+  <!-- P9: 用户(技师身份) -> 评价表 (1:N, 右外轨嵌套折线，完美防交叉) -->
+  <path id="svg_10" stroke-linecap="square" stroke-width="2" stroke="#000000" fill="none" d="m575,136l0,54l265,0l0,140" class="line"/>
+  <!-- ==================== 2. 物理遮盖式关系菱形 (Diamonds) ==================== -->
+  <!-- 菱形精确计算坐标，完全置于连线顶层，实现物理阻断视觉效果 -->
+  <!-- 基础资料关联 -->
+  <polygon id="svg_11" stroke-linejoin="round" stroke-width="2" stroke="#000000" fill="#ffffff" points="350,99 374,113 350,127 326,113 " class="diamond"/>
+  <text id="svg_12" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'SimHei', 'Heiti SC', sans-serif" y="113" x="350" class="text-rel">拥有</text>
+  <polygon id="svg_13" stroke-linejoin="round" stroke-width="2" stroke="#000000" fill="#ffffff" points="650,99 674,113 650,127 626,113 " class="diamond"/>
+  <text id="svg_14" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'SimHei', 'Heiti SC', sans-serif" y="113" x="650" class="text-rel">建档</text>
+  <!-- 订单关联逻辑 -->
+  <polygon id="svg_15" stroke-linejoin="round" stroke-width="2" stroke="#000000" fill="#ffffff" points="350,339 374,353 350,367 326,353 " class="diamond"/>
+  <text id="svg_16" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'SimHei', 'Heiti SC', sans-serif" y="353" x="350" class="text-rel">归属</text>
+  <polygon id="svg_17" stroke-linejoin="round" stroke-width="2" stroke="#000000" fill="#ffffff" points="650,339 674,353 650,367 626,353 " class="diamond"/>
+  <text id="svg_18" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'SimHei', 'Heiti SC', sans-serif" y="353" x="650" class="text-rel">关联</text>
+  <polygon id="svg_19" stroke-linejoin="round" stroke-width="2" stroke="#000000" fill="#ffffff" points="500,456 524,470 500,484 476,470 " class="diamond"/>
+  <text id="svg_20" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'SimHei', 'Heiti SC', sans-serif" y="470" x="500" class="text-rel">记录</text>
+  <!-- 核心业务：用户双身份处理（上下错开防止拥挤） -->
+  <polygon id="svg_21" stroke-linejoin="round" stroke-width="2" stroke="#000000" fill="#ffffff" points="500,246 524,260 500,274 476,260 " class="diamond"/>
+  <text id="svg_22" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'SimHei', 'Heiti SC', sans-serif" y="260" x="500" class="text-rel">下单</text>
+  <polygon id="svg_23" stroke-linejoin="round" stroke-width="2" stroke="#000000" fill="#ffffff" points="450,186 474,200 450,214 426,200 " class="diamond"/>
+  <text id="svg_24" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'SimHei', 'Heiti SC', sans-serif" y="200" x="450" class="text-rel">接单</text>
+  <!-- 评价：用户双身份处理 -->
+  <polygon id="svg_25" stroke-linejoin="round" stroke-width="2" stroke="#000000" fill="#ffffff" points="760,266 784,280 760,294 736,280 " class="diamond"/>
+  <text id="svg_26" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'SimHei', 'Heiti SC', sans-serif" y="280" x="760" class="text-rel">评价</text>
+  <polygon id="svg_27" stroke-linejoin="round" stroke-width="2" stroke="#000000" fill="#ffffff" points="840,246 864,260 840,274 816,260 " class="diamond"/>
+  <text id="svg_28" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'SimHei', 'Heiti SC', sans-serif" y="260" x="840" class="text-rel">获评</text>
+  <!-- ==================== 3. 实体矩阵 (Entities) ==================== -->
+  <!-- 固定尺寸：宽160，高46 -->
+  <!-- 顶层：用户及外围资料 -->
+  <rect id="svg_29" rx="4" stroke-width="2" stroke="#000000" fill="#ffffff" height="46" width="160" y="90" x="120" class="entity"/>
+  <text style="cursor: move;" id="svg_30" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="16px" font-family="'SimHei', 'Heiti SC', sans-serif" y="113" x="200" class="text-main">用户地址表</text>
+  <rect id="svg_31" rx="4" stroke-width="2" stroke="#000000" fill="#ffffff" height="46" width="160" y="90" x="420" class="entity"/>
+  <text id="svg_32" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="16px" font-family="'SimHei', 'Heiti SC', sans-serif" y="113" x="500" class="text-main">用户表 (User)</text>
+  <rect id="svg_33" rx="4" stroke-width="2" stroke="#000000" fill="#ffffff" height="46" width="160" y="90" x="720" class="entity"/>
+  <text style="cursor: move;" id="svg_34" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="16px" font-family="'SimHei', 'Heiti SC', sans-serif" y="113" x="800" class="text-main">维修师傅资料表</text>
+  <!-- 中层：订单及外围业务 -->
+  <rect id="svg_35" rx="4" stroke-width="2" stroke="#000000" fill="#ffffff" height="46" width="160" y="330" x="120" class="entity"/>
+  <text style="cursor: move;" id="svg_36" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="16px" font-family="'SimHei', 'Heiti SC', sans-serif" y="354" x="199" class="text-main">家电分类表</text>
+  <rect id="svg_37" rx="4" stroke-width="2" stroke="#000000" fill="#ffffff" height="46" width="160" y="330" x="420" class="entity"/>
+  <text id="svg_38" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="16px" font-family="'SimHei', 'Heiti SC', sans-serif" y="353" x="500" class="text-main">维修订单表</text>
+  <rect id="svg_39" rx="4" stroke-width="2" stroke="#000000" fill="#ffffff" height="46" width="160" y="330" x="720" class="entity"/>
+  <text style="cursor: move;" id="svg_40" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="16px" font-family="'SimHei', 'Heiti SC', sans-serif" y="353" x="800" class="text-main">服务评价表</text>
+  <!-- 底层：日志流水 -->
+  <rect id="svg_41" rx="4" stroke-width="2" stroke="#000000" fill="#ffffff" height="46" width="160" y="570" x="420" class="entity"/>
+  <text id="svg_42" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="16px" font-family="'SimHei', 'Heiti SC', sans-serif" y="593" x="500" class="text-main">订单日志表</text>
+  <!-- ==================== 4. 智能抗干扰基数标识 (Cardinalities) ==================== -->
+  <!-- 附带底层白色遮罩，防止与背景线段混淆 -->
+  <!-- 用户 -> 地址 -->
+  <text id="svg_43" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#ffffff" paint-order="stroke fill" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'Arial', sans-serif" y="100" x="405" class="text-card">1</text>
+  <text id="svg_44" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#ffffff" paint-order="stroke fill" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'Arial', sans-serif" y="100" x="295" class="text-card">N</text>
+  <!-- 用户 -> 技师档案 (1对1) -->
+  <text id="svg_45" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#ffffff" paint-order="stroke fill" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'Arial', sans-serif" y="100" x="595" class="text-card">1</text>
+  <text id="svg_46" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#ffffff" paint-order="stroke fill" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'Arial', sans-serif" y="100" x="705" class="text-card">1</text>
+  <!-- 类别 -> 订单 -->
+  <text id="svg_47" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#ffffff" paint-order="stroke fill" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'Arial', sans-serif" y="340" x="295" class="text-card">1</text>
+  <text id="svg_48" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#ffffff" paint-order="stroke fill" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'Arial', sans-serif" y="340" x="405" class="text-card">N</text>
+  <!-- 订单 -> 评价 (1对1) -->
+  <text id="svg_49" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#ffffff" paint-order="stroke fill" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'Arial', sans-serif" y="340" x="595" class="text-card">1</text>
+  <text id="svg_50" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#ffffff" paint-order="stroke fill" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'Arial', sans-serif" y="340" x="705" class="text-card">1</text>
+  <!-- 订单 -> 日志 -->
+  <text id="svg_51" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#ffffff" paint-order="stroke fill" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'Arial', sans-serif" y="390" x="515" class="text-card">1</text>
+  <text id="svg_52" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#ffffff" paint-order="stroke fill" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'Arial', sans-serif" y="555" x="515" class="text-card">N</text>
+  <!-- 用户(客户) -> 订单 -->
+  <text id="svg_53" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#ffffff" paint-order="stroke fill" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'Arial', sans-serif" y="150" x="515" class="text-card">1</text>
+  <text id="svg_54" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#ffffff" paint-order="stroke fill" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'Arial', sans-serif" y="315" x="515" class="text-card">N</text>
+  <!-- 用户(技师) -> 订单 -->
+  <text id="svg_55" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#ffffff" paint-order="stroke fill" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'Arial', sans-serif" y="150" x="435" class="text-card">1</text>
+  <text id="svg_56" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#ffffff" paint-order="stroke fill" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'Arial', sans-serif" y="315" x="435" class="text-card">N</text>
+  <!-- 用户(客户) -> 评价 -->
+  <text id="svg_57" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#ffffff" paint-order="stroke fill" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'Arial', sans-serif" y="155" x="535" class="text-card">1</text>
+  <text id="svg_58" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#ffffff" paint-order="stroke fill" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'Arial', sans-serif" y="315" x="745" class="text-card">N</text>
+  <!-- 用户(技师) -> 评价 -->
+  <text id="svg_59" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#ffffff" paint-order="stroke fill" dominant-baseline="middle" text-anchor="middle" fill="#000000" font-weight="bold" font-size="14px" font-family="'Arial', sans-serif" y="175" x="590" class="text-card">1</text>
+ </g>
+</svg>
