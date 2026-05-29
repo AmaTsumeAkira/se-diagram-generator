@@ -112,6 +112,23 @@ function uid(): string { return 'n' + _id++ }
 const DEFAULT_FONT_FAMILY = 'SimSun'
 const DEFAULT_FONT_SIZE = 14
 
+const CHINESE_FONT_SIZES = [
+  { name: '一号', pt: 26, px: 35 },
+  { name: '小一', pt: 24, px: 32 },
+  { name: '二号', pt: 22, px: 29 },
+  { name: '小二', pt: 18, px: 24 },
+  { name: '三号', pt: 16, px: 21 },
+  { name: '小三', pt: 15, px: 20 },
+  { name: '四号', pt: 14, px: 19 },
+  { name: '小四', pt: 12, px: 16 },
+  { name: '五号', pt: 10.5, px: 14 },
+  { name: '小五', pt: 9, px: 12 },
+  { name: '六号', pt: 7.5, px: 10 },
+  { name: '小六', pt: 6.5, px: 9 },
+  { name: '七号', pt: 5.5, px: 7 },
+  { name: '八号', pt: 5, px: 7 },
+]
+
 function FontSettings({
   fontFamily, fontSize, onFontFamilyChange, onFontSizeChange, extra,
 }: {
@@ -137,9 +154,15 @@ function FontSettings({
       </label>
       <label className="flex items-center gap-1">
         {t('editor.fontSize')}
-        <input type="number" min={10} max={22} value={fontSize}
-          className="w-12 px-1 py-0.5 border border-gray-300 rounded text-center text-xs"
-          onChange={(e) => onFontSizeChange(Number(e.target.value) || DEFAULT_FONT_SIZE)} />
+        <select value={fontSize}
+          className="w-24 px-1 py-0.5 border border-gray-300 rounded text-xs bg-white"
+          onChange={(e) => onFontSizeChange(Number(e.target.value) || DEFAULT_FONT_SIZE)}>
+          {CHINESE_FONT_SIZES.map((size) => (
+            <option key={`${size.name}-${size.pt}`} value={size.px}>
+              {size.name} {size.pt}磅
+            </option>
+          ))}
+        </select>
       </label>
       {extra}
     </div>
