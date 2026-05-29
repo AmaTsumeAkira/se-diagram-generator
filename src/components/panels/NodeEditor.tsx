@@ -1,10 +1,12 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useVercount } from '@vercount/react'
 
 // ====== Types ======
 
 export interface UseCaseState {
+  fontFamily?: string
+  fontSize?: number
   actors: {
     id: string
     label: string
@@ -18,10 +20,13 @@ export interface TreeNode {
   vertical: boolean
   children: TreeNode[]
   fontSize?: number
+  fontFamily?: string
   spacing?: number
 }
 
 export interface EntityState {
+  fontFamily?: string
+  fontSize?: number
   entities: {
     id: string
     label: string
@@ -104,27 +109,66 @@ interface Props {
 let _id = 100
 function uid(): string { return 'n' + _id++ }
 
+const DEFAULT_FONT_FAMILY = 'SimSun'
+const DEFAULT_FONT_SIZE = 14
+
+function FontSettings({
+  fontFamily, fontSize, onFontFamilyChange, onFontSizeChange, extra,
+}: {
+  fontFamily: string
+  fontSize: number
+  onFontFamilyChange: (value: string) => void
+  onFontSizeChange: (value: number) => void
+  extra?: ReactNode
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex items-center gap-2 mb-3 px-1 text-xs text-gray-500 flex-wrap">
+      <label className="flex items-center gap-1">
+        {t('editor.fontFamily')}
+        <select value={fontFamily}
+          className="w-24 px-1 py-0.5 border border-gray-300 rounded text-xs bg-white"
+          onChange={(e) => onFontFamilyChange(e.target.value)}>
+          <option value="SimSun">宋体</option>
+          <option value="Microsoft YaHei">微软雅黑</option>
+          <option value="KaiTi">楷体</option>
+          <option value="SimHei">黑体</option>
+        </select>
+      </label>
+      <label className="flex items-center gap-1">
+        {t('editor.fontSize')}
+        <input type="number" min={10} max={22} value={fontSize}
+          className="w-12 px-1 py-0.5 border border-gray-300 rounded text-center text-xs"
+          onChange={(e) => onFontSizeChange(Number(e.target.value) || DEFAULT_FONT_SIZE)} />
+      </label>
+      {extra}
+    </div>
+  )
+}
+
 // ====== JSON generators ======
 
 function useCaseToJson(state: UseCaseState): string {
   const nodes: any[] = []
   const edges: any[] = []
+  const fontFamily = state.fontFamily || DEFAULT_FONT_FAMILY
+  const fontSize = state.fontSize || DEFAULT_FONT_SIZE
   state.actors.forEach((actor) => {
-    nodes.push({ id: actor.id, type: 'actor', label: actor.label })
+    nodes.push({ id: actor.id, type: 'actor', label: actor.label, fontFamily, fontSize })
     actor.useCases.forEach((uc, i) => {
-      nodes.push({ id: uc.id, type: 'usecase', label: uc.label, rx: 60, ry: 15 })
+      nodes.push({ id: uc.id, type: 'usecase', label: uc.label, rx: 60, ry: 15, fontFamily, fontSize })
       edges.push({ id: `e_${actor.id}_${i}`, source: actor.id, target: uc.id })
     })
   })
   return JSON.stringify({ nodes, edges }, null, 2)
 }
 
-function treeToJson(root: TreeNode, fontSize = 14, spacing = 26): string {
+function treeToJson(root: TreeNode, fontSize = DEFAULT_FONT_SIZE, spacing = 26, fontFamily = DEFAULT_FONT_FAMILY): string {
   const nodes: any[] = []
   const edges: any[] = []
   function walk(node: TreeNode, isRoot = false) {
     const n: any = { id: node.id, type: 'rectangle', label: node.label, vertical: node.vertical }
-    if (isRoot) { n.fontSize = fontSize; n.spacing = spacing }
+    if (isRoot) { n.fontSize = fontSize; n.fontFamily = fontFamily; n.spacing = spacing }
     nodes.push(n)
     node.children.forEach((child) => {
       edges.push({ id: `e_${node.id}_${child.id}`, source: node.id, target: child.id })
@@ -138,10 +182,12 @@ function treeToJson(root: TreeNode, fontSize = 14, spacing = 26): string {
 function entityToJson(state: EntityState): string {
   const nodes: any[] = []
   const edges: any[] = []
+  const fontFamily = state.fontFamily || DEFAULT_FONT_FAMILY
+  const fontSize = state.fontSize || DEFAULT_FONT_SIZE
   state.entities.forEach((ent) => {
-    nodes.push({ id: ent.id, type: 'rectangle', label: ent.label })
+    nodes.push({ id: ent.id, type: 'rectangle', label: ent.label, fontFamily, fontSize })
     ent.attributes.forEach((a, i) => {
-      nodes.push({ id: a.id, type: 'ellipse', label: a.label, rx: 45, ry: 18 })
+      nodes.push({ id: a.id, type: 'ellipse', label: a.label, rx: 45, ry: 18, fontFamily, fontSize })
       edges.push({ id: `e_${ent.id}_${i}`, source: ent.id, target: a.id })
     })
   })
@@ -657,7 +703,11 @@ function InlineEdit({
 
 function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApply: (json: string) => void }) {
   const { t } = useTranslation()
-  const [state, setState] = useState<UseCaseState>(initial)
+  const [state, setState] = useState<UseCaseState>({
+    ...initial,
+    fontFamily: initial.fontFamily || DEFAULT_FONT_FAMILY,
+    fontSize: initial.fontSize || DEFAULT_FONT_SIZE,
+  })
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const addActor = () => {
@@ -709,6 +759,13 @@ function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApp
           {t('editor.quickImport')}
         </button>
       </div>
+
+      <FontSettings
+        fontFamily={state.fontFamily || DEFAULT_FONT_FAMILY}
+        fontSize={state.fontSize || DEFAULT_FONT_SIZE}
+        onFontFamilyChange={(fontFamily) => setState((s) => ({ ...s, fontFamily }))}
+        onFontSizeChange={(fontSize) => setState((s) => ({ ...s, fontSize }))}
+      />
 
       {state.actors.map((actor) => (
         <ActorSection key={actor.id} actor={actor} editingId={editingId} setEditingId={setEditingId}
@@ -833,7 +890,8 @@ function TreeEditor({ root: initialRoot, onApply }: { root: TreeNode; onApply: (
   const [root, setRoot] = useState<TreeNode>(initialRoot)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
-  const [fontSize, setFontSize] = useState(initialRoot.fontSize || 14)
+  const [fontFamily, setFontFamily] = useState(initialRoot.fontFamily || DEFAULT_FONT_FAMILY)
+  const [fontSize, setFontSize] = useState(initialRoot.fontSize || DEFAULT_FONT_SIZE)
   const [spacing, setSpacing] = useState(initialRoot.spacing || 26)
 
   const handleAddChild = (parentId: string, label: string) => {
@@ -869,22 +927,24 @@ function TreeEditor({ root: initialRoot, onApply }: { root: TreeNode; onApply: (
         {t('editor.quickImport')}
       </button>
 
-      <div className="flex items-center gap-3 mb-3 px-1 text-xs text-gray-500">
-        <label className="flex items-center gap-1">
-          {t('editor.fontSize')} <input type="number" min={10} max={22} value={fontSize}
-            className="w-12 px-1 py-0.5 border border-gray-300 rounded text-center text-xs"
-            onChange={(e) => setFontSize(Number(e.target.value) || 14)} />
-        </label>
-        <label className="flex items-center gap-1">
-          {t('editor.spacing')} <input type="number" min={16} max={50} value={spacing}
+      <FontSettings
+        fontFamily={fontFamily}
+        fontSize={fontSize}
+        onFontFamilyChange={setFontFamily}
+        onFontSizeChange={setFontSize}
+        extra={(
+          <label className="flex items-center gap-1">
+            {t('editor.spacing')}
+            <input type="number" min={16} max={50} value={spacing}
             className="w-12 px-1 py-0.5 border border-gray-300 rounded text-center text-xs"
             onChange={(e) => setSpacing(Number(e.target.value) || 26)} />
-        </label>
-      </div>
+          </label>
+        )}
+      />
 
       <TreeNodeRow node={root} depth={0} editingId={editingId} onStartEdit={setEditingId}
         onAddChild={handleAddChild} onDelete={handleDelete} onRename={handleRename} onTab={handleTabFrom} />
-      <button onClick={() => onApply(treeToJson(root, fontSize, spacing))}
+      <button onClick={() => onApply(treeToJson(root, fontSize, spacing, fontFamily))}
         className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800 mt-4">
         {t('editor.apply')}
       </button>
@@ -986,7 +1046,11 @@ function TreeNodeRow({ node, depth, editingId, onStartEdit, onAddChild, onDelete
 
 function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply: (json: string) => void }) {
   const { t } = useTranslation()
-  const [state, setState] = useState<EntityState>(initial)
+  const [state, setState] = useState<EntityState>({
+    ...initial,
+    fontFamily: initial.fontFamily || DEFAULT_FONT_FAMILY,
+    fontSize: initial.fontSize || DEFAULT_FONT_SIZE,
+  })
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
 
@@ -1037,6 +1101,13 @@ function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply
           {t('editor.quickImport')}
         </button>
       </div>
+
+      <FontSettings
+        fontFamily={state.fontFamily || DEFAULT_FONT_FAMILY}
+        fontSize={state.fontSize || DEFAULT_FONT_SIZE}
+        onFontFamilyChange={(fontFamily) => setState((s) => ({ ...s, fontFamily }))}
+        onFontSizeChange={(fontSize) => setState((s) => ({ ...s, fontSize }))}
+      />
 
       {state.entities.map((ent) => (
         <div key={ent.id} className="border border-gray-200 rounded-lg bg-white">

@@ -79,6 +79,7 @@ export default {
     addActivityHint: '请添加活动节点',
     addDeploymentHint: '请添加部署节点',
     fontSize: '字号',
+    fontFamily: '字体',
     spacing: '间距',
     startNode: '开始',
     endNode: '结束',

@@ -134,6 +134,7 @@ export function layoutTreeStructure(
   // 读取第一个根节点的设置参数
   const rootNd = nodeMap.get(rootIds[0])
   const userFontSize = (rootNd?.data?.fontSize as number) || 14
+  const userFontFamily = (rootNd?.data?.fontFamily as string) || 'SimSun'
   const userSpacing = (rootNd?.data?.spacing as number) || 26
   if (userSpacing !== o.lv3Gap) o.lv3Gap = userSpacing
   const ls = Math.max(1, userFontSize * 0.15)
@@ -150,7 +151,7 @@ export function layoutTreeStructure(
     (levelNodes.get(lv) || []).forEach((id) => {
       const nd = nodeMap.get(id)
       if (nd) {
-        nd.data = { ...nd.data, fontSize: userFontSize }
+        nd.data = { ...nd.data, fontSize: userFontSize, fontFamily: userFontFamily }
         funcMaxChars = Math.max(funcMaxChars, String(nd.data.label || '').length)
       }
     })
@@ -163,7 +164,7 @@ export function layoutTreeStructure(
   nodeMap.forEach((nd, id) => {
     const lv = levels.get(id)
     if (lv === undefined) return
-    nd.data = { ...nd.data, fontSize: userFontSize }
+    nd.data = { ...nd.data, fontSize: userFontSize, fontFamily: userFontFamily }
     if (lv === 0) { nd.data.nodeH = o.rootH; nd.data.nodeW = textW(String(nd.data.label)) + padH * 2; maxRootW = Math.max(maxRootW, nd.data.nodeW as number) }
     else if (lv === 1) { nd.data.nodeH = o.lv2H; nd.data.nodeW = textW(String(nd.data.label)) + padH * 2; maxLv2W = Math.max(maxLv2W, nd.data.nodeW as number) }
   })

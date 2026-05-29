@@ -7,6 +7,14 @@ type DNode = Node<DiagramNodeData>
 // ====== Drawio XML helpers ======
 
 function esc(s: string) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;') }
+function fontSize(data?: DiagramNodeData): number { return (data?.fontSize as number) || 14 }
+function fontFamily(data?: DiagramNodeData): string { return (data?.fontFamily as string) || 'SimSun' }
+function fontStyle(data?: DiagramNodeData): string { return `fontFamily=${esc(fontFamily(data))};fontSize=${fontSize(data)};` }
+function textWidth(s: string, fs: number): number {
+  let w = 0
+  for (const ch of s) w += ch.charCodeAt(0) > 127 ? fs : fs * 0.6
+  return w
+}
 
 const RECT = 'whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;'
 const ELLIPSE = 'ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;'
@@ -91,11 +99,10 @@ export function useCaseDrawio(nodes: DNode[], edges: Edge[]): string {
 
       const aid = nid()
       idMap.set(g.actor.id, aid)
-      cells.push(rect(aid, bx + actorOff, ay, actorW, actorH, g.actor.data.label || '', UML_ACTOR))
+      cells.push(rect(aid, bx + actorOff, ay, actorW, actorH, g.actor.data.label || '', UML_ACTOR + fontStyle(g.actor.data)))
 
       const maxW = g.useCases.reduce((m, uc) => {
-        let w = 0; for (const ch of (uc.data.label || '')) w += ch.charCodeAt(0) > 127 ? 14 : 8
-        return Math.max(m, w)
+        return Math.max(m, textWidth(String(uc.data.label || ''), fontSize(uc.data)))
       }, 0)
       const rx = Math.max(55, Math.ceil(maxW / 2) + 18)
 
@@ -103,7 +110,7 @@ export function useCaseDrawio(nodes: DNode[], edges: Edge[]): string {
         const ry = (uc.data.ry as number) ?? 15
         const uid = nid()
         idMap.set(uc.id, uid)
-        cells.push(rect(uid, ux - rx, sy + ui * ucSpacing - ry, rx * 2, ry * 2, uc.data.label || '', ELLIPSE))
+        cells.push(rect(uid, ux - rx, sy + ui * ucSpacing - ry, rx * 2, ry * 2, uc.data.label || '', ELLIPSE + fontStyle(uc.data)))
         cells.push(anchoredEdge(nid(), aid, uid, ARROW, 1, actorArmY, 0, 0.5))
       })
     })
@@ -170,15 +177,16 @@ export function structureDrawio(nodes: DNode[], edges: Edge[]): string {
     const x = n.position.x; const y = n.position.y
     const vert = n.data.vertical as boolean
     const fs = (n.data.fontSize as number) || 14
+    const ffStyle = fontStyle(n.data)
     const vh = (n.data.nodeH as number) || 110
     const vw = Math.max(18, fs * 1.2)
     const hw = (n.data.nodeW as number) || n.measured?.width || 80
     const hh = (n.data.nodeH as number) || fs * 1.6
 
     if (vert) {
-      cells.push(`<mxCell id="${did}" value="&lt;font style=&quot;writing-mode: vertical-rl;&quot;&gt;${esc(n.data.label || '')}&lt;/font&gt;" style="whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;" vertex="1" parent="1"><mxGeometry x="${Math.round(x)}" y="${Math.round(y)}" width="${Math.round(vw)}" height="${Math.round(vh)}" as="geometry"/></mxCell>`)
+      cells.push(`<mxCell id="${did}" value="&lt;font style=&quot;writing-mode: vertical-rl;&quot;&gt;${esc(n.data.label || '')}&lt;/font&gt;" style="whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;${ffStyle}" vertex="1" parent="1"><mxGeometry x="${Math.round(x)}" y="${Math.round(y)}" width="${Math.round(vw)}" height="${Math.round(vh)}" as="geometry"/></mxCell>`)
     } else {
-      cells.push(rect(did, x, y, hw, hh, n.data.label || ''))
+      cells.push(rect(did, x, y, hw, hh, n.data.label || '', RECT + ffStyle))
     }
   })
 
@@ -213,13 +221,13 @@ export function entityDrawio(nodes: DNode[], edges: Edge[]): string {
     const a = 100 + n * 10; const b = Math.round(a * 0.55)
 
     const eid = nid(); idMap.set(ent.id, eid)
-    cells.push(rect(eid, cx - 45, cy - 18, 90, 36, ent.data.label || ''))
+    cells.push(rect(eid, cx - 45, cy - 18, 90, 36, ent.data.label || '', RECT + fontStyle(ent.data)))
 
     attrs.forEach((attr, ai) => {
       const angle = -Math.PI / 2 + (2 * Math.PI * ai) / n
       const ax = cx + a * Math.cos(angle); const ay = cy + b * Math.sin(angle)
       const aid = nid(); idMap.set(attr.id, aid)
-      cells.push(rect(aid, ax - 45, ay - 18, 90, 36, attr.data.label || '', ELLIPSE))
+      cells.push(rect(aid, ax - 45, ay - 18, 90, 36, attr.data.label || '', ELLIPSE + fontStyle(attr.data)))
       cells.push(edge(nid(), eid, aid, LINE))
     })
   })

@@ -10,6 +10,8 @@ import type { DiagramNodeData } from '../../types/diagram'
  * 视觉上呈现为从矩形边框精准伸出
  */
 function EntityNode({ data }: NodeProps<Node<DiagramNodeData>>) {
+  const fontSize = (data.fontSize as number) || 14
+  const fontFamily = (data.fontFamily as string) || 'SimSun'
   return (
     <div
       style={{
@@ -20,7 +22,8 @@ function EntityNode({ data }: NodeProps<Node<DiagramNodeData>>) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: 14,
+        fontSize,
+        fontFamily,
         position: 'relative',
       }}
     >

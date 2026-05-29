@@ -10,6 +10,8 @@ import type { DiagramNodeData } from '../../types/diagram'
 function UseCaseEllipseNode({ data }: NodeProps<Node<DiagramNodeData>>) {
   const rx = (data.rx as number) ?? 60
   const ry = (data.ry as number) ?? 15
+  const fontSize = (data.fontSize as number) || 14
+  const fontFamily = (data.fontFamily as string) || 'SimSun'
   const w = rx * 2
   const h = ry * 2
 
@@ -22,7 +24,7 @@ function UseCaseEllipseNode({ data }: NodeProps<Node<DiagramNodeData>>) {
         style={{
           position: 'absolute', top: 0, left: 0, width: w, height: h,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 14, whiteSpace: 'nowrap', pointerEvents: 'none',
+          fontSize, fontFamily, whiteSpace: 'nowrap', pointerEvents: 'none',
         }}
       >
         {data.label}

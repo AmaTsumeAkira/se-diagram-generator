@@ -20,6 +20,20 @@ function safeLabel(data: Record<string, unknown>): string {
   return (data.label as string) || ''
 }
 
+function fontSize(data?: Record<string, unknown>): number {
+  return (data?.fontSize as number) || 14
+}
+
+function fontFamily(data?: Record<string, unknown>): string {
+  return (data?.fontFamily as string) || 'SimSun'
+}
+
+function textWidth(s: string, fs: number): number {
+  let w = 0
+  for (const ch of s) w += ch.charCodeAt(0) > 127 ? fs : fs * 0.6
+  return w
+}
+
 function bounds(nodes: { x: number; y: number; w?: number; h?: number }[]) {
   if (nodes.length === 0) return { x: 0, y: 0, w: 400, h: 300 }
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
@@ -58,22 +72,25 @@ export function useCaseSvg(nodes: DNode[], edges: Edge[]): string {
     const ucCx = baseX + 280
     const maxW = g.useCases.reduce((m, uc) => {
       const lbl = safeLabel(uc.data)
-      let w = 0; for (const ch of lbl) w += ch.charCodeAt(0) > 127 ? 14 : 8
-      return Math.max(m, w)
+      return Math.max(m, textWidth(lbl, fontSize(uc.data)))
     }, 0)
     const rx = Math.max(55, Math.ceil(maxW / 2) + 18)
 
     // stick figure
     const ax = baseX + 40; const ay = actorY
+    const actorFs = fontSize(g.actor.data)
+    const actorFont = esc(fontFamily(g.actor.data))
     svg += `<g stroke="#000" stroke-width="1.5" fill="none"><circle cx="${ax + 27}" cy="${ay + 12}" r="10"/><line x1="${ax + 27}" y1="${ay + 22}" x2="${ax + 27}" y2="${ay + 68}"/><line x1="${ax + 27}" y1="${ay + 40}" x2="${ax}" y2="${ay + 40}"/><line x1="${ax + 27}" y1="${ay + 68}" x2="${ax + 10}" y2="${ay + 102}"/><line x1="${ax + 27}" y1="${ay + 68}" x2="${ax + 44}" y2="${ay + 102}"/></g>`
-    svg += `<text x="${ax + 27}" y="${ay + 120}" font-family="sans-serif" font-size="14" text-anchor="middle" fill="#000">${esc(safeLabel(g.actor.data))}</text>`
+    svg += `<text x="${ax + 27}" y="${ay + 120}" font-family="${actorFont}" font-size="${actorFs}" text-anchor="middle" fill="#000">${esc(safeLabel(g.actor.data))}</text>`
 
     // use case ellipses + lines
     g.useCases.forEach((uc, ui) => {
       const ucy = startY + ui * spacing
+      const ucFs = fontSize(uc.data)
+      const ucFont = esc(fontFamily(uc.data))
       svg += `<line x1="${ax + 55}" y1="${ay + 40}" x2="${ucCx - rx}" y2="${ucy}" stroke="#000" stroke-width="1" marker-end="url(#arrow)"/>`
       svg += `<ellipse cx="${ucCx}" cy="${ucy}" rx="${rx}" ry="15" fill="#fff" stroke="#000" stroke-width="1"/>`
-      svg += `<text x="${ucCx}" y="${ucy + 5}" font-family="sans-serif" font-size="14" text-anchor="middle" fill="#000">${esc(safeLabel(uc.data))}</text>`
+      svg += `<text x="${ucCx}" y="${ucy + ucFs * 0.35}" font-family="${ucFont}" font-size="${ucFs}" text-anchor="middle" fill="#000">${esc(safeLabel(uc.data))}</text>`
     })
 
     boxes.push({ x: baseX, y: baseY, w: cellW, h: 360 })
@@ -97,6 +114,7 @@ export function structureSvg(nodes: DNode[], edges: Edge[]): string {
     const label = esc(rawLabel)
     const vert = n.data.vertical as boolean
     const fs = (n.data.fontSize as number) || 14
+    const ff = esc(fontFamily(n.data))
     const vh = (n.data.nodeH as number) || 110
     const vw = Math.max(18, fs * 1.2)
 
@@ -108,13 +126,13 @@ export function structureSvg(nodes: DNode[], edges: Edge[]): string {
       const charH = fs + ls
       const startY = y + (vh - chars.length * charH + ls) / 2 + fs * 0.8
       chars.forEach((ch, ci) => {
-        svg += `<text x="${x + vw / 2}" y="${startY + ci * charH}" font-family="sans-serif" font-size="${fs}" text-anchor="middle" fill="#000">${esc(ch)}</text>`
+        svg += `<text x="${x + vw / 2}" y="${startY + ci * charH}" font-family="${ff}" font-size="${fs}" text-anchor="middle" fill="#000">${esc(ch)}</text>`
       })
     } else {
       const h = (n.data.nodeH as number) || (fs * 1.6)
       const w = (n.data.nodeW as number) || n.measured?.width || Math.max(80, label.length * fs * 0.8 + 32)
       svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#fff" stroke="#000" stroke-width="1"/>`
-      svg += `<text x="${x + w / 2}" y="${y + h / 2 + fs * 0.3}" font-family="sans-serif" font-size="${fs}" text-anchor="middle" fill="#000">${label}</text>`
+      svg += `<text x="${x + w / 2}" y="${y + h / 2 + fs * 0.3}" font-family="${ff}" font-size="${fs}" text-anchor="middle" fill="#000">${label}</text>`
     }
   })
 
@@ -154,6 +172,8 @@ export function entitySvg(nodes: DNode[], edges: Edge[]): string {
     const baseX = ci * cellW; const baseY = ri * cellH
     const cx = baseX + 200; const cy = baseY + cyOff
     const entEdges = edges.filter((e) => e.source === ent.id)
+    const entFs = fontSize(ent.data)
+    const entFont = esc(fontFamily(ent.data))
     const attrIds = new Set(entEdges.map((e) => e.target))
     const attrs = nodes.filter((n) => n.type === 'ellipse' && attrIds.has(n.id))
     const n = attrs.length
@@ -162,16 +182,18 @@ export function entitySvg(nodes: DNode[], edges: Edge[]): string {
     // entity rectangle
     const ew = 90; const eh = 36
     svg += `<rect x="${cx - ew / 2}" y="${cy - eh / 2}" width="${ew}" height="${eh}" fill="#fff" stroke="#000" stroke-width="1.5"/>`
-    svg += `<text x="${cx}" y="${cy + 5}" font-family="sans-serif" font-size="14" text-anchor="middle" fill="#000">${esc(safeLabel(ent.data))}</text>`
+    svg += `<text x="${cx}" y="${cy + entFs * 0.35}" font-family="${entFont}" font-size="${entFs}" text-anchor="middle" fill="#000">${esc(safeLabel(ent.data))}</text>`
 
     // attributes + lines
     attrs.forEach((attr, ai) => {
       const angle = -Math.PI / 2 + (2 * Math.PI * ai) / n
       const ax = cx + a * Math.cos(angle); const ay = cy + b * Math.sin(angle)
       const rx = 45; const ry = 18
+      const attrFs = fontSize(attr.data)
+      const attrFont = esc(fontFamily(attr.data))
       svg += `<line x1="${cx}" y1="${cy}" x2="${ax}" y2="${ay}" stroke="#000" stroke-width="1.2"/>`
       svg += `<ellipse cx="${ax}" cy="${ay}" rx="${rx}" ry="${ry}" fill="#fff" stroke="#000" stroke-width="1.2"/>`
-      svg += `<text x="${ax}" y="${ay + 5}" font-family="sans-serif" font-size="14" text-anchor="middle" fill="#000">${esc(safeLabel(attr.data))}</text>`
+      svg += `<text x="${ax}" y="${ay + attrFs * 0.35}" font-family="${attrFont}" font-size="${attrFs}" text-anchor="middle" fill="#000">${esc(safeLabel(attr.data))}</text>`
     })
 
     boxes.push({ x: baseX, y: baseY, w: cellW, h: cellH })

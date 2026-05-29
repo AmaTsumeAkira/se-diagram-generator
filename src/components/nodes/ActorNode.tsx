@@ -4,6 +4,8 @@ import type { NodeProps, Node } from '@xyflow/react'
 import type { DiagramNodeData } from '../../types/diagram'
 
 function ActorNode({ data }: NodeProps<Node<DiagramNodeData>>) {
+  const fontSize = (data.fontSize as number) || 14
+  const fontFamily = (data.fontFamily as string) || 'SimSun'
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <div style={{ width: 55, height: 125, position: 'relative' }}>
@@ -40,7 +42,7 @@ function ActorNode({ data }: NodeProps<Node<DiagramNodeData>>) {
           }}
         />
       </div>
-      <span style={{ fontSize: 14, marginTop: 4 }}>{data.label}</span>
+      <span style={{ fontSize, fontFamily, marginTop: 4 }}>{data.label}</span>
     </div>
   )
 }

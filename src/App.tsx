@@ -65,6 +65,7 @@ function parseConfigJson(text: string): { nodes: Node<DiagramNodeData>[]; edges:
       nodeH: n.nodeH as number | undefined,
       nodeW: n.nodeW as number | undefined,
       fontSize: n.fontSize as number | undefined,
+      fontFamily: n.fontFamily as string | undefined,
       spacing: n.spacing as number | undefined,
       // diagram-specific fields
       ...(n.attributes && { attributes: n.attributes }),
@@ -93,7 +94,7 @@ function configsToJson(configs: ConfigMap): string {
     const cfg = configs[key as DiagramType]
     flat[key] = {
       nodes: cfg.nodes.map((n) => {
-        const base: any = { id: n.id, type: n.type, label: n.data.label, rx: n.data.rx, ry: n.data.ry, vertical: n.data.vertical, fontSize: n.data.fontSize, spacing: n.data.spacing, nodeH: n.data.nodeH, nodeW: (n.data as any).nodeW }
+        const base: any = { id: n.id, type: n.type, label: n.data.label, rx: n.data.rx, ry: n.data.ry, vertical: n.data.vertical, fontSize: n.data.fontSize, fontFamily: n.data.fontFamily, spacing: n.data.spacing, nodeH: n.data.nodeH, nodeW: (n.data as any).nodeW }
         const d = n.data as any
         if (d.attributes) base.attributes = d.attributes
         if (d.methods) base.methods = d.methods
@@ -139,7 +140,10 @@ function jsonToConfigs(json: string): ConfigMap | null {
 
 function configToUseCaseState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): UseCaseState {
   const actors = cfg.nodes.filter((n) => n.type === 'actor')
+  const styleSource = cfg.nodes[0]?.data
   return {
+    fontFamily: (styleSource?.fontFamily as string) || 'SimSun',
+    fontSize: (styleSource?.fontSize as number) || 14,
     actors: actors.map((actor) => {
       const actorId = actor.id
       const connectedIds = new Set(cfg.edges.filter((e) => e.source === actorId).map((e) => e.target))
@@ -169,9 +173,10 @@ function configToTreeState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] 
     return {
       id,
       label: (node?.data.label as string) || id,
-      vertical: (node?.data.vertical as boolean) || depth >= 2,
-      fontSize: depth === 0 ? ((node?.data.fontSize as number) || 14) : undefined,
-      spacing: depth === 0 ? ((node?.data.spacing as number) || 26) : undefined,
+        vertical: (node?.data.vertical as boolean) || depth >= 2,
+        fontSize: depth === 0 ? ((node?.data.fontSize as number) || 14) : undefined,
+        fontFamily: depth === 0 ? ((node?.data.fontFamily as string) || 'SimSun') : undefined,
+        spacing: depth === 0 ? ((node?.data.spacing as number) || 26) : undefined,
       children: (childrenMap.get(id) || []).map((cid) => build(cid, depth + 1)),
     }
   }
@@ -180,7 +185,10 @@ function configToTreeState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] 
 
 function configToEntityState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): EntityState {
   const entities = cfg.nodes.filter((n) => n.type === 'rectangle')
+  const styleSource = cfg.nodes[0]?.data
   return {
+    fontFamily: (styleSource?.fontFamily as string) || 'SimSun',
+    fontSize: (styleSource?.fontSize as number) || 14,
     entities: entities.map((ent) => {
       const eid = ent.id
       const connectedIds = new Set(cfg.edges.filter((e) => e.source === eid).map((e) => e.target))

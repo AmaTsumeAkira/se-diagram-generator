@@ -79,6 +79,7 @@ export default {
     addActivityHint: 'Please add activity nodes',
     addDeploymentHint: 'Please add deployment nodes',
     fontSize: 'Font Size',
+    fontFamily: 'Font',
     spacing: 'Spacing',
     startNode: 'Start',
     endNode: 'End',

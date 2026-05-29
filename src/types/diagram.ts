@@ -27,6 +27,7 @@ export interface DiagramNodeData extends Record<string, unknown> {
   /** 竖排矩形动态高度 */
   nodeH?: number
   fontSize?: number
+  fontFamily?: string
   spacing?: number
   nodeW?: number
 }

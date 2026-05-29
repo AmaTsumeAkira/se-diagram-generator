@@ -50,9 +50,10 @@ export default function EntityAttributeDiagram({ groups, showGrid = true }: Prop
         const n = g.attributes.length
 
         // 根据该组最长属性文字计算椭圆宽度
+        const fs = (g.entity.data.fontSize as number) || 14
         const maxW = g.attributes.reduce((m, a) => {
           const s = a.data.label as string
-          let w = 0; for (const ch of s) w += ch.charCodeAt(0) > 127 ? 14 : 8
+          let w = 0; for (const ch of s) w += ch.charCodeAt(0) > 127 ? fs : fs * 0.6
           return Math.max(m, w)
         }, 0)
         const dynRx = Math.max(45, Math.ceil(maxW / 2) + 14)
