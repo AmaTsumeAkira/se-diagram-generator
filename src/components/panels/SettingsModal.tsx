@@ -111,17 +111,15 @@ export default function SettingsModal({ onClose }: Props) {
               <option value="deepseek-v4-pro">deepseek-v4-pro (推荐, 支持思考模式)</option>
               <option value="deepseek-v4-flash">deepseek-v4-flash (较快)</option>
             </select>
-            {model.includes('pro') && (
-              <label className="flex items-center gap-2 mt-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={thinking}
-                  onChange={(e) => setThinking(e.target.checked)}
-                  className="rounded border-gray-300 text-black focus:ring-black"
-                />
-                <span className="text-sm text-gray-700">{t('settings.thinkingMode')}</span>
-              </label>
-            )}
+            <label className="flex items-center gap-2 mt-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={thinking}
+                onChange={(e) => setThinking(e.target.checked)}
+                className="rounded border-gray-300 text-black focus:ring-black"
+              />
+              <span className="text-sm text-gray-700">{t('settings.thinkingMode')}</span>
+            </label>
           </div>
 
           <div>

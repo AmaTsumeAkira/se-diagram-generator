@@ -87,12 +87,10 @@ ${input}
       temperature: 0.1,
     }
 
-    if (modelName.includes('deepseek-v4-pro')) {
-      const isThinking = getAiThinking()
-      payload.thinking = { type: isThinking ? 'enabled' : 'disabled' }
-      if (isThinking) {
-        payload.reasoning_effort = 'high'
-      }
+    const isThinking = getAiThinking()
+    payload.thinking = { type: isThinking ? 'enabled' : 'disabled' }
+    if (isThinking) {
+      payload.reasoning_effort = 'high'
     }
 
     const response = await fetch(getEffectiveApiUrl(), {
