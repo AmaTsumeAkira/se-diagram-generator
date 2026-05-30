@@ -11,16 +11,13 @@ interface AiERResult {
   }[]
 }
 
-// Read API URL from user settings; in dev mode use Vite proxy
+// Read API URL from user settings; falls back to DeepSeek official API URL
 function getEffectiveApiUrl(): string {
-  if (import.meta.env.DEV) {
-    return '/api/ai/zen/go/v1/chat/completions'
-  }
   try {
-    return localStorage.getItem('diagram-ai-api-url') || 'https://opencode.ai/zen/go/v1/chat/completions'
-  } catch {
-    return 'https://opencode.ai/zen/go/v1/chat/completions'
-  }
+    const val = localStorage.getItem('diagram-ai-api-url')
+    if (val && val.trim()) return val.trim()
+  } catch {}
+  return 'https://api.deepseek.com/chat/completions'
 }
 function getEffectiveModel(): string {
   try {
