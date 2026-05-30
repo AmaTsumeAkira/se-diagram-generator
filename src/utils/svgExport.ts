@@ -525,6 +525,112 @@ export function deploymentSvg(nodes: DNode[], edges: Edge[]): string {
 
 // ====== ER Diagram SVG (Chen-style) ======
 
+interface ERCell {
+  row: number
+  col: number
+}
+
+interface ERPos {
+  x: number
+  y: number
+  cx: number
+  cy: number
+  row: number
+  col: number
+}
+
+interface ERDiamondEdgeInfo {
+  srcId: string
+  tgtId: string
+  srcCard: string
+  tgtCard: string
+}
+
+function readGridCell(node: DNode): ERCell | null {
+  const row = Number(node.data.row)
+  const col = Number(node.data.col)
+  return Number.isFinite(row) && Number.isFinite(col) && row >= 0 && col >= 0
+    ? { row: Math.round(row), col: Math.round(col) }
+    : null
+}
+
+function buildERDiamondEdgeMap(edges: Edge[], diamonds: DNode[]): Map<string, ERDiamondEdgeInfo> {
+  const diamondIds = new Set(diamonds.map(d => d.id))
+  const map = new Map<string, ERDiamondEdgeInfo>()
+
+  for (const e of edges) {
+    const eData = (e as any).data || {}
+    if (diamondIds.has(e.target)) {
+      const existing = map.get(e.target) || { srcId: '', tgtId: '', srcCard: '', tgtCard: '' }
+      existing.srcId = e.source
+      existing.srcCard = eData.sourceCard || ''
+      map.set(e.target, existing)
+    } else if (diamondIds.has(e.source)) {
+      const existing = map.get(e.source) || { srcId: '', tgtId: '', srcCard: '', tgtCard: '' }
+      existing.tgtId = e.target
+      existing.tgtCard = eData.targetCard || ''
+      map.set(e.source, existing)
+    }
+  }
+
+  return map
+}
+
+function buildEREntityCells(entities: DNode[], rels: ERDiamondEdgeInfo[]): Map<string, ERCell> {
+  const cells = new Map<string, ERCell>()
+  const occupied = new Set<string>()
+  const requestedCells = entities.map(ent => readGridCell(ent))
+  const hasLayout = requestedCells.some(Boolean)
+  const maxRequestedCol = Math.max(0, ...requestedCells.map(cell => cell?.col ?? 0))
+  const cols = hasLayout ? Math.max(3, maxRequestedCol + 1) : Math.max(3, Math.ceil(Math.sqrt(Math.max(entities.length, 1))))
+
+  const placeAtOrAfter = (preferred: ERCell): ERCell => {
+    let row = preferred.row
+    let col = preferred.col
+    while (occupied.has(`${row},${col}`)) {
+      col++
+      if (col >= cols) {
+        col = 0
+        row++
+      }
+    }
+    occupied.add(`${row},${col}`)
+    return { row, col }
+  }
+
+  if (hasLayout) {
+    entities.forEach((ent, i) => {
+      cells.set(ent.id, placeAtOrAfter(requestedCells[i] || { row: 0, col: 0 }))
+    })
+    return cells
+  }
+
+  const degree = new Map(entities.map(ent => [ent.id, 0]))
+  rels.forEach(rel => {
+    degree.set(rel.srcId, (degree.get(rel.srcId) || 0) + 1)
+    degree.set(rel.tgtId, (degree.get(rel.tgtId) || 0) + 1)
+  })
+
+  const ordered = [...entities].sort((a, b) => {
+    const d = (degree.get(b.id) || 0) - (degree.get(a.id) || 0)
+    return d || safeLabel(a.data).localeCompare(safeLabel(b.data))
+  })
+  const centerCol = Math.floor(cols / 2)
+  const colOrder = [centerCol]
+  for (let step = 1; colOrder.length < cols; step++) {
+    if (centerCol - step >= 0) colOrder.push(centerCol - step)
+    if (centerCol + step < cols) colOrder.push(centerCol + step)
+  }
+
+  ordered.forEach((ent, i) => {
+    const row = Math.floor(i / cols)
+    const col = colOrder[i % cols]
+    cells.set(ent.id, placeAtOrAfter({ row, col }))
+  })
+
+  return cells
+}
+
 export function erSvg(nodes: DNode[], edges: Edge[]): string {
   const entities = nodes.filter(n => n.type === 'erEntity')
   const diamonds = nodes.filter(n => n.type === 'erDiamond')
@@ -536,60 +642,31 @@ export function erSvg(nodes: DNode[], edges: Edge[]): string {
   const startX = 120
   const startY = 90
 
-  // ====== 1. Determine entity positions ======
-  // If AI provided row/col, use them; otherwise auto-layout
-  const hasAILayout = entities.some(ent => ent.data.row !== undefined && ent.data.col !== undefined)
+  // ====== 1. Group relationships and place entities without grid collisions ======
+  const diamondEdgeMap = buildERDiamondEdgeMap(edges, diamonds)
+  const entityCells = buildEREntityCells(entities, [...diamondEdgeMap.values()])
+  const entityPos = new Map<string, ERPos>()
 
-  let cols: number
-  if (hasAILayout) {
-    cols = Math.max(2, ...entities.map(e => (Number(e.data.col) || 0) + 1))
-  } else {
-    cols = Math.max(2, Math.ceil(Math.sqrt(entities.length)))
-  }
-
-  const entityPos = new Map<string, { x: number; y: number; cx: number; cy: number }>()
-
-  entities.forEach((ent, i) => {
-    const row = hasAILayout && ent.data.row !== undefined ? Number(ent.data.row) : Math.floor(i / cols)
-    const col = hasAILayout && ent.data.col !== undefined ? Number(ent.data.col) : (i % cols)
-    const finalRow = isNaN(row) ? 0 : row
-    const finalCol = isNaN(col) ? 0 : col
-
-    const x = startX + finalCol * cellW
-    const y = startY + finalRow * cellH
-    entityPos.set(ent.id, { x, y, cx: x + entW / 2, cy: y + entH / 2 })
+  entities.forEach((ent) => {
+    const cell = entityCells.get(ent.id) || { row: 0, col: 0 }
+    const x = startX + cell.col * cellW
+    const y = startY + cell.row * cellH
+    entityPos.set(ent.id, { x, y, cx: x + entW / 2, cy: y + entH / 2, row: cell.row, col: cell.col })
   })
 
-  // ====== 2. Group edges by diamond ======
-  const diamondEdgeMap = new Map<string, { srcId: string; tgtId: string; srcCard: string; tgtCard: string }>()
-  for (const e of edges) {
-    const eData = (e as any).data || {}
-    const srcIsDiamond = diamonds.some(d => d.id === e.source)
-    const tgtIsDiamond = diamonds.some(d => d.id === e.target)
-    if (tgtIsDiamond) {
-      const existing = diamondEdgeMap.get(e.target) || { srcId: '', tgtId: '', srcCard: '', tgtCard: '' }
-      existing.srcId = e.source
-      existing.srcCard = eData.sourceCard || ''
-      diamondEdgeMap.set(e.target, existing)
-    } else if (srcIsDiamond) {
-      const existing = diamondEdgeMap.get(e.source) || { srcId: '', tgtId: '', srcCard: '', tgtCard: '' }
-      existing.tgtId = e.target
-      existing.tgtCard = eData.targetCard || ''
-      diamondEdgeMap.set(e.source, existing)
-    }
-  }
-
-  // ====== 3. Calculate diamond positions with anti-overlap ======
+  // ====== 2. Calculate diamond positions with anti-overlap ======
   interface DiamondInfo {
     dia: DNode
-    srcPos: { x: number; y: number; cx: number; cy: number }
-    tgtPos: { x: number; y: number; cx: number; cy: number }
-    info: { srcId: string; tgtId: string; srcCard: string; tgtCard: string }
+    srcPos: ERPos
+    tgtPos: ERPos
+    info: ERDiamondEdgeInfo
     cx: number
     cy: number
+    track: number
   }
   const diamondInfos: DiamondInfo[] = []
   const placedPositions = new Map<string, number>()
+  const entityTrackCount = new Map<string, number>()
 
   diamonds.forEach((dia) => {
     const info = diamondEdgeMap.get(dia.id)
@@ -600,13 +677,17 @@ export function erSvg(nodes: DNode[], edges: Edge[]): string {
 
     let cx = (srcPos.cx + tgtPos.cx) / 2
     let cy = (srcPos.cy + tgtPos.cy) / 2
+    const sameRow = srcPos.row === tgtPos.row
+    const sameCol = srcPos.col === tgtPos.col
 
-    // Offset for long-distance relations
-    const dx = Math.abs(srcPos.cx - tgtPos.cx)
-    const dy = Math.abs(srcPos.cy - tgtPos.cy)
-    if (dx >= cellW * 1.5 && dy < cellH * 0.5) cy -= 80
-    else if (dy >= cellH * 1.5 && dx < cellW * 0.5) cx += 100
-    else if (dx >= cellW * 1.5 && dy >= cellH * 1.5) cx += 50
+    if (sameRow) {
+      cy = srcPos.cy
+    } else if (sameCol) {
+      cx = srcPos.cx
+    } else {
+      const srcDegree = entityTrackCount.get(info.srcId) || 0
+      cx += (srcDegree % 2 === 0 ? 42 : -42)
+    }
 
     // Anti-overlap: shift if another diamond is at the same spot
     const key = `${Math.round(cx / 30)},${Math.round(cy / 30)}`
@@ -618,10 +699,15 @@ export function erSvg(nodes: DNode[], edges: Edge[]): string {
       else cx += 50 * Math.ceil(count / 2)
     }
 
-    diamondInfos.push({ dia, srcPos, tgtPos, info, cx, cy })
+    const trackIndex = entityTrackCount.get(info.srcId) || 0
+    entityTrackCount.set(info.srcId, trackIndex + 1)
+    entityTrackCount.set(info.tgtId, (entityTrackCount.get(info.tgtId) || 0) + 1)
+    const track = (trackIndex % 2 === 0 ? 1 : -1) * Math.ceil(trackIndex / 2) * 28
+
+    diamondInfos.push({ dia, srcPos, tgtPos, info, cx, cy, track })
   })
 
-  // ====== 4. Render: Lines first (bottom layer) ======
+  // ====== 3. Render: Lines first (bottom layer) ======
   let svgLines = ''
   let svgDiamonds = ''
   let svgLabels = ''
@@ -629,55 +715,76 @@ export function erSvg(nodes: DNode[], edges: Edge[]): string {
   const svgBoxes: { x: number; y: number; w: number; h: number }[] = []
 
   diamondInfos.forEach((dInfo) => {
-    const { srcPos, tgtPos, info, cx: _diamCx, cy: diamCy } = dInfo
-    // Orthogonal path routing (like the reference SVG)
-    const isHorizontal = Math.abs(srcPos.cy - tgtPos.cy) < cellH * 0.3
-    const isVertical = Math.abs(srcPos.cx - tgtPos.cx) < cellW * 0.3
+    const { srcPos, tgtPos, info, cx: diamCx, cy: diamCy } = dInfo
 
-    if (isHorizontal) {
-      // Horizontal line: source.cx -> target.cx at same y
-      const lineY = srcPos.cy
-      svgLines += `<path d="M ${srcPos.cx} ${lineY} L ${tgtPos.cx} ${lineY}" stroke="#000" stroke-width="2" fill="none" stroke-linecap="square"/>`
-    } else if (isVertical) {
-      // Vertical line: source.cy -> target.cy at same x
-      const lineX = srcPos.cx
-      svgLines += `<path d="M ${lineX} ${srcPos.cy} L ${lineX} ${tgtPos.cy}" stroke="#000" stroke-width="2" fill="none" stroke-linecap="square"/>`
+    // Adaptive orthogonal path routing for two segments:
+    // 1. Source Entity (srcPos.cx, srcPos.cy) -> Diamond (diamCx, diamCy)
+    // 2. Diamond (diamCx, diamCy) -> Target Entity (tgtPos.cx, tgtPos.cy)
+
+    // --- Segment 1: Source to Diamond ---
+    const dx = Math.abs(srcPos.cx - diamCx)
+    const dy = Math.abs(srcPos.cy - diamCy)
+    let path1 = ''
+    let srcLabelX = srcPos.cx
+    let srcLabelY = srcPos.cy
+
+    if (dx < 5) {
+      path1 = `M ${srcPos.cx} ${srcPos.cy} L ${srcPos.cx} ${diamCy}`
+      srcLabelX = srcPos.cx + 16
+      srcLabelY = srcPos.cy + (diamCy > srcPos.cy ? 24 : -24)
+    } else if (dy < 5) {
+      path1 = `M ${srcPos.cx} ${srcPos.cy} L ${diamCx} ${srcPos.cy}`
+      srcLabelX = srcPos.cx + (diamCx > srcPos.cx ? 30 : -30)
+      srcLabelY = srcPos.cy - 12
+    } else if (dx > dy) {
+      // Horizontal first, then vertical
+      path1 = `M ${srcPos.cx} ${srcPos.cy} L ${diamCx} ${srcPos.cy} L ${diamCx} ${diamCy}`
+      srcLabelX = srcPos.cx + (diamCx > srcPos.cx ? 30 : -30)
+      srcLabelY = srcPos.cy - 12
     } else {
-      // L-shaped orthogonal route: go vertical first, then horizontal
-      svgLines += `<path d="M ${srcPos.cx} ${srcPos.cy} L ${srcPos.cx} ${diamCy} L ${tgtPos.cx} ${diamCy} L ${tgtPos.cx} ${tgtPos.cy}" stroke="#000" stroke-width="2" fill="none" stroke-linecap="square"/>`
+      // Vertical first, then horizontal
+      path1 = `M ${srcPos.cx} ${srcPos.cy} L ${srcPos.cx} ${diamCy} L ${diamCx} ${diamCy}`
+      srcLabelX = srcPos.cx + 16
+      srcLabelY = srcPos.cy + (diamCy > srcPos.cy ? 24 : -24)
     }
+    svgLines += `<path d="${path1}" stroke="#000" stroke-width="2" fill="none" stroke-linecap="square"/>`
 
-    // Cardinality labels with white stroke background (anti-interference, matching reference SVG)
+    // --- Segment 2: Diamond to Target ---
+    const tdx = Math.abs(diamCx - tgtPos.cx)
+    const tdy = Math.abs(diamCy - tgtPos.cy)
+    let path2 = ''
+    let tgtLabelX = tgtPos.cx
+    let tgtLabelY = tgtPos.cy
+
+    if (tdx < 5) {
+      path2 = `M ${diamCx} ${diamCy} L ${tgtPos.cx} ${tgtPos.cy}`
+      tgtLabelX = tgtPos.cx + 16
+      tgtLabelY = tgtPos.cy + (diamCy > tgtPos.cy ? 24 : -24)
+    } else if (tdy < 5) {
+      path2 = `M ${diamCx} ${diamCy} L ${tgtPos.cx} ${tgtPos.cy}`
+      tgtLabelX = tgtPos.cx + (diamCx > tgtPos.cx ? 30 : -30)
+      tgtLabelY = tgtPos.cy - 12
+    } else if (tdx > tdy) {
+      // Horizontal first, then vertical (enters target vertically)
+      path2 = `M ${diamCx} ${diamCy} L ${tgtPos.cx} ${diamCy} L ${tgtPos.cx} ${tgtPos.cy}`
+      tgtLabelX = tgtPos.cx + 16
+      tgtLabelY = tgtPos.cy + (diamCy > tgtPos.cy ? 24 : -24)
+    } else {
+      // Vertical first, then horizontal (enters target horizontally)
+      path2 = `M ${diamCx} ${diamCy} L ${diamCx} ${tgtPos.cy} L ${tgtPos.cx} ${tgtPos.cy}`
+      tgtLabelX = tgtPos.cx + (diamCx > tgtPos.cx ? 30 : -30)
+      tgtLabelY = tgtPos.cy - 12
+    }
+    svgLines += `<path d="${path2}" stroke="#000" stroke-width="2" fill="none" stroke-linecap="square"/>`
+
+    // Cardinality labels with white background strokes (to prevent crossing lines from rendering on top)
     const cardStyle = 'stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000"'
 
     if (info.srcCard) {
-      // Position cardinality near source entity
-      let lx: number, ly: number
-      if (isHorizontal) {
-        lx = srcPos.cx + (tgtPos.cx > srcPos.cx ? 15 : -15)
-        ly = srcPos.cy - 13
-      } else if (isVertical) {
-        lx = srcPos.cx + 15
-        ly = srcPos.cy + (tgtPos.cy > srcPos.cy ? 14 : -14)
-      } else {
-        lx = srcPos.cx + 15
-        ly = srcPos.cy + (diamCy > srcPos.cy ? 14 : -14)
-      }
-      svgLabels += `<text x="${lx}" y="${ly}" dominant-baseline="middle" ${cardStyle}>${esc(info.srcCard)}</text>`
+      svgLabels += `<text x="${srcLabelX}" y="${srcLabelY}" dominant-baseline="middle" ${cardStyle}>${esc(info.srcCard)}</text>`
     }
     if (info.tgtCard) {
-      let lx: number, ly: number
-      if (isHorizontal) {
-        lx = tgtPos.cx + (srcPos.cx > tgtPos.cx ? 15 : -15)
-        ly = tgtPos.cy - 13
-      } else if (isVertical) {
-        lx = tgtPos.cx + 15
-        ly = tgtPos.cy + (srcPos.cy > tgtPos.cy ? 14 : -14)
-      } else {
-        lx = tgtPos.cx + 15
-        ly = tgtPos.cy + (diamCy < tgtPos.cy ? -14 : 14)
-      }
-      svgLabels += `<text x="${lx}" y="${ly}" dominant-baseline="middle" ${cardStyle}>${esc(info.tgtCard)}</text>`
+      svgLabels += `<text x="${tgtLabelX}" y="${tgtLabelY}" dominant-baseline="middle" ${cardStyle}>${esc(info.tgtCard)}</text>`
     }
   })
 
@@ -712,4 +819,3 @@ export function erSvg(nodes: DNode[], edges: Edge[]): string {
   const pad = 40
   return wrapSvg(allSvg, bb.x - pad, bb.y - pad, bb.w + pad * 2, bb.h + pad * 2)
 }
-

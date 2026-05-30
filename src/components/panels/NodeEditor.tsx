@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useVercount } from '@vercount/react'
+import { getApiKey } from './SettingsModal'
 
 // ====== Types ======
 
@@ -1555,7 +1556,6 @@ function ClassEditor({ onApply }: { onApply: (json: string) => void }) {
     setIsParsingClass(true)
 
     try {
-      const { getApiKey } = await import('./SettingsModal')
       const apiKey = getApiKey()
 
       if (apiKey) {
@@ -2019,7 +2019,6 @@ function EREditor({ state: initial, onApply }: { state?: ERState; onApply: (json
   const [sqlText, setSqlText] = useState('')
   const [parseError, setParseError] = useState('')
   const [isParsing, setIsParsing] = useState(false)
-  const [aiLayout, setAiLayout] = useState(true)
   const [parsePreview, setParsePreview] = useState<{ tables: number; relations: number; source: string } | null>(null)
 
   const handleParseSql = async () => {
@@ -2028,42 +2027,30 @@ function EREditor({ state: initial, onApply }: { state?: ERState; onApply: (json
     setIsParsing(true)
 
     try {
-      const { getApiKey } = await import('./SettingsModal')
-      const apiKey = getApiKey()
-
-      if (apiKey) {
-        // AI Parsing (always used for translation + relationship analysis)
-        const { generateERFromAI } = await import('../../utils/aiService')
-        const aiState = await generateERFromAI(sqlText, apiKey, aiLayout)
-        setState(aiState)
-        setParsePreview({ tables: aiState.entities.length, relations: aiState.relationships.length, source: aiLayout ? 'AI+\u5e03\u5c40' : 'AI' })
-      } else {
-        // Fallback to local regex parser
-        const { parseSql, deriveRelationships } = await import('../../utils/sqlParser')
-        const result = parseSql(sqlText)
-        if (result.errors.length > 0 && result.tables.length === 0) {
-          setParseError(result.errors.join('\n') + '\n\n' + t('editor.sqlAiFallback'))
-          setIsParsing(false)
-          return
-        }
-
-        const relationships = deriveRelationships(result.tables)
-        const entities = result.tables.map(table => ({
-          id: `ent_${table.name}`,
-          label: table.name,
-        }))
-        const rels = relationships.map(rel => ({
-          id: uid(),
-          label: rel.label,
-          source: `ent_${rel.sourceTable}`,
-          target: `ent_${rel.targetTable}`,
-          sourceCard: rel.sourceCardinality,
-          targetCard: rel.targetCardinality,
-        }))
-
-        setState({ entities, relationships: rels })
-        setParsePreview({ tables: entities.length, relations: rels.length, source: 'Local' })
+      const { parseSql, deriveRelationships, isJunctionTable } = await import('../../utils/sqlParser')
+      const result = parseSql(sqlText)
+      if (result.errors.length > 0 && result.tables.length === 0) {
+        setParseError(result.errors.join('\n'))
+        setIsParsing(false)
+        return
       }
+
+      const relationships = deriveRelationships(result.tables)
+      const entities = result.tables.filter(table => !isJunctionTable(table)).map(table => ({
+        id: `ent_${table.name}`,
+        label: table.name,
+      }))
+      const rels = relationships.map(rel => ({
+        id: uid(),
+        label: rel.label,
+        source: `ent_${rel.sourceTable}`,
+        target: `ent_${rel.targetTable}`,
+        sourceCard: rel.sourceCardinality,
+        targetCard: rel.targetCardinality,
+      }))
+
+      setState({ entities, relationships: rels })
+      setParsePreview({ tables: entities.length, relations: rels.length, source: '算法布局' })
     } catch (err: any) {
       setParseError(err.message || 'Parsing failed')
     } finally {
@@ -2162,16 +2149,6 @@ function EREditor({ state: initial, onApply }: { state?: ERState; onApply: (json
             {t('editor.sqlPreview')} ({parsePreview.source}): {parsePreview.tables} {t('editor.sqlTables')}, {parsePreview.relations} {t('editor.sqlRelations')}
           </div>
         )}
-        <div className="flex items-center gap-2 mb-2">
-          <button
-            onClick={() => setAiLayout(!aiLayout)}
-            className={`px-3 py-1 text-xs rounded border font-medium transition-colors ${aiLayout ? 'bg-black text-white border-black' : 'bg-white text-gray-600 border-gray-300 hover:border-gray-500'}`}
-            title={t('editor.aiLayoutHint')}
-          >
-            {aiLayout ? t('editor.aiLayoutOn') : t('editor.aiLayoutOff')}
-          </button>
-          <span className="text-[10px] text-gray-400 flex-1">{t('editor.aiLayoutHint')}</span>
-        </div>
         <button
           onClick={handleParseSql}
           disabled={!sqlText.trim() || isParsing}

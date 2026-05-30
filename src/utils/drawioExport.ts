@@ -1,4 +1,5 @@
 import type { Node, Edge } from '@xyflow/react'
+import * as pako from 'pako'
 import type { DiagramNodeData } from '../types/diagram'
 import { layoutTreeStructure } from './layout'
 
@@ -37,18 +38,25 @@ function anchoredEdge(id: string, src: string, tgt: string, st: string, exitX: n
   return edge(id, src, tgt, style)
 }
 
+function encodeDiagramModel(model: string): string {
+  const deflated = pako.deflateRaw(model)
+  let binary = ''
+  deflated.forEach(byte => { binary += String.fromCharCode(byte) })
+  if (typeof btoa === 'function') return btoa(binary)
+  return Buffer.from(binary, 'binary').toString('base64')
+}
+
 function wrap(name: string, cells: string) {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<mxfile host="se-diagram-generator" modified="2026-01-01T00:00:00.000Z" agent="SE Diagram Generator" version="21.0.0">
-  <diagram name="${esc(name)}" id="d1">
-    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1000" math="0" shadow="0">
+  const model = `<mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1000" math="0" shadow="0">
       <root>
         <mxCell id="0"/>
         <mxCell id="1" parent="0"/>
         ${cells}
       </root>
-    </mxGraphModel>
-  </diagram>
+    </mxGraphModel>`
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="se-diagram-generator" modified="2026-01-01T00:00:00.000Z" agent="SE Diagram Generator" version="21.0.0">
+  <diagram name="${esc(name)}" id="d1">${encodeDiagramModel(model)}</diagram>
 </mxfile>`
 }
 
@@ -495,80 +503,181 @@ export function deploymentDrawio(nodes: DNode[], edges: Edge[]): string {
 
 // ====== ER Diagram (Chen-style) ======
 
-export function erDrawio(nodes: DNode[], edges: Edge[]): string {
-  let cellId = 2
-  const nid = () => String(cellId++)
-  const idMap = new Map<string, string>()
-  const cells: string[] = []
+interface ERGridCell {
+  row: number
+  col: number
+}
 
-  const entities = nodes.filter(n => n.type === 'erEntity')
-  const diamonds = nodes.filter(n => n.type === 'erDiamond')
+interface ERGridPos {
+  x: number
+  y: number
+  w: number
+  h: number
+  cx: number
+  cy: number
+  row: number
+  col: number
+}
 
-  // Layout: arrange entities in a grid
-  const entCount = entities.length
-  const cols = Math.max(2, Math.ceil(Math.sqrt(entCount)))
-  const cellW = 300   // horizontal spacing between entities
-  const cellH = 240   // vertical spacing between entities
-  const entW = 160
-  const entH = 46
-  const startX = 100
-  const startY = 80
+interface ERDiamondInfo {
+  srcEntityId: string
+  tgtEntityId: string
+  srcCard: string
+  tgtCard: string
+}
 
-  // Track entity positions for diamond placement
-  const entityPos = new Map<string, { x: number; y: number; cx: number; cy: number }>()
+function readERGridCell(node: DNode): ERGridCell | null {
+  const row = Number(node.data.row)
+  const col = Number(node.data.col)
+  return Number.isFinite(row) && Number.isFinite(col) && row >= 0 && col >= 0
+    ? { row: Math.round(row), col: Math.round(col) }
+    : null
+}
 
-  // Entity rectangles
-  entities.forEach((ent, i) => {
-    const hasAI = ent.data.col !== undefined && ent.data.row !== undefined
-    const col = hasAI ? Number(ent.data.col) : (i % cols)
-    const row = hasAI ? Number(ent.data.row) : Math.floor(i / cols)
-    
-    const finalCol = isNaN(col) ? 0 : col
-    const finalRow = isNaN(row) ? 0 : row
-
-    const x = startX + finalCol * cellW
-    const y = startY + finalRow * cellH
-    const cx = x + entW / 2
-    const cy = y + entH / 2
-
-    const did = nid()
-    idMap.set(ent.id, did)
-    entityPos.set(ent.id, { x, y, cx, cy })
-
-    const fs = fontSize(ent.data)
-    const ff = fontStyle(ent.data)
-    cells.push(`<mxCell id="${did}" value="${esc(ent.data.label || '')}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;arcSize=8;${ff}fontStyle=1;fontSize=${fs};" vertex="1" parent="1"><mxGeometry x="${x}" y="${y}" width="${entW}" height="${entH}" as="geometry"/></mxCell>`)
-  })
-
-  // Diamond relationships + edges
-  // Group edges by diamond: each diamond should have exactly 2 edges (source entity and target entity)
-  const diamondEdges = new Map<string, { srcEntityId: string; tgtEntityId: string; srcCard: string; tgtCard: string }>()
+function buildERDiamondMap(edges: Edge[], diamonds: DNode[]): Map<string, ERDiamondInfo> {
+  const diamondIds = new Set(diamonds.map(d => d.id))
+  const diamondEdges = new Map<string, ERDiamondInfo>()
 
   for (const e of edges) {
     const eData = (e as any).data || {}
-    const srcCard = eData.sourceCard || ''
-    const tgtCard = eData.targetCard || ''
-
-    // Find the diamond in source or target
-    const srcIsDiamond = diamonds.some(d => d.id === e.source)
-    const tgtIsDiamond = diamonds.some(d => d.id === e.target)
-
-    if (tgtIsDiamond) {
-      // entity -> diamond edge
+    if (diamondIds.has(e.target)) {
       const existing = diamondEdges.get(e.target) || { srcEntityId: '', tgtEntityId: '', srcCard: '', tgtCard: '' }
       existing.srcEntityId = e.source
-      existing.srcCard = srcCard
+      existing.srcCard = eData.sourceCard || ''
       diamondEdges.set(e.target, existing)
-    } else if (srcIsDiamond) {
-      // diamond -> entity edge
+    } else if (diamondIds.has(e.source)) {
       const existing = diamondEdges.get(e.source) || { srcEntityId: '', tgtEntityId: '', srcCard: '', tgtCard: '' }
       existing.tgtEntityId = e.target
-      existing.tgtCard = tgtCard
+      existing.tgtCard = eData.targetCard || ''
       diamondEdges.set(e.source, existing)
     }
   }
 
+  return diamondEdges
+}
+
+function layoutEREntityCells(entities: DNode[], rels: ERDiamondInfo[]): Map<string, ERGridCell> {
+  const cells = new Map<string, ERGridCell>()
+  const occupied = new Set<string>()
+  const requested = entities.map(readERGridCell)
+  const hasManualLayout = requested.some(Boolean)
+  const maxRequestedCol = Math.max(0, ...requested.map(cell => cell?.col ?? 0))
+  const cols = hasManualLayout
+    ? Math.max(3, maxRequestedCol + 1)
+    : Math.max(3, Math.ceil(Math.sqrt(Math.max(entities.length, 1))))
+
+  const placeAtOrAfter = (cell: ERGridCell): ERGridCell => {
+    let row = cell.row
+    let col = cell.col
+    while (occupied.has(`${row},${col}`)) {
+      col++
+      if (col >= cols) {
+        col = 0
+        row++
+      }
+    }
+    occupied.add(`${row},${col}`)
+    return { row, col }
+  }
+
+  if (hasManualLayout) {
+    entities.forEach((ent, i) => {
+      cells.set(ent.id, placeAtOrAfter(requested[i] || { row: 0, col: 0 }))
+    })
+    return cells
+  }
+
+  const degree = new Map(entities.map(ent => [ent.id, 0]))
+  rels.forEach(rel => {
+    degree.set(rel.srcEntityId, (degree.get(rel.srcEntityId) || 0) + 1)
+    degree.set(rel.tgtEntityId, (degree.get(rel.tgtEntityId) || 0) + 1)
+  })
+
+  const ordered = [...entities].sort((a, b) => {
+    const diff = (degree.get(b.id) || 0) - (degree.get(a.id) || 0)
+    return diff || String(a.data.label || '').localeCompare(String(b.data.label || ''))
+  })
+  const centerCol = Math.floor(cols / 2)
+  const colOrder = [centerCol]
+  for (let step = 1; colOrder.length < cols; step++) {
+    if (centerCol - step >= 0) colOrder.push(centerCol - step)
+    if (centerCol + step < cols) colOrder.push(centerCol + step)
+  }
+
+  ordered.forEach((ent, i) => {
+    cells.set(ent.id, placeAtOrAfter({
+      row: Math.floor(i / cols),
+      col: colOrder[i % cols],
+    }))
+  })
+
+  return cells
+}
+
+function erEntitySize(label: string, fs: number) {
+  return {
+    w: Math.max(180, Math.ceil(textWidth(label, fs) + 54)),
+    h: 46,
+  }
+}
+
+function erDiamondSize(label: string, fs: number) {
+  return {
+    w: Math.max(72, Math.ceil(textWidth(label, fs) + 44)),
+    h: 38,
+  }
+}
+
+function connectedEdge(id: string, sourceId: string, targetId: string) {
+  const style = 'html=1;strokeColor=#000000;strokeWidth=1.5;endArrow=none;startArrow=none;edgeStyle=orthogonalEdgeStyle;rounded=0;curved=0;orthogonalLoop=1;jettySize=auto;'
+  return `<mxCell id="${id}" value="" style="${style}" edge="1" parent="1" source="${sourceId}" target="${targetId}"><mxGeometry relative="1" as="geometry"/></mxCell>`
+}
+
+function erEdgeLabel(id: string, edgeId: string, value: string, x: number) {
+  return `<mxCell id="${id}" value="${esc(value)}" style="edgeLabel;html=1;align=center;verticalAlign=bottom;resizable=0;points=[];fontSize=12;fontStyle=1;fontFamily=Arial, sans-serif;" vertex="1" connectable="0" parent="${edgeId}"><mxGeometry x="${x}" y="0" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry></mxCell>`
+}
+
+export function erDrawio(nodes: DNode[], edges: Edge[]): string {
+  let cellId = 2
+  const nid = () => String(cellId++)
+  const lineCells: string[] = []
+  const diamondCells: string[] = []
+  const labelCells: string[] = []
+  const entityCells: string[] = []
+  const idMap = new Map<string, string>()
+
+  const entities = nodes.filter(n => n.type === 'erEntity')
+  const diamonds = nodes.filter(n => n.type === 'erDiamond')
+
+  const cellW = 400
+  const cellH = 320
+  const startX = 120
+  const startY = 100
+
+  const diamondEdges = buildERDiamondMap(edges, diamonds)
+  const entityCellsById = layoutEREntityCells(entities, [...diamondEdges.values()])
+  const entityPos = new Map<string, ERGridPos>()
+
+  // Entity rectangles
+  entities.forEach((ent) => {
+    const cell = entityCellsById.get(ent.id) || { row: 0, col: 0 }
+    const x = startX + cell.col * cellW
+    const y = startY + cell.row * cellH
+    const fs = fontSize(ent.data)
+    const ff = fontStyle(ent.data)
+    const size = erEntitySize(String(ent.data.label || ''), fs)
+    const cx = x + size.w / 2
+    const cy = y + size.h / 2
+
+    const did = nid()
+    idMap.set(ent.id, did)
+    entityPos.set(ent.id, { x, y, w: size.w, h: size.h, cx, cy, row: cell.row, col: cell.col })
+
+    entityCells.push(`<mxCell id="${did}" value="${esc(ent.data.label || '')}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;arcSize=8;${ff}fontStyle=1;fontSize=${fs};" vertex="1" parent="1"><mxGeometry x="${Math.round(x)}" y="${Math.round(y)}" width="${size.w}" height="${size.h}" as="geometry"/></mxCell>`)
+  })
+
   const placedDiamonds = new Map<string, number>()
+  const entityTrackCount = new Map<string, number>()
 
   // Place diamonds and draw edges
   diamonds.forEach((dia) => {
@@ -579,24 +688,34 @@ export function erDrawio(nodes: DNode[], edges: Edge[]): string {
     const tgtPos = entityPos.get(info.tgtEntityId)
     if (!srcPos || !tgtPos) return
 
-    // Diamond positioned at midpoint between the two entities
-    const diaW = 56
-    const diaH = 32
+    const diaFs = fontSize(dia.data) || 14
+    const diaSize = erDiamondSize(String(dia.data.label || ''), diaFs)
+    const diaW = diaSize.w
+    const diaH = diaSize.h
     let diaCx = (srcPos.cx + tgtPos.cx) / 2
     let diaCy = (srcPos.cy + tgtPos.cy) / 2
+    const sameRow = srcPos.row === tgtPos.row
+    const sameCol = srcPos.col === tgtPos.col
 
-    // Offset to prevent overlapping with entities if skipping a row/col
-    const dx = Math.abs(srcPos.cx - tgtPos.cx)
-    const dy = Math.abs(srcPos.cy - tgtPos.cy)
-    if (dx >= cellW * 1.5 && dy < cellH * 0.5) diaCy -= 90
-    else if (dy >= cellH * 1.5 && dx < cellW * 0.5) diaCx += 110
-    else if (dx >= cellW * 1.5 && dy >= cellH * 1.5) diaCx += 60
+    if (sameRow) {
+      const colSpan = Math.abs(srcPos.col - tgtPos.col)
+      const sourceTrack = entityTrackCount.get(info.srcEntityId) || 0
+      diaCy = colSpan > 1 ? srcPos.cy + (sourceTrack % 2 === 0 ? 120 : -88) : srcPos.cy
+    } else if (sameCol) {
+      diaCx = srcPos.cx
+    } else {
+      const sourceTrack = entityTrackCount.get(info.srcEntityId) || 0
+      diaCx += sourceTrack % 2 === 0 ? 42 : -42
+    }
 
-    // Offset to prevent multiple diamonds overlapping exactly
-    const posKey = `${Math.round(diaCx)},${Math.round(diaCy)}`
-    const count = placedDiamonds.get(posKey) || 0
-    placedDiamonds.set(posKey, count + 1)
-    if (count > 0) diaCy += 45 * count
+    // Anti-overlap: shift if another diamond is at the same spot (aligned with erSvg bucketing)
+    const key = `${Math.round(diaCx / 30)},${Math.round(diaCy / 30)}`
+    const count = placedDiamonds.get(key) || 0
+    placedDiamonds.set(key, count + 1)
+    if (count > 0) {
+      if (count % 2 === 1) diaCy += 42 * Math.ceil(count / 2)
+      else diaCx += 56 * Math.ceil(count / 2)
+    }
 
     const diaX = diaCx - diaW / 2
     const diaY = diaCy - diaH / 2
@@ -604,37 +723,22 @@ export function erDrawio(nodes: DNode[], edges: Edge[]): string {
     const diaId = nid()
     idMap.set(dia.id, diaId)
 
-    const diaFs = fontSize(dia.data) || 14
-    cells.push(`<mxCell id="${diaId}" value="${esc(dia.data.label || '')}" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontStyle=1;fontSize=${diaFs};fontFamily='SimHei', 'Heiti SC', sans-serif;" vertex="1" parent="1"><mxGeometry x="${Math.round(diaX)}" y="${Math.round(diaY)}" width="${diaW}" height="${diaH}" as="geometry"/></mxCell>`)
+    diamondCells.push(`<mxCell id="${diaId}" value="${esc(dia.data.label || '')}" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontStyle=1;fontSize=${diaFs};fontFamily='SimHei', 'Heiti SC', sans-serif;" vertex="1" parent="1"><mxGeometry x="${Math.round(diaX)}" y="${Math.round(diaY)}" width="${diaW}" height="${diaH}" as="geometry"/></mxCell>`)
 
-    // Edge: source entity -> diamond
-    const srcEntId = idMap.get(info.srcEntityId)
-    if (srcEntId) {
-      const edgeId = nid()
-      let edgeStyle = 'html=1;strokeColor=#000000;endArrow=none;startArrow=none;edgeStyle=orthogonalEdgeStyle;rounded=0;'
-      cells.push(`<mxCell id="${edgeId}" value="" style="${edgeStyle}" edge="1" parent="1" source="${srcEntId}" target="${diaId}"><mxGeometry relative="1" as="geometry"/></mxCell>`)
+    entityTrackCount.set(info.srcEntityId, (entityTrackCount.get(info.srcEntityId) || 0) + 1)
+    entityTrackCount.set(info.tgtEntityId, (entityTrackCount.get(info.tgtEntityId) || 0) + 1)
+    const srcId = idMap.get(info.srcEntityId)
+    const tgtId = idMap.get(info.tgtEntityId)
+    if (!srcId || !tgtId) return
 
-      // Cardinality label near source entity
-      if (info.srcCard) {
-        const labelId = nid()
-        cells.push(`<mxCell id="${labelId}" value="${esc(info.srcCard)}" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontStyle=1;fontSize=14;fontFamily=Arial, sans-serif;" vertex="1" connectable="0" parent="${edgeId}"><mxGeometry x="-0.7" relative="1" as="geometry"><mxPoint y="-12" as="offset"/></mxGeometry></mxCell>`)
-      }
-    }
+    const srcLineId = nid()
+    const tgtLineId = nid()
+    lineCells.push(connectedEdge(srcLineId, srcId, diaId))
+    lineCells.push(connectedEdge(tgtLineId, diaId, tgtId))
 
-    // Edge: diamond -> target entity
-    const tgtEntId = idMap.get(info.tgtEntityId)
-    if (tgtEntId) {
-      const edgeId = nid()
-      let edgeStyle = 'html=1;strokeColor=#000000;endArrow=none;startArrow=none;edgeStyle=orthogonalEdgeStyle;rounded=0;'
-      cells.push(`<mxCell id="${edgeId}" value="" style="${edgeStyle}" edge="1" parent="1" source="${diaId}" target="${tgtEntId}"><mxGeometry relative="1" as="geometry"/></mxCell>`)
-
-      // Cardinality label near target entity
-      if (info.tgtCard) {
-        const labelId = nid()
-        cells.push(`<mxCell id="${labelId}" value="${esc(info.tgtCard)}" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontStyle=1;fontSize=14;fontFamily=Arial, sans-serif;" vertex="1" connectable="0" parent="${edgeId}"><mxGeometry x="0.7" relative="1" as="geometry"><mxPoint y="-12" as="offset"/></mxGeometry></mxCell>`)
-      }
-    }
+    if (info.srcCard) labelCells.push(erEdgeLabel(nid(), srcLineId, info.srcCard, -0.8))
+    if (info.tgtCard) labelCells.push(erEdgeLabel(nid(), tgtLineId, info.tgtCard, 0.8))
   })
 
-  return wrap('总体ER图', cells.join('\n'))
+  return wrap('总体ER图', [...lineCells, ...diamondCells, ...labelCells, ...entityCells].join('\n'))
 }

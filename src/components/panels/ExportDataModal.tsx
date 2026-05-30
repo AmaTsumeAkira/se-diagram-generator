@@ -63,10 +63,41 @@ export default function ExportDataModal({ configs, onClose }: Props) {
             <h3 className="text-sm font-semibold">{t('dataExport.title')}</h3>
             <button onClick={() => {
               const flat: Record<string, any> = {}
-              for (const [k, cfg] of Object.entries(configs)) {
-                flat[k] = {
-                  nodes: cfg.nodes.map((n) => ({ id: n.id, type: n.type, label: n.data.label, rx: n.data.rx, ry: n.data.ry, vertical: n.data.vertical })),
-                  edges: cfg.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+              for (const [key, cfg] of Object.entries(configs)) {
+                if (!cfg) continue
+                flat[key] = {
+                  nodes: cfg.nodes.map((n) => {
+                    const base: any = {
+                      id: n.id,
+                      type: n.type,
+                      label: n.data.label,
+                      rx: n.data.rx,
+                      ry: n.data.ry,
+                      vertical: n.data.vertical,
+                      fontSize: n.data.fontSize,
+                      fontFamily: n.data.fontFamily,
+                      spacing: n.data.spacing,
+                      nodeH: n.data.nodeH,
+                      nodeW: (n.data as any).nodeW,
+                      row: n.data.row,
+                      col: n.data.col,
+                    }
+                    const d = n.data as any
+                    if (d.attributes) base.attributes = d.attributes
+                    if (d.methods) base.methods = d.methods
+                    if (d.isAbstract !== undefined) base.isAbstract = d.isAbstract
+                    if (d.stereotype) base.stereotype = d.stereotype
+                    if (d.participantType) base.participantType = d.participantType
+                    if (d.technology) base.technology = d.technology
+                    if (d.nodeType) base.nodeType = d.nodeType
+                    return base
+                  }),
+                  edges: cfg.edges.map((e) => {
+                    const base: any = { id: e.id, source: e.source, target: e.target }
+                    if ((e as any).data) base.data = (e as any).data
+                    if (e.label) base.label = e.label
+                    return base
+                  }),
                 }
               }
               dl(JSON.stringify(flat, null, 2), 'diagram-configs.json', 'application/json')

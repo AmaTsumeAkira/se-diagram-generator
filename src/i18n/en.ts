@@ -143,9 +143,6 @@ export default {
     classAiParsing: 'AI Parsing...',
     classAiPreview: 'AI parsing completed and loaded',
     classAiGenerate: 'Generate via AI',
-    aiLayoutOn: 'AI Layout: ON',
-    aiLayoutOff: 'AI Layout: OFF',
-    aiLayoutHint: 'When on, AI determines entity grid coordinates; when off, uses automatic layout algorithm',
   },
   settings: {
     title: 'Settings',

@@ -143,9 +143,6 @@ export default {
     classAiParsing: 'AI 解析中...',
     classAiPreview: 'AI 解析完成，已加载',
     classAiGenerate: 'AI 智能生成',
-    aiLayoutOn: 'AI 布局: 开',
-    aiLayoutOff: 'AI 布局: 关',
-    aiLayoutHint: '开启后由 AI 决定实体的网格坐标，关闭则使用自动排版算法',
   },
   settings: {
     title: '系统设置',
