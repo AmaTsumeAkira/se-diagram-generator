@@ -133,3 +133,99 @@ ${input}
     throw new Error(`AI 解析失败: ${error.message}`)
   }
 }
+
+export interface AiClassResult {
+  classes: {
+    id: string
+    label: string
+    attributes: string[]
+    methods: string[]
+    isAbstract?: boolean
+    stereotype?: string
+  }[]
+  relations: {
+    id: string
+    source: string
+    target: string
+    relationType: string
+    label?: string
+  }[]
+}
+
+export async function generateClassFromAI(input: string, apiKey: string): Promise<AiClassResult> {
+  const prompt = `你是一个资深的软件架构师。用户将提供一段代码（Java/TypeScript等）或者一段自然语言描述的系统需求。
+你的任务是：提取系统中的主要类及其属性、方法，并分析类之间的UML关系。
+
+规则：
+1. 类（Class）：提取系统中的类。'id' 使用英文或拼音缩写（不能重复），'label' 是类名。
+   - 'attributes'：提取或推断该类的属性，以字符串数组形式返回（如 ["+ name: String", "- age: int"]）。尽量包含可见性修饰符(+ - #)和类型。
+   - 'methods'：提取或推断该类的方法，以字符串数组形式返回（如 ["+ login(): void", "+ calculateTotal(): double"]）。
+   - 'isAbstract'：如果这是一个抽象类或接口，设为 true。
+   - 'stereotype'：如果有特定构造型（如 interface, enum, service），可以填写，否则留空。
+2. 关系（Relations）：分析类之间的 UML 关系。
+   - 'source'：指向起始类的 id（如子类、实现类、依赖方）。
+   - 'target'：指向目标类的 id（如父类、接口、被依赖方）。
+   - 'relationType' 必须是以下之一：'inheritance' (继承), 'implementation' (实现), 'dependency' (依赖), 'aggregation' (聚合), 'composition' (组合), 'association' (关联)。
+   - 'label'：可选，关系的简短说明（如 'has-a', 'uses'）。
+3. 返回 JSON：必须只返回一个符合以下 TypeScript 接口的合法 JSON 对象，不要包含 Markdown 格式（如 \`\`\`json 标签），不要包含任何解释性文本。
+
+interface Result {
+  classes: { id: string; label: string; attributes: string[]; methods: string[]; isAbstract?: boolean; stereotype?: string }[];
+  relations: { source: string; target: string; relationType: string; label?: string }[];
+}
+
+输入数据：
+${input}
+`
+
+  try {
+    const modelName = getEffectiveModel()
+    const payload: any = {
+      model: modelName,
+      messages: [
+        { role: 'system', content: '你是一个只输出合法 JSON 的 AI 助手。' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.1,
+    }
+
+    const isThinking = getAiThinking()
+    payload.thinking = { type: isThinking ? 'enabled' : 'disabled' }
+    if (isThinking) {
+      payload.reasoning_effort = 'high'
+    }
+
+    const response = await fetch(getEffectiveApiUrl(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify(payload)
+    })
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status} ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    const content = data.choices[0]?.message?.content || ''
+    
+    const cleanContent = content.replace(/```json/gi, '').replace(/```/g, '').trim()
+    const result: AiClassResult = JSON.parse(cleanContent)
+
+    const relations = (result.relations || []).map((rel, i) => ({
+      ...rel,
+      id: `rel_class_${Date.now()}_${i}`
+    }))
+
+    return {
+      classes: result.classes || [],
+      relations
+    }
+  } catch (error: any) {
+    console.error('AI Class parse error:', error)
+    throw new Error(`AI 解析类图失败: ${error.message}`)
+  }
+}
+

@@ -1543,6 +1543,37 @@ function ClassEditor({ onApply }: { onApply: (json: string) => void }) {
   const [mermaidText, setMermaidText] = useState('')
   const [relations, setRelations] = useState<{ id: string; source: string; target: string; relationType: string; label?: string }[]>([])
 
+  // AI states
+  const [classAiText, setClassAiText] = useState('')
+  const [isParsingClass, setIsParsingClass] = useState(false)
+  const [classParseError, setClassParseError] = useState('')
+  const [classParsePreview, setClassParsePreview] = useState<{ classes: number; relations: number; source: string } | null>(null)
+
+  const handleParseClassAi = async () => {
+    setClassParseError('')
+    setClassParsePreview(null)
+    setIsParsingClass(true)
+
+    try {
+      const { getApiKey } = await import('./SettingsModal')
+      const apiKey = getApiKey()
+
+      if (apiKey) {
+        const { generateClassFromAI } = await import('../../utils/aiService')
+        const aiState = await generateClassFromAI(classAiText, apiKey)
+        setClasses(aiState.classes)
+        setRelations(aiState.relations)
+        setClassParsePreview({ classes: aiState.classes.length, relations: aiState.relations.length, source: 'AI' })
+      } else {
+        setClassParseError(t('editor.sqlAiFallback'))
+      }
+    } catch (err: any) {
+      setClassParseError(err.message || 'Parsing failed')
+    } finally {
+      setIsParsingClass(false)
+    }
+  }
+
   const addClass = () => {
     setClasses((c) => [...c, { id: uid(), label: t('editor.newClass'), attributes: [], methods: [] }])
   }
@@ -1596,6 +1627,32 @@ function ClassEditor({ onApply }: { onApply: (json: string) => void }) {
 
   return (
     <div className="space-y-4">
+      {/* AI Import Section */}
+      <div className="bg-gray-50 border border-gray-200 rounded p-3">
+        <div className="text-xs font-semibold mb-2">{t('editor.classAiGenerate')} (DeepSeek)</div>
+        <textarea
+          className="w-full h-24 text-sm border border-gray-300 rounded p-2 focus:outline-none focus:ring-1 focus:ring-black font-mono resize-y mb-2"
+          placeholder={t('editor.classAiInput')}
+          value={classAiText}
+          onChange={(e) => setClassAiText(e.target.value)}
+        />
+        {classParseError && (
+          <div className="text-xs text-red-500 mb-2 bg-red-50 rounded p-2">{classParseError}</div>
+        )}
+        {classParsePreview && (
+          <div className="text-xs text-green-600 mb-2 bg-green-50 rounded p-2">
+            ✓ {t('editor.classAiPreview')}: {classParsePreview.classes} Classes, {classParsePreview.relations} Relations
+          </div>
+        )}
+        <button
+          onClick={handleParseClassAi}
+          disabled={!classAiText.trim() || isParsingClass}
+          className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800 disabled:opacity-30"
+        >
+          {isParsingClass ? t('editor.classAiParsing') : t('editor.classAiGenerate')}
+        </button>
+      </div>
+
       <div className="flex gap-2">
         <button onClick={addClass}
           className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
