@@ -11,9 +11,17 @@ interface AiERResult {
   }[]
 }
 
-// Use relative path to hit the Vite proxy in development, or fallback to the CORS proxy in production
-const BASE_API_URL = 'https://opencode.ai/zen/go/v1/chat/completions'
-const API_URL = import.meta.env.DEV ? '/api/ai/zen/go/v1/chat/completions' : `https://corsproxy.io/?${encodeURIComponent(BASE_API_URL)}`
+// Read API URL from user settings; in dev mode use Vite proxy
+function getEffectiveApiUrl(): string {
+  if (import.meta.env.DEV) {
+    return '/api/ai/zen/go/v1/chat/completions'
+  }
+  try {
+    return localStorage.getItem('diagram-ai-api-url') || 'https://opencode.ai/zen/go/v1/chat/completions'
+  } catch {
+    return 'https://opencode.ai/zen/go/v1/chat/completions'
+  }
+}
 const MODEL_NAME = 'deepseek-v4-flash'
 
 /**
@@ -54,7 +62,7 @@ ${input}
 `
 
   try {
-    const response = await fetch(API_URL, {
+    const response = await fetch(getEffectiveApiUrl(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
