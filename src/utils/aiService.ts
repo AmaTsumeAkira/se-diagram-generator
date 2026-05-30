@@ -30,6 +30,15 @@ function getEffectiveModel(): string {
   }
 }
 
+function getAiThinking(): boolean {
+  try {
+    const val = localStorage.getItem('diagram-ai-thinking')
+    return val === null ? true : val === 'true'
+  } catch {
+    return true
+  }
+}
+
 /**
  * Call the AI model to analyze SQL or text and generate ER diagram configuration.
  * @param input - SQL or natural language description
@@ -79,8 +88,11 @@ ${input}
     }
 
     if (modelName.includes('deepseek-v4-pro')) {
-      payload.thinking = { type: 'enabled' }
-      payload.reasoning_effort = 'high'
+      const isThinking = getAiThinking()
+      payload.thinking = { type: isThinking ? 'enabled' : 'disabled' }
+      if (isThinking) {
+        payload.reasoning_effort = 'high'
+      }
     }
 
     const response = await fetch(getEffectiveApiUrl(), {

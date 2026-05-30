@@ -8,6 +8,7 @@ interface Props {
 export const API_KEY_LS_KEY = 'diagram-ai-api-key'
 export const API_URL_LS_KEY = 'diagram-ai-api-url'
 export const MODEL_LS_KEY = 'diagram-ai-model'
+export const THINKING_LS_KEY = 'diagram-ai-thinking'
 
 const DEFAULT_API_URL = 'https://api.deepseek.com/chat/completions'
 const DEFAULT_MODEL = 'deepseek-v4-pro'
@@ -36,17 +37,28 @@ export function getAiModel(): string {
   }
 }
 
+export function getAiThinking(): boolean {
+  try {
+    const val = localStorage.getItem(THINKING_LS_KEY)
+    return val === null ? true : val === 'true'
+  } catch (e) {
+    return true
+  }
+}
+
 export default function SettingsModal({ onClose }: Props) {
   const { t } = useTranslation()
   const [apiKey, setApiKey] = useState('')
   const [apiUrl, setApiUrl] = useState('')
   const [model, setModel] = useState('')
+  const [thinking, setThinking] = useState(true)
   const [showSaved, setShowSaved] = useState(false)
 
   useEffect(() => {
     setApiKey(getApiKey())
     setApiUrl(getApiUrl())
     setModel(getAiModel())
+    setThinking(getAiThinking())
   }, [])
 
   const handleSave = () => {
@@ -54,6 +66,7 @@ export default function SettingsModal({ onClose }: Props) {
       localStorage.setItem(API_KEY_LS_KEY, apiKey.trim())
       localStorage.setItem(API_URL_LS_KEY, apiUrl.trim() || DEFAULT_API_URL)
       localStorage.setItem(MODEL_LS_KEY, model || DEFAULT_MODEL)
+      localStorage.setItem(THINKING_LS_KEY, String(thinking))
       setShowSaved(true)
       setTimeout(() => setShowSaved(false), 2000)
     } catch (e) {
@@ -91,13 +104,24 @@ export default function SettingsModal({ onClose }: Props) {
               {t('settings.model')}
             </label>
             <select
-              className="w-full text-sm border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-black bg-white"
+              className="w-full text-sm border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-black bg-white mb-2"
               value={model}
               onChange={(e) => setModel(e.target.value)}
             >
               <option value="deepseek-v4-pro">deepseek-v4-pro (推荐, 支持思考模式)</option>
               <option value="deepseek-v4-flash">deepseek-v4-flash (较快)</option>
             </select>
+            {model.includes('pro') && (
+              <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={thinking}
+                  onChange={(e) => setThinking(e.target.checked)}
+                  className="rounded border-gray-300 text-black focus:ring-black"
+                />
+                <span className="text-sm text-gray-700">{t('settings.thinkingMode')}</span>
+              </label>
+            )}
           </div>
 
           <div>

@@ -149,6 +149,7 @@ export default {
     apiKeyPlaceholder: 'Enter your API Key (sk-...)',
     apiKeyHint: 'Used for intelligent table name translation and relationship analysis when importing SQL to ER diagrams. Your key is stored locally in your browser.',
     model: 'AI Model',
+    thinkingMode: 'Enable Deep Thinking (Reasoning Mode)',
     apiUrl: 'API URL',
     apiUrlHint: 'If you face CORS issues when deployed, you can change this to your own proxy endpoint (e.g. https://your-domain.com/api/ai/chat/completions).',
     save: 'Save Config',

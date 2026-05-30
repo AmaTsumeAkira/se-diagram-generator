@@ -149,6 +149,7 @@ export default {
     apiKeyPlaceholder: '输入你的 API Key (sk-...)',
     apiKeyHint: '用于 SQL 转 ER 图时的智能表名翻译与关系分析。您的 Key 仅保留在本地浏览器。',
     model: 'AI 模型',
+    thinkingMode: '启用深度思考模式 (Reasoning)',
     apiUrl: 'API 请求地址',
     apiUrlHint: '线上部署时可能遇到跨域问题，可将地址改为您自己的反向代理地址（例如 https://your-domain.com/api/ai/chat/completions）。',
     save: '保存配置',
