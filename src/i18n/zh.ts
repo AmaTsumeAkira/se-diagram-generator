@@ -139,6 +139,9 @@ export default {
     sqlExample: '-- 示例 SQL\nCREATE TABLE users (\n  user_id INT PRIMARY KEY,\n  username VARCHAR(50)\n);\n\nCREATE TABLE orders (\n  order_id INT PRIMARY KEY,\n  user_id INT,\n  FOREIGN KEY (user_id) REFERENCES users(user_id)\n);',
     sqlAiParsing: 'AI 智能分析中...',
     sqlAiFallback: '未配置 API Key，将使用本地基础解析',
+    aiLayoutOn: 'AI 布局: 开',
+    aiLayoutOff: 'AI 布局: 关',
+    aiLayoutHint: '开启后由 AI 决定实体的网格坐标，关闭则使用自动排版算法',
   },
   settings: {
     title: '系统设置',

@@ -529,45 +529,38 @@ export function erSvg(nodes: DNode[], edges: Edge[]): string {
   const entities = nodes.filter(n => n.type === 'erEntity')
   const diamonds = nodes.filter(n => n.type === 'erDiamond')
 
-  const cols = Math.max(2, Math.ceil(Math.sqrt(entities.length)))
-  const cellW = 300
-  const cellH = 240
   const entW = 160
   const entH = 46
-  const startX = 100
-  const startY = 80
-  const diaW = 56
-  const diaHalf = diaW / 2
+  const cellW = 300
+  const cellH = 240
+  const startX = 120
+  const startY = 90
 
-  let svg = ''
-  const svgBoxes: { x: number; y: number; w: number; h: number }[] = []
-  const entityPos = new Map<string, { cx: number; cy: number }>()
+  // ====== 1. Determine entity positions ======
+  // If AI provided row/col, use them; otherwise auto-layout
+  const hasAILayout = entities.some(ent => ent.data.row !== undefined && ent.data.col !== undefined)
 
-  // Entity rectangles
+  let cols: number
+  if (hasAILayout) {
+    cols = Math.max(2, ...entities.map(e => (Number(e.data.col) || 0) + 1))
+  } else {
+    cols = Math.max(2, Math.ceil(Math.sqrt(entities.length)))
+  }
+
+  const entityPos = new Map<string, { x: number; y: number; cx: number; cy: number }>()
+
   entities.forEach((ent, i) => {
-    const hasAI = ent.data.col !== undefined && ent.data.row !== undefined
-    const col = hasAI ? Number(ent.data.col) : (i % cols)
-    const row = hasAI ? Number(ent.data.row) : Math.floor(i / cols)
-    
-    const finalCol = isNaN(col) ? 0 : col
+    const row = hasAILayout && ent.data.row !== undefined ? Number(ent.data.row) : Math.floor(i / cols)
+    const col = hasAILayout && ent.data.col !== undefined ? Number(ent.data.col) : (i % cols)
     const finalRow = isNaN(row) ? 0 : row
+    const finalCol = isNaN(col) ? 0 : col
 
     const x = startX + finalCol * cellW
     const y = startY + finalRow * cellH
-    const cx = x + entW / 2
-    const cy = y + entH / 2
-
-    entityPos.set(ent.id, { cx, cy })
-
-    const fs = fontSize(ent.data)
-    const ff = esc(fontFamily(ent.data))
-    svg += `<rect x="${x}" y="${y}" width="${entW}" height="${entH}" rx="4" fill="#fff" stroke="#000" stroke-width="2"/>`
-    svg += `<text x="${cx}" y="${cy + fs * 0.35}" font-family="'SimHei', '${ff}', sans-serif" font-size="${fs}" font-weight="bold" text-anchor="middle" fill="#000">${esc(safeLabel(ent.data))}</text>`
-
-    svgBoxes.push({ x, y, w: entW, h: entH })
+    entityPos.set(ent.id, { x, y, cx: x + entW / 2, cy: y + entH / 2 })
   })
 
-  // Group edges by diamond
+  // ====== 2. Group edges by diamond ======
   const diamondEdgeMap = new Map<string, { srcId: string; tgtId: string; srcCard: string; tgtCard: string }>()
   for (const e of edges) {
     const eData = (e as any).data || {}
@@ -586,9 +579,18 @@ export function erSvg(nodes: DNode[], edges: Edge[]): string {
     }
   }
 
-  const placedDiamonds = new Map<string, number>()
+  // ====== 3. Calculate diamond positions with anti-overlap ======
+  interface DiamondInfo {
+    dia: DNode
+    srcPos: { x: number; y: number; cx: number; cy: number }
+    tgtPos: { x: number; y: number; cx: number; cy: number }
+    info: { srcId: string; tgtId: string; srcCard: string; tgtCard: string }
+    cx: number
+    cy: number
+  }
+  const diamondInfos: DiamondInfo[] = []
+  const placedPositions = new Map<string, number>()
 
-  // Diamond relationships + lines
   diamonds.forEach((dia) => {
     const info = diamondEdgeMap.get(dia.id)
     if (!info) return
@@ -596,47 +598,118 @@ export function erSvg(nodes: DNode[], edges: Edge[]): string {
     const tgtPos = entityPos.get(info.tgtId)
     if (!srcPos || !tgtPos) return
 
-    let diaCx = (srcPos.cx + tgtPos.cx) / 2
-    let diaCy = (srcPos.cy + tgtPos.cy) / 2
-    const diaR = 14 // half height
+    let cx = (srcPos.cx + tgtPos.cx) / 2
+    let cy = (srcPos.cy + tgtPos.cy) / 2
 
+    // Offset for long-distance relations
     const dx = Math.abs(srcPos.cx - tgtPos.cx)
     const dy = Math.abs(srcPos.cy - tgtPos.cy)
-    if (dx >= cellW * 1.5 && dy < cellH * 0.5) diaCy -= 90
-    else if (dy >= cellH * 1.5 && dx < cellW * 0.5) diaCx += 110
-    else if (dx >= cellW * 1.5 && dy >= cellH * 1.5) diaCx += 60
+    if (dx >= cellW * 1.5 && dy < cellH * 0.5) cy -= 80
+    else if (dy >= cellH * 1.5 && dx < cellW * 0.5) cx += 100
+    else if (dx >= cellW * 1.5 && dy >= cellH * 1.5) cx += 50
 
-    const posKey = `${Math.round(diaCx)},${Math.round(diaCy)}`
-    const count = placedDiamonds.get(posKey) || 0
-    placedDiamonds.set(posKey, count + 1)
-    if (count > 0) diaCy += 45 * count
-
-    // Lines: source entity -> diamond -> target entity
-    svg += `<path d="M ${srcPos.cx} ${srcPos.cy} L ${diaCx} ${diaCy}" stroke="#000" stroke-width="2" fill="none"/>`
-    svg += `<path d="M ${diaCx} ${diaCy} L ${tgtPos.cx} ${tgtPos.cy}" stroke="#000" stroke-width="2" fill="none"/>`
-
-    // Diamond shape
-    svg += `<polygon points="${diaCx},${diaCy - diaR} ${diaCx + diaHalf},${diaCy} ${diaCx},${diaCy + diaR} ${diaCx - diaHalf},${diaCy}" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="round"/>`
-
-    // Diamond label
-    svg += `<text x="${diaCx}" y="${diaCy + 5}" font-family="'SimHei', 'Heiti SC', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">${esc(safeLabel(dia.data))}</text>`
-
-    // Cardinality labels with white background for readability
-    if (info.srcCard) {
-      const lx = srcPos.cx + (diaCx - srcPos.cx) * 0.2
-      const ly = srcPos.cy + (diaCy - srcPos.cy) * 0.2 - 10
-      svg += `<text x="${lx}" y="${ly}" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">${esc(info.srcCard)}</text>`
-    }
-    if (info.tgtCard) {
-      const lx = tgtPos.cx + (diaCx - tgtPos.cx) * 0.2
-      const ly = tgtPos.cy + (diaCy - tgtPos.cy) * 0.2 - 10
-      svg += `<text x="${lx}" y="${ly}" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">${esc(info.tgtCard)}</text>`
+    // Anti-overlap: shift if another diamond is at the same spot
+    const key = `${Math.round(cx / 30)},${Math.round(cy / 30)}`
+    const count = placedPositions.get(key) || 0
+    placedPositions.set(key, count + 1)
+    if (count > 0) {
+      // Alternate shifting direction
+      if (count % 2 === 1) cy += 40 * Math.ceil(count / 2)
+      else cx += 50 * Math.ceil(count / 2)
     }
 
-    svgBoxes.push({ x: diaCx - diaHalf, y: diaCy - diaR, w: diaW, h: diaR * 2 })
+    diamondInfos.push({ dia, srcPos, tgtPos, info, cx, cy })
   })
 
+  // ====== 4. Render: Lines first (bottom layer) ======
+  let svgLines = ''
+  let svgDiamonds = ''
+  let svgLabels = ''
+  let svgEntities = ''
+  const svgBoxes: { x: number; y: number; w: number; h: number }[] = []
+
+  diamondInfos.forEach((dInfo) => {
+    const { srcPos, tgtPos, info, cx: _diamCx, cy: diamCy } = dInfo
+    // Orthogonal path routing (like the reference SVG)
+    const isHorizontal = Math.abs(srcPos.cy - tgtPos.cy) < cellH * 0.3
+    const isVertical = Math.abs(srcPos.cx - tgtPos.cx) < cellW * 0.3
+
+    if (isHorizontal) {
+      // Horizontal line: source.cx -> target.cx at same y
+      const lineY = srcPos.cy
+      svgLines += `<path d="M ${srcPos.cx} ${lineY} L ${tgtPos.cx} ${lineY}" stroke="#000" stroke-width="2" fill="none" stroke-linecap="square"/>`
+    } else if (isVertical) {
+      // Vertical line: source.cy -> target.cy at same x
+      const lineX = srcPos.cx
+      svgLines += `<path d="M ${lineX} ${srcPos.cy} L ${lineX} ${tgtPos.cy}" stroke="#000" stroke-width="2" fill="none" stroke-linecap="square"/>`
+    } else {
+      // L-shaped orthogonal route: go vertical first, then horizontal
+      svgLines += `<path d="M ${srcPos.cx} ${srcPos.cy} L ${srcPos.cx} ${diamCy} L ${tgtPos.cx} ${diamCy} L ${tgtPos.cx} ${tgtPos.cy}" stroke="#000" stroke-width="2" fill="none" stroke-linecap="square"/>`
+    }
+
+    // Cardinality labels with white stroke background (anti-interference, matching reference SVG)
+    const cardStyle = 'stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000"'
+
+    if (info.srcCard) {
+      // Position cardinality near source entity
+      let lx: number, ly: number
+      if (isHorizontal) {
+        lx = srcPos.cx + (tgtPos.cx > srcPos.cx ? 15 : -15)
+        ly = srcPos.cy - 13
+      } else if (isVertical) {
+        lx = srcPos.cx + 15
+        ly = srcPos.cy + (tgtPos.cy > srcPos.cy ? 14 : -14)
+      } else {
+        lx = srcPos.cx + 15
+        ly = srcPos.cy + (diamCy > srcPos.cy ? 14 : -14)
+      }
+      svgLabels += `<text x="${lx}" y="${ly}" dominant-baseline="middle" ${cardStyle}>${esc(info.srcCard)}</text>`
+    }
+    if (info.tgtCard) {
+      let lx: number, ly: number
+      if (isHorizontal) {
+        lx = tgtPos.cx + (srcPos.cx > tgtPos.cx ? 15 : -15)
+        ly = tgtPos.cy - 13
+      } else if (isVertical) {
+        lx = tgtPos.cx + 15
+        ly = tgtPos.cy + (srcPos.cy > tgtPos.cy ? 14 : -14)
+      } else {
+        lx = tgtPos.cx + 15
+        ly = tgtPos.cy + (diamCy < tgtPos.cy ? -14 : 14)
+      }
+      svgLabels += `<text x="${lx}" y="${ly}" dominant-baseline="middle" ${cardStyle}>${esc(info.tgtCard)}</text>`
+    }
+  })
+
+  // ====== 5. Render: Diamonds (middle layer, on top of lines) ======
+  const diaR = 14
+  const diaHalf = 24
+
+  diamondInfos.forEach(({ dia, cx, cy }) => {
+    // White-filled diamond polygon on top of lines (physical overlay effect)
+    svgDiamonds += `<polygon points="${cx},${cy - diaR} ${cx + diaHalf},${cy} ${cx},${cy + diaR} ${cx - diaHalf},${cy}" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="round"/>`
+    svgDiamonds += `<text x="${cx}" y="${cy}" dominant-baseline="middle" font-family="'SimHei', 'Heiti SC', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">${esc(safeLabel(dia.data))}</text>`
+
+    svgBoxes.push({ x: cx - diaHalf, y: cy - diaR, w: diaHalf * 2, h: diaR * 2 })
+  })
+
+  // ====== 6. Render: Entity rectangles (top layer) ======
+  entities.forEach((ent) => {
+    const pos = entityPos.get(ent.id)
+    if (!pos) return
+
+    const fs = fontSize(ent.data)
+    const ff = esc(fontFamily(ent.data))
+    svgEntities += `<rect x="${pos.x}" y="${pos.y}" width="${entW}" height="${entH}" rx="4" fill="#fff" stroke="#000" stroke-width="2"/>`
+    svgEntities += `<text x="${pos.cx}" y="${pos.cy + fs * 0.35}" font-family="'SimHei', '${ff}', sans-serif" font-size="${fs}" font-weight="bold" text-anchor="middle" fill="#000">${esc(safeLabel(ent.data))}</text>`
+
+    svgBoxes.push({ x: pos.x, y: pos.y, w: entW, h: entH })
+  })
+
+  // Assemble: lines -> diamonds -> labels -> entities (layer order matches reference SVG)
+  const allSvg = svgLines + svgDiamonds + svgLabels + svgEntities
   const bb = bounds(svgBoxes)
   const pad = 40
-  return wrapSvg(svg, bb.x - pad, bb.y - pad, bb.w + pad * 2, bb.h + pad * 2)
+  return wrapSvg(allSvg, bb.x - pad, bb.y - pad, bb.w + pad * 2, bb.h + pad * 2)
 }
+

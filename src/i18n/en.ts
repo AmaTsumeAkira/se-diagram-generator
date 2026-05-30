@@ -139,6 +139,9 @@ export default {
     sqlExample: '-- Example SQL\nCREATE TABLE users (\n  user_id INT PRIMARY KEY,\n  username VARCHAR(50)\n);\n\nCREATE TABLE orders (\n  order_id INT PRIMARY KEY,\n  user_id INT,\n  FOREIGN KEY (user_id) REFERENCES users(user_id)\n);',
     sqlAiParsing: 'AI is analyzing...',
     sqlAiFallback: 'API Key not set, using basic local parser',
+    aiLayoutOn: 'AI Layout: ON',
+    aiLayoutOff: 'AI Layout: OFF',
+    aiLayoutHint: 'When on, AI determines entity grid coordinates; when off, uses automatic layout algorithm',
   },
   settings: {
     title: 'Settings',

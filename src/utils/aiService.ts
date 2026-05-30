@@ -1,7 +1,7 @@
 import type { ERState } from '../components/panels/NodeEditor'
 
 interface AiERResult {
-  entities: { id: string; label: string }[]
+  entities: { id: string; label: string; row?: number; col?: number }[]
   relationships: {
     source: string
     target: string
@@ -18,17 +18,26 @@ const MODEL_NAME = 'deepseek-v4-flash'
 
 /**
  * Call the AI model to analyze SQL or text and generate ER diagram configuration.
- * It will translate table names into readable Chinese (or keep English if appropriate)
- * and analyze relationships.
+ * @param input - SQL or natural language description
+ * @param apiKey - API key for the model
+ * @param withLayout - if true, AI also determines row/col grid positions for entities
  */
-export async function generateERFromAI(input: string, apiKey: string): Promise<ERState> {
+export async function generateERFromAI(input: string, apiKey: string, withLayout = true): Promise<ERState> {
+  const layoutRule = withLayout
+    ? `   - 【排版要求】：你需要在脑海中构建一个二维网格（如 3x3, 4x4 等），为每个实体分配合理的 \`row\`（行号，从0开始）和 \`col\`（列号，从0开始）。
+   - 必须确保有联系的实体相互靠近（同行或同列，距离相近），并且连线尽量不跨越其他实体，以免连线和实体在图上重叠。`
+    : ''
+
+  const entityInterface = withLayout
+    ? '{ id: string; label: string; row: number; col: number }'
+    : '{ id: string; label: string }'
+
   const prompt = `你是一个资深的数据库架构师。用户将提供一段 SQL 建表语句或关于数据库的自然语言描述。
-你的任务是：提取其中的所有实体（表），将英文表名准确翻译为易懂的中文名，推断它们之间的逻辑关联，并**为这些实体在二维网格中分配合理的坐标**。
+你的任务是：提取其中的所有实体（表），将英文表名准确翻译为易懂的中文名，并推断它们之间的逻辑关联。
 
 规则：
 1. 实体（表）：提取所有的表作为实体。'id' 必须是以 'ent_' 开头的原英文表名，'label' 必须是翻译好的纯中文名。
-   - 【排版要求】：你需要在脑海中构建一个二维网格（如 3x3, 4x4 等），为每个实体分配合理的 \`row\`（行号，从0开始）和 \`col\`（列号，从0开始）。
-   - 必须确保有联系的实体相互靠近（同行或同列，距离相近），并且连线尽量不跨越其他实体，以免连线和实体在图上重叠。
+${layoutRule}
 2. 关系（连线）：根据外键或业务逻辑推导实体间的关系。
    - 'source' 和 'target' 必须对应实体的 id。
    - 'label' 是一个简短的中文动词（例如 包含、属于、拥有、关联）。
@@ -36,7 +45,7 @@ export async function generateERFromAI(input: string, apiKey: string): Promise<E
 3. 你必须只返回一个符合以下 TypeScript 接口的合法 JSON 对象，不要包含 Markdown 格式（如 \`\`\`json 标签），不要包含任何解释性文本。
 
 interface Result {
-  entities: { id: string; label: string; row: number; col: number }[];
+  entities: ${entityInterface}[];
   relationships: { source: string; target: string; label: string; sourceCard: string; targetCard: string }[];
 }
 
@@ -54,7 +63,7 @@ ${input}
       body: JSON.stringify({
         model: MODEL_NAME,
         messages: [
-          { role: 'system', content: 'You are an AI that outputs only valid JSON.' },
+          { role: 'system', content: '你是一个只输出合法 JSON 的 AI 助手。' },
           { role: 'user', content: prompt }
         ],
         temperature: 0.1,
@@ -79,7 +88,12 @@ ${input}
     }))
 
     return {
-      entities: result.entities || [],
+      entities: (result.entities || []).map(e => ({
+        id: e.id,
+        label: e.label,
+        ...(withLayout && e.row !== undefined && { row: e.row }),
+        ...(withLayout && e.col !== undefined && { col: e.col }),
+      })),
       relationships
     }
   } catch (error: any) {
