@@ -22,7 +22,13 @@ function getEffectiveApiUrl(): string {
     return 'https://opencode.ai/zen/go/v1/chat/completions'
   }
 }
-const MODEL_NAME = 'deepseek-v4-flash'
+function getEffectiveModel(): string {
+  try {
+    return localStorage.getItem('diagram-ai-model') || 'deepseek-v4-pro'
+  } catch {
+    return 'deepseek-v4-pro'
+  }
+}
 
 /**
  * Call the AI model to analyze SQL or text and generate ER diagram configuration.
@@ -62,20 +68,28 @@ ${input}
 `
 
   try {
+    const modelName = getEffectiveModel()
+    const payload: any = {
+      model: modelName,
+      messages: [
+        { role: 'system', content: '你是一个只输出合法 JSON 的 AI 助手。' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.1,
+    }
+
+    if (modelName.includes('deepseek-v4-pro')) {
+      payload.thinking = { type: 'enabled' }
+      payload.reasoning_effort = 'high'
+    }
+
     const response = await fetch(getEffectiveApiUrl(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
-      body: JSON.stringify({
-        model: MODEL_NAME,
-        messages: [
-          { role: 'system', content: '你是一个只输出合法 JSON 的 AI 助手。' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.1,
-      })
+      body: JSON.stringify(payload)
     })
 
     if (!response.ok) {

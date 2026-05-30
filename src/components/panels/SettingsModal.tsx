@@ -7,8 +7,10 @@ interface Props {
 
 export const API_KEY_LS_KEY = 'diagram-ai-api-key'
 export const API_URL_LS_KEY = 'diagram-ai-api-url'
+export const MODEL_LS_KEY = 'diagram-ai-model'
 
-const DEFAULT_API_URL = 'https://opencode.ai/zen/go/v1/chat/completions'
+const DEFAULT_API_URL = 'https://api.deepseek.com/chat/completions'
+const DEFAULT_MODEL = 'deepseek-v4-pro'
 
 export function getApiKey(): string {
   try {
@@ -26,21 +28,32 @@ export function getApiUrl(): string {
   }
 }
 
+export function getAiModel(): string {
+  try {
+    return localStorage.getItem(MODEL_LS_KEY) || DEFAULT_MODEL
+  } catch (e) {
+    return DEFAULT_MODEL
+  }
+}
+
 export default function SettingsModal({ onClose }: Props) {
   const { t } = useTranslation()
   const [apiKey, setApiKey] = useState('')
   const [apiUrl, setApiUrl] = useState('')
+  const [model, setModel] = useState('')
   const [showSaved, setShowSaved] = useState(false)
 
   useEffect(() => {
     setApiKey(getApiKey())
     setApiUrl(getApiUrl())
+    setModel(getAiModel())
   }, [])
 
   const handleSave = () => {
     try {
       localStorage.setItem(API_KEY_LS_KEY, apiKey.trim())
       localStorage.setItem(API_URL_LS_KEY, apiUrl.trim() || DEFAULT_API_URL)
+      localStorage.setItem(MODEL_LS_KEY, model || DEFAULT_MODEL)
       setShowSaved(true)
       setTimeout(() => setShowSaved(false), 2000)
     } catch (e) {
@@ -71,6 +84,20 @@ export default function SettingsModal({ onClose }: Props) {
             <p className="text-xs text-gray-500 mt-1.5">
               {t('settings.apiKeyHint')}
             </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {t('settings.model')}
+            </label>
+            <select
+              className="w-full text-sm border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-black bg-white"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+            >
+              <option value="deepseek-v4-pro">deepseek-v4-pro (推荐, 支持思考模式)</option>
+              <option value="deepseek-v4-flash">deepseek-v4-flash (较快)</option>
+            </select>
           </div>
 
           <div>
