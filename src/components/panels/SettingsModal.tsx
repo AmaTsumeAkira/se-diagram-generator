@@ -10,7 +10,7 @@ export const API_URL_LS_KEY = 'diagram-ai-api-url'
 export const MODEL_LS_KEY = 'diagram-ai-model'
 export const THINKING_LS_KEY = 'diagram-ai-thinking'
 
-const DEFAULT_API_URL = 'https://api.deepseek.com/chat/completions'
+const DEFAULT_API_URL = 'https://opencode.ai/zen/go/v1/chat/completions'
 const DEFAULT_MODEL = 'deepseek-v4-pro'
 
 export function getApiKey(): string {

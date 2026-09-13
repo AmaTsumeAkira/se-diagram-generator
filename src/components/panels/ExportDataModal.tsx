@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import type { Node, Edge } from '@xyflow/react'
 import type { DiagramNodeData } from '../../types/diagram'
+import { configsToJson } from '../../utils/configSerialize'
 
 interface Props {
   configs: Record<string, { nodes: Node<DiagramNodeData>[]; edges: Edge[] }>
@@ -62,14 +63,7 @@ export default function ExportDataModal({ configs, onClose }: Props) {
           <div className="flex items-center gap-3">
             <h3 className="text-sm font-semibold">{t('dataExport.title')}</h3>
             <button onClick={() => {
-              const flat: Record<string, any> = {}
-              for (const [k, cfg] of Object.entries(configs)) {
-                flat[k] = {
-                  nodes: cfg.nodes.map((n) => ({ id: n.id, type: n.type, label: n.data.label, rx: n.data.rx, ry: n.data.ry, vertical: n.data.vertical })),
-                  edges: cfg.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
-                }
-              }
-              dl(JSON.stringify(flat, null, 2), 'diagram-configs.json', 'application/json')
+              dl(configsToJson(configs), 'diagram-configs.json', 'application/json')
             }}
               className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">{t('dataExport.downloadJson')}</button>
             <button onClick={() => dl(mdText, 'diagram-quick-format.md', 'text/markdown')}

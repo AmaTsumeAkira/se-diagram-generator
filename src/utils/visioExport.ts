@@ -302,6 +302,10 @@ export async function entityVisio(nodes: DNode[], edges: Edge[]): Promise<void> 
   await exportToVisio(nodes, edges, '实体属性图', '实体属性图')
 }
 
+export async function erVisio(nodes: DNode[], edges: Edge[]): Promise<void> {
+  await exportToVisio(nodes, edges, '总体ER图', '总体ER图')
+}
+
 export async function sequenceVisio(nodes: DNode[], edges: Edge[]): Promise<void> {
   await exportToVisio(nodes, edges, '时序图', '时序图')
 }

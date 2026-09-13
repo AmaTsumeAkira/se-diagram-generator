@@ -1,8 +1,6 @@
 import { useMemo } from 'react'
-import { useTranslation } from 'react-i18next'
-import * as pako from 'pako'
 import type { Edge, Node } from '@xyflow/react'
-import { erDrawio } from '../../utils/drawioExport'
+import { erSvg } from '../../utils/svgExport'
 import type { DiagramNodeData } from '../../types/diagram'
 
 interface Props {
@@ -10,26 +8,18 @@ interface Props {
   edges: Edge[]
 }
 
-function encodeDiagram(xml: string): string {
-  const deflated = pako.deflateRaw(xml)
-  let bin = ''
-  deflated.forEach((b: number) => { bin += String.fromCharCode(b) })
-  return encodeURIComponent(btoa(bin))
-}
-
+/**
+ * 总体 ER 图（Chen 表示法）
+ * 使用自绘 SVG 渲染：实体/菱形支持绝对坐标，连线支持显式正交折线，
+ * 布局完全可控，不再依赖外部 drawio viewer 的自动路由。
+ */
 export default function ERDiagram({ nodes, edges }: Props) {
-  const { t } = useTranslation()
-  const xml = useMemo(() => erDrawio(nodes, edges), [nodes, edges])
-  const src = useMemo(() => {
-    const enc = encodeDiagram(xml)
-    return `https://viewer.diagrams.net/?lightbox=1&layers=0&nav=0#R${enc}`
-  }, [xml])
+  const svg = useMemo(() => erSvg(nodes, edges), [nodes, edges])
 
   return (
-    <iframe
-      src={src}
-      style={{ width: '100%', height: '100%', border: 'none' }}
-      title={t('app.er')}
+    <div
+      className="w-full h-full overflow-auto bg-white p-4 [&>svg]:max-w-full [&>svg]:h-auto"
+      dangerouslySetInnerHTML={{ __html: svg }}
     />
   )
 }

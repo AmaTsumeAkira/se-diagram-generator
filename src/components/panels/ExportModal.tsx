@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { toPng } from 'html-to-image'
 import { useCaseSvg, structureSvg, entitySvg, erSvg, sequenceSvg, classSvg, activitySvg, deploymentSvg } from '../../utils/svgExport'
 import { useCaseDrawio, structureDrawio, entityDrawio, erDrawio, sequenceDrawio, classDrawio, activityDrawio, deploymentDrawio } from '../../utils/drawioExport'
-import { useCaseVisio, structureVisio, entityVisio, sequenceVisio, classVisio, activityVisio, deploymentVisio } from '../../utils/visioExport'
+import { useCaseVisio, structureVisio, entityVisio, erVisio, sequenceVisio, classVisio, activityVisio, deploymentVisio } from '../../utils/visioExport'
 import type { Node, Edge } from '@xyflow/react'
 import type { DiagramNodeData } from '../../types/diagram'
 
@@ -73,6 +73,8 @@ const svgPngExportTypes = new Set(['structure', 'er', 'sequence', 'class', 'acti
 
 export default function ExportModal({ active, config, flowRef, onClose }: Props) {
   const { t } = useTranslation()
+  // 仅用例图/实体属性图支持按角色/实体分图导出
+  const splitSupported = active === 'usecase' || active === 'entity'
   const [fullUrl, setFullUrl] = useState('')
   const [splitUrls, setSplitUrls] = useState<string[]>([])
   const [splitLabels, setSplitLabels] = useState<string[]>([])
@@ -196,6 +198,7 @@ export default function ExportModal({ active, config, flowRef, onClose }: Props)
         case 'usecase': await useCaseVisio(config.nodes, config.edges); break
         case 'structure': await structureVisio(config.nodes, config.edges); break
         case 'entity': await entityVisio(config.nodes, config.edges); break
+        case 'er': await erVisio(config.nodes, config.edges); break
         case 'sequence': await sequenceVisio(config.nodes, config.edges); break
         case 'class': await classVisio(config.nodes, config.edges); break
         case 'activity': await activityVisio(config.nodes, config.edges); break
@@ -222,7 +225,7 @@ export default function ExportModal({ active, config, flowRef, onClose }: Props)
               className="px-3 py-1 text-xs border border-black rounded hover:bg-gray-50">{t('export.fullExport')} Drawio</button>
             <button onClick={handleVisio}
               className="px-3 py-1 text-xs border border-black rounded hover:bg-gray-50">{t('export.fullExport')} Visio</button>
-            {active !== 'structure' && <button onClick={() => splitUrls.forEach((url, i) => setTimeout(() => dl(url, `${splitLabels[i] || `${t('export.splitLabel')}${i + 1}`}`), i * 200))}
+            {splitSupported && <button onClick={() => splitUrls.forEach((url, i) => setTimeout(() => dl(url, `${splitLabels[i] || `${t('export.splitLabel')}${i + 1}`}`), i * 200))}
               disabled={splitUrls.length === 0}
               className="px-3 py-1 text-xs border border-black rounded hover:bg-gray-50 disabled:opacity-30">{t('export.splitExport')} ({splitUrls.length})</button>}
           </div>
@@ -235,15 +238,15 @@ export default function ExportModal({ active, config, flowRef, onClose }: Props)
           {!loading && (
             <div className="flex gap-4">
               {/* 左：全图 */}
-              <div className={active === 'structure' ? 'w-full' : 'flex-[2] min-w-0'}>
+              <div className={splitSupported ? 'flex-[2] min-w-0' : 'w-full'}>
                 <p className="text-xs text-gray-500 mb-2 text-center font-medium">{t('export.fullLabel')}</p>
                 {fullUrl && <img src={fullUrl} alt={t('export.fullLabel')} className="w-full border border-gray-200 rounded" />}
               </div>
 
-              {active !== 'structure' && <div className="w-px bg-gray-200 shrink-0" />}
+              {splitSupported && <div className="w-px bg-gray-200 shrink-0" />}
 
               {/* 右：分图网格 */}
-              {active !== 'structure' && <div className="flex-[3] min-w-0">
+              {splitSupported && <div className="flex-[3] min-w-0">
                 <p className="text-xs text-gray-500 mb-2 text-center font-medium">{t('export.splitLabel')} ({splitUrls.length})</p>
                 <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${splitCols}, 1fr)` }}>
                   {splitUrls.map((url, i) => (

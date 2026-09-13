@@ -33,6 +33,11 @@ export interface DiagramNodeData extends Record<string, unknown> {
   nodeW?: number
   row?: number
   col?: number
+  /** ER 图：所属虚线分组模块名称 */
+  group?: string
+  /** ER 图：绝对坐标（px）。实体为左上角，菱形为中心点；缺省则回退网格自动布局 */
+  x?: number
+  y?: number
 }
 
 // 时序图参与者数据

@@ -245,3 +245,66 @@ export function makeEntityJson(preset: EntityPreset): string {
   }))
   return JSON.stringify({ nodes, edges }, null, 2)
 }
+
+// ====== Overall E-R Diagram Preset (总体ER图) ======
+
+/**
+ * 员工管理系统 - 总体ER图默认示例
+ * 12 个实体（含 1 个虚线分组模块）+ 8 个联系（菱形）
+ * 仅声明实体位置与联系关系，连线/菱形/基数全部由 erRouting 正交寻线引擎自动计算
+ */
+export const erSystemJson: string = JSON.stringify({
+  nodes: [
+    // ===== 左区：管理员分支 =====
+    { id: 'ent_notice', type: 'erEntity', label: '通知公告表', x: 80, y: 40 },
+    { id: 'ent_admin', type: 'erEntity', label: '管理员表（users）', x: 80, y: 200 },
+    { id: 'ent_meeting', type: 'erEntity', label: '会议记录表', x: 80, y: 360 },
+    // ===== 中区：部门 / 职位 → 员工主表 =====
+    { id: 'ent_dept', type: 'erEntity', label: '部门信息表', x: 440, y: 40 },
+    { id: 'ent_position', type: 'erEntity', label: '职位信息表', x: 780, y: 40 },
+    { id: 'ent_employee', type: 'erEntity', label: '员工主表（yuangong）', x: 530, y: 250 },
+    // ===== 右区：员工主表分支 =====
+    { id: 'ent_salary', type: 'erEntity', label: '工资信息表', x: 1020, y: 40 },
+    { id: 'ent_todo', type: 'erEntity', label: '待办事项表', x: 1020, y: 170 },
+    { id: 'ent_message', type: 'erEntity', label: '留言板表', x: 1020, y: 300 },
+    { id: 'ent_favorite', type: 'erEntity', label: '收藏记录表', x: 1020, y: 430 },
+    // ===== 虚线分组模块 =====
+    { id: 'ent_sysconfig', type: 'erEntity', label: '系统配置表', x: 80, y: 560, group: 'Spring Boot 系统鉴权与配置模块' },
+    { id: 'ent_token', type: 'erEntity', label: 'Token表', x: 440, y: 560, group: 'Spring Boot 系统鉴权与配置模块' },
+    // ===== 联系（仅声明，位置由引擎计算） =====
+    { id: 'dia_publish_notice', type: 'erDiamond', label: '发布' },
+    { id: 'dia_organize', type: 'erDiamond', label: '组织' },
+    { id: 'dia_belong', type: 'erDiamond', label: '归属' },
+    { id: 'dia_hold', type: 'erDiamond', label: '担任' },
+    { id: 'dia_grant', type: 'erDiamond', label: '发放' },
+    { id: 'dia_assign', type: 'erDiamond', label: '分配' },
+    { id: 'dia_publish_message', type: 'erDiamond', label: '发布' },
+    { id: 'dia_favorite', type: 'erDiamond', label: '收藏' },
+  ],
+  edges: [
+    // 管理员表 1 —— 发布 —— N 通知公告表
+    { id: 'e_ent_admin_dia_publish_notice', source: 'ent_admin', target: 'dia_publish_notice', data: { sourceCard: '1', targetCard: '' } },
+    { id: 'e_dia_publish_notice_ent_notice', source: 'dia_publish_notice', target: 'ent_notice', data: { sourceCard: '', targetCard: 'N' } },
+    // 管理员表 1 —— 组织 —— N 会议记录表
+    { id: 'e_ent_admin_dia_organize', source: 'ent_admin', target: 'dia_organize', data: { sourceCard: '1', targetCard: '' } },
+    { id: 'e_dia_organize_ent_meeting', source: 'dia_organize', target: 'ent_meeting', data: { sourceCard: '', targetCard: 'N' } },
+    // 部门信息表 1 —— 归属 —— N 员工主表
+    { id: 'e_ent_dept_dia_belong', source: 'ent_dept', target: 'dia_belong', data: { sourceCard: '1', targetCard: '' } },
+    { id: 'e_dia_belong_ent_employee', source: 'dia_belong', target: 'ent_employee', data: { sourceCard: '', targetCard: 'N' } },
+    // 职位信息表 1 —— 担任 —— N 员工主表
+    { id: 'e_ent_position_dia_hold', source: 'ent_position', target: 'dia_hold', data: { sourceCard: '1', targetCard: '' } },
+    { id: 'e_dia_hold_ent_employee', source: 'dia_hold', target: 'ent_employee', data: { sourceCard: '', targetCard: 'N' } },
+    // 员工主表 1 —— 发放 —— N 工资信息表
+    { id: 'e_ent_employee_dia_grant', source: 'ent_employee', target: 'dia_grant', data: { sourceCard: '1', targetCard: '' } },
+    { id: 'e_dia_grant_ent_salary', source: 'dia_grant', target: 'ent_salary', data: { sourceCard: '', targetCard: 'N' } },
+    // 员工主表 1 —— 分配 —— N 待办事项表
+    { id: 'e_ent_employee_dia_assign', source: 'ent_employee', target: 'dia_assign', data: { sourceCard: '1', targetCard: '' } },
+    { id: 'e_dia_assign_ent_todo', source: 'dia_assign', target: 'ent_todo', data: { sourceCard: '', targetCard: 'N' } },
+    // 员工主表 1 —— 发布 —— N 留言板表
+    { id: 'e_ent_employee_dia_publish_message', source: 'ent_employee', target: 'dia_publish_message', data: { sourceCard: '1', targetCard: '' } },
+    { id: 'e_dia_publish_message_ent_message', source: 'dia_publish_message', target: 'ent_message', data: { sourceCard: '', targetCard: 'N' } },
+    // 员工主表 1 —— 收藏 —— N 收藏记录表
+    { id: 'e_ent_employee_dia_favorite', source: 'ent_employee', target: 'dia_favorite', data: { sourceCard: '1', targetCard: '' } },
+    { id: 'e_dia_favorite_ent_favorite', source: 'dia_favorite', target: 'ent_favorite', data: { sourceCard: '', targetCard: 'N' } },
+  ],
+}, null, 2)

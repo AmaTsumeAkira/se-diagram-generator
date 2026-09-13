@@ -1,6 +1,8 @@
 import type { Node, Edge } from '@xyflow/react'
 import type { DiagramNodeData } from '../types/diagram'
 import { layoutTreeStructure } from './layout'
+import { collectERRelations, routeRelations, anchorOutside } from './erRouting'
+import { estimateEntityWidth, ER_ENTITY_FONT } from './erLayout'
 
 type DNode = Node<DiagramNodeData>
 
@@ -248,7 +250,7 @@ export function sequenceSvg(nodes: DNode[], edges: Edge[]): string {
     svg += `<line x1="${srcX}" y1="${y}" x2="${tgtX}" y2="${y}" stroke="#000" stroke-width="1.5" marker-end="url(#arrow)"${dashAttr}/>`
 
     // 消息文字标签
-    const msgLabel = msgData.label || ''
+    const msgLabel = (msg.label as string) || msgData.label || ''
     if (msgLabel) {
       const midX = (srcX + tgtX) / 2
       svg += `<text x="${midX}" y="${y - 8}" font-family="sans-serif" font-size="11" text-anchor="middle" fill="#333">${esc(msgLabel)}</text>`
@@ -510,7 +512,7 @@ export function deploymentSvg(nodes: DNode[], edges: Edge[]): string {
     svg += `<line x1="${src.cx}" y1="${src.cy}" x2="${tgt.cx}" y2="${tgt.cy}" stroke="#000" stroke-width="1.5"${dashAttr}/>`
 
     // 边标签
-    const edgeLabel = edgeData.label || ''
+    const edgeLabel = (edge.label as string) || edgeData.label || ''
     if (edgeLabel) {
       const midX = (src.cx + tgt.cx) / 2
       const midY = (src.cy + tgt.cy) / 2
@@ -529,187 +531,256 @@ export function erSvg(nodes: DNode[], edges: Edge[]): string {
   const entities = nodes.filter(n => n.type === 'erEntity')
   const diamonds = nodes.filter(n => n.type === 'erDiamond')
 
-  const entW = 160
-  const entH = 46
-  const cellW = 300
+  const entH = 44
+  const diaR = 16
+  const diaHalf = 28
   const cellH = 240
   const startX = 120
   const startY = 90
+  // 框宽与布局端共用同一套估算（字号 14），避免"算出来的宽度"和"画出来的宽度"不一致
+  const entWOf = (ent: DNode) =>
+    estimateEntityWidth(String(ent.data.label || ''), (ent.data.fontSize as number) || ER_ENTITY_FONT)
+  const maxEntW = entities.length ? Math.max(...entities.map(entWOf)) : 180
+  const cellW = maxEntW + 150
 
-  // ====== 1. Determine entity positions ======
-  // If AI provided row/col, use them; otherwise auto-layout
-  const hasAILayout = entities.some(ent => ent.data.row !== undefined && ent.data.col !== undefined)
+  // ====== 1. 实体位置 ======
+  // 优先级：绝对坐标 (data.x/data.y) > 行列表格 (data.row/col) > 空位搜索
+  // 说明：编辑器里新增的实体没有坐标。若图上已有绝对坐标的实体，仍按 i%autoCols
+  // 铺网格会与已有实体贴住（净空不足），或按全局序号被甩到画布下方很远的位置；
+  // 因此改为在网格里找第一个与已有实体保持净空的空位。
+  const entityPos = new Map<string, { x: number; y: number; w: number; cx: number; cy: number }>()
+  const hasAbsEntity = entities.some(ent => typeof ent.data.x === 'number' && typeof ent.data.y === 'number')
+  const hasGridEntity = entities.some(ent => ent.data.row !== undefined && ent.data.col !== undefined)
+  const useGrid = hasGridEntity && !hasAbsEntity
+  const autoCols = entities.length ? Math.max(2, Math.ceil(Math.sqrt(entities.length))) : 2
 
-  let cols: number
-  if (hasAILayout) {
-    cols = Math.max(2, ...entities.map(e => (Number(e.data.col) || 0) + 1))
-  } else {
-    cols = Math.max(2, Math.ceil(Math.sqrt(entities.length)))
+  /** 已被绝对坐标占用的矩形（预先收集，避免与后加入的实体抢位） */
+  const occupied: { x: number; y: number; w: number; h: number }[] = entities
+    .filter(ent => typeof ent.data.x === 'number' && typeof ent.data.y === 'number')
+    .map(ent => ({ x: ent.data.x as number, y: ent.data.y as number, w: entWOf(ent), h: entH }))
+
+  const GAP_SLOT = 30
+  const hitsOccupied = (a: { x: number; y: number; w: number; h: number }) =>
+    occupied.some(o => !(a.x + a.w + GAP_SLOT <= o.x || o.x + o.w + GAP_SLOT <= a.x ||
+                         a.y + a.h + GAP_SLOT <= o.y || o.y + o.h + GAP_SLOT <= a.y))
+
+  const freeSlot = (w: number): { x: number; y: number } => {
+    for (let r = 0; r < 30; r++) {
+      for (let c = 0; c < autoCols; c++) {
+        const slot = { x: startX + c * cellW, y: startY + r * cellH, w, h: entH }
+        if (!hitsOccupied(slot)) {
+          occupied.push(slot)
+          return { x: slot.x, y: slot.y }
+        }
+      }
+    }
+    const fallback = { x: startX, y: startY + 30 * cellH, w, h: entH }
+    occupied.push(fallback)
+    return { x: fallback.x, y: fallback.y }
   }
-
-  const entityPos = new Map<string, { x: number; y: number; cx: number; cy: number }>()
 
   entities.forEach((ent, i) => {
-    const row = hasAILayout && ent.data.row !== undefined ? Number(ent.data.row) : Math.floor(i / cols)
-    const col = hasAILayout && ent.data.col !== undefined ? Number(ent.data.col) : (i % cols)
-    const finalRow = isNaN(row) ? 0 : row
-    const finalCol = isNaN(col) ? 0 : col
-
-    const x = startX + finalCol * cellW
-    const y = startY + finalRow * cellH
-    entityPos.set(ent.id, { x, y, cx: x + entW / 2, cy: y + entH / 2 })
+    const w = entWOf(ent)
+    let x: number, y: number
+    if (typeof ent.data.x === 'number' && typeof ent.data.y === 'number') {
+      x = ent.data.x
+      y = ent.data.y
+    } else if (useGrid && ent.data.row !== undefined && ent.data.col !== undefined) {
+      const col = Number(ent.data.col)
+      const row = Number(ent.data.row)
+      x = startX + (isNaN(col) ? 0 : col) * cellW
+      y = startY + (isNaN(row) ? 0 : row) * cellH
+    } else if (useGrid) {
+      x = startX + (i % autoCols) * cellW
+      y = startY + Math.floor(i / autoCols) * cellH
+    } else {
+      const slot = freeSlot(w)
+      x = slot.x
+      y = slot.y
+    }
+    entityPos.set(ent.id, { x, y, w, cx: x + w / 2, cy: y + entH / 2 })
   })
 
-  // ====== 2. Group edges by diamond ======
-  const diamondEdgeMap = new Map<string, { srcId: string; tgtId: string; srcCard: string; tgtCard: string }>()
-  for (const e of edges) {
-    const eData = (e as any).data || {}
-    const srcIsDiamond = diamonds.some(d => d.id === e.source)
-    const tgtIsDiamond = diamonds.some(d => d.id === e.target)
-    if (tgtIsDiamond) {
-      const existing = diamondEdgeMap.get(e.target) || { srcId: '', tgtId: '', srcCard: '', tgtCard: '' }
-      existing.srcId = e.source
-      existing.srcCard = eData.sourceCard || ''
-      diamondEdgeMap.set(e.target, existing)
-    } else if (srcIsDiamond) {
-      const existing = diamondEdgeMap.get(e.source) || { srcId: '', tgtId: '', srcCard: '', tgtCard: '' }
-      existing.tgtId = e.target
-      existing.tgtCard = eData.targetCard || ''
-      diamondEdgeMap.set(e.source, existing)
+  // ====== 2. 解析联系 + 智能正交寻线（干线共用 / 避障 / 落点自动） ======
+  const { relations, manual } = collectERRelations(
+    diamonds.map((d) => ({ id: d.id, label: String(d.data.label || '') })),
+    edges.map((e) => ({ id: e.id, source: e.source, target: e.target, data: e.data as Record<string, unknown> | undefined })),
+  )
+
+  const routedList = routeRelations(
+    entities.map((ent) => {
+      const p = entityPos.get(ent.id)
+      return { id: ent.id, x: p ? p.x : 0, y: p ? p.y : 0, w: p ? p.w : 120, h: entH }
+    }),
+    relations,
+  )
+  const routedById = new Map(routedList.map((r) => [r.id, r]))
+  const diaById = new Map(diamonds.map((d) => [d.id.replace(/^(dia_)+/, ''), d]))
+
+  // 手动折线（data.line）时的基数落点：先走出实体盒，再沿路径错开
+  const placedCards: { x: number; y: number }[] = []
+  const manualCardAt = (pts: number[][], atEnd: boolean, entId?: string) => {
+    const pos = entId ? entityPos.get(entId) : undefined
+    let x: number, y: number, horizontal: boolean
+    if (pos) {
+      const a = anchorOutside(pts, !atEnd, { x: pos.x, y: pos.y, r: pos.x + pos.w, b: pos.y + entH })
+      x = a.x
+      y = a.y
+      horizontal = a.horizontal
+    } else {
+      const i0 = atEnd ? pts.length - 1 : 0
+      const i1 = atEnd ? pts.length - 2 : 1
+      const p0 = pts[i0]
+      const p1 = pts[i1]
+      const ddx = p1[0] - p0[0]
+      const ddy = p1[1] - p0[1]
+      const len = Math.hypot(ddx, ddy) || 1
+      const dist = Math.min(30, len * 0.45)
+      x = p0[0] + (ddx / len) * dist
+      y = p0[1] + (ddy / len) * dist
+      horizontal = Math.abs(ddx) >= Math.abs(ddy)
     }
+    let px = horizontal ? x : x - 12
+    let py = horizontal ? y - 9 : y
+    let k = 0
+    while (placedCards.some((c) => Math.hypot(c.x - px, c.y - py) < 16) && k < 12) {
+      k++
+      if (horizontal) py -= 15 * k
+      else px -= 15 * k
+    }
+    placedCards.push({ x: px, y: py })
+    return { x: px, y: py }
   }
 
-  // ====== 3. Calculate diamond positions with anti-overlap ======
-  interface DiamondInfo {
+  // ====== 3. 汇总绘制数据 ======
+  interface RenderRel {
     dia: DNode
-    srcPos: { x: number; y: number; cx: number; cy: number }
-    tgtPos: { x: number; y: number; cx: number; cy: number }
-    info: { srcId: string; tgtId: string; srcCard: string; tgtCard: string }
-    cx: number
-    cy: number
+    points: number[][]
+    diamond: { x: number; y: number }
+    srcCard: string
+    tgtCard: string
+    srcCardAt: { x: number; y: number } | null
+    tgtCardAt: { x: number; y: number } | null
   }
-  const diamondInfos: DiamondInfo[] = []
-  const placedPositions = new Map<string, number>()
+  const renderRels: RenderRel[] = []
+  for (const rel of relations) {
+    const dia = diaById.get(rel.id)
+    if (!dia) continue
+    const absX = dia.data.x as number | undefined
+    const absY = dia.data.y as number | undefined
+    const hasAbs = typeof absX === 'number' && typeof absY === 'number'
+    const manualLine = manual.get(rel.id)
 
-  diamonds.forEach((dia) => {
-    const info = diamondEdgeMap.get(dia.id)
-    if (!info) return
-    const srcPos = entityPos.get(info.srcId)
-    const tgtPos = entityPos.get(info.tgtId)
-    if (!srcPos || !tgtPos) return
-
-    let cx = (srcPos.cx + tgtPos.cx) / 2
-    let cy = (srcPos.cy + tgtPos.cy) / 2
-
-    // Offset for long-distance relations
-    const dx = Math.abs(srcPos.cx - tgtPos.cx)
-    const dy = Math.abs(srcPos.cy - tgtPos.cy)
-    if (dx >= cellW * 1.5 && dy < cellH * 0.5) cy -= 80
-    else if (dy >= cellH * 1.5 && dx < cellW * 0.5) cx += 100
-    else if (dx >= cellW * 1.5 && dy >= cellH * 1.5) cx += 50
-
-    // Anti-overlap: shift if another diamond is at the same spot
-    const key = `${Math.round(cx / 30)},${Math.round(cy / 30)}`
-    const count = placedPositions.get(key) || 0
-    placedPositions.set(key, count + 1)
-    if (count > 0) {
-      // Alternate shifting direction
-      if (count % 2 === 1) cy += 40 * Math.ceil(count / 2)
-      else cx += 50 * Math.ceil(count / 2)
+    if (manualLine) {
+      const n = manualLine.length
+      const diamond = hasAbs
+        ? { x: absX!, y: absY! }
+        : { x: (manualLine[0][0] + manualLine[n - 1][0]) / 2, y: (manualLine[0][1] + manualLine[n - 1][1]) / 2 }
+      renderRels.push({
+        dia, points: manualLine, diamond,
+        srcCard: rel.srcCard, tgtCard: rel.tgtCard,
+        srcCardAt: manualCardAt(manualLine, false, rel.srcId),
+        tgtCardAt: manualCardAt(manualLine, true, rel.tgtId),
+      })
+      continue
     }
 
-    diamondInfos.push({ dia, srcPos, tgtPos, info, cx, cy })
-  })
+    const rd = routedById.get(rel.id)
+    if (!rd) continue
+    renderRels.push({
+      dia, points: rd.points,
+      diamond: hasAbs ? { x: absX!, y: absY! } : rd.diamond,
+      srcCard: rel.srcCard, tgtCard: rel.tgtCard,
+      srcCardAt: rd.srcCardAt, tgtCardAt: rd.tgtCardAt,
+    })
+  }
 
-  // ====== 4. Render: Lines first (bottom layer) ======
+  // ====== 4. 图层容器与整体边界 ======
+  let svgGroups = ''
   let svgLines = ''
   let svgDiamonds = ''
   let svgLabels = ''
   let svgEntities = ''
-  const svgBoxes: { x: number; y: number; w: number; h: number }[] = []
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  const acc = (x: number, y: number, w = 0, h = 0) => {
+    minX = Math.min(minX, x)
+    minY = Math.min(minY, y)
+    maxX = Math.max(maxX, x + w)
+    maxY = Math.max(maxY, y + h)
+  }
 
-  diamondInfos.forEach((dInfo) => {
-    const { srcPos, tgtPos, info, cx: _diamCx, cy: diamCy } = dInfo
-    // Orthogonal path routing (like the reference SVG)
-    const isHorizontal = Math.abs(srcPos.cy - tgtPos.cy) < cellH * 0.3
-    const isVertical = Math.abs(srcPos.cx - tgtPos.cx) < cellW * 0.3
+  // ====== 虚线分组框（最底层） ======
+  const groupMembers = new Map<string, string[]>()
+  entities.forEach((ent) => {
+    const g = ent.data.group
+    if (!g) return
+    const list = groupMembers.get(g) || []
+    list.push(ent.id)
+    groupMembers.set(g, list)
+  })
+  groupMembers.forEach((ids, label) => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    ids.forEach((id) => {
+      const p = entityPos.get(id)
+      if (!p) return
+      minX = Math.min(minX, p.x)
+      minY = Math.min(minY, p.y)
+      maxX = Math.max(maxX, p.x + p.w)
+      maxY = Math.max(maxY, p.y + entH)
+    })
+    if (minX === Infinity) return
+    const pad = 26
+    const header = 26
+    const gx = minX - pad
+    const gy = minY - pad - header
+    const gw = Math.max(maxX - minX + pad * 2, Math.round(textWidth(label, 12)) + 40)
+    const gh = maxY - minY + pad * 2 + header
+    svgGroups += `<rect x="${gx}" y="${gy}" width="${gw}" height="${gh}" fill="none" stroke="#000" stroke-width="1" stroke-dasharray="6,4"/>`
+    svgGroups += `<text x="${gx + 10}" y="${gy + 18}" font-family="'SimHei', sans-serif" font-size="12" fill="#333">${esc(label)}</text>`
+    acc(gx, gy, gw, gh)
+  })
 
-    if (isHorizontal) {
-      // Horizontal line: source.cx -> target.cx at same y
-      const lineY = srcPos.cy
-      svgLines += `<path d="M ${srcPos.cx} ${lineY} L ${tgtPos.cx} ${lineY}" stroke="#000" stroke-width="2" fill="none" stroke-linecap="square"/>`
-    } else if (isVertical) {
-      // Vertical line: source.cy -> target.cy at same x
-      const lineX = srcPos.cx
-      svgLines += `<path d="M ${lineX} ${srcPos.cy} L ${lineX} ${tgtPos.cy}" stroke="#000" stroke-width="2" fill="none" stroke-linecap="square"/>`
-    } else {
-      // L-shaped orthogonal route: go vertical first, then horizontal
-      svgLines += `<path d="M ${srcPos.cx} ${srcPos.cy} L ${srcPos.cx} ${diamCy} L ${tgtPos.cx} ${diamCy} L ${tgtPos.cx} ${tgtPos.cy}" stroke="#000" stroke-width="2" fill="none" stroke-linecap="square"/>`
+  const cardStyle = 'stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000"'
+
+  // ====== 4. 连线与基数（底层） ======
+  renderRels.forEach((r) => {
+    svgLines += `<path d="${r.points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ')}" stroke="#000" stroke-width="1.5" fill="none" stroke-linecap="square"/>`
+    r.points.forEach((p) => acc(p[0], p[1]))
+    if (r.srcCard && r.srcCardAt) {
+      svgLabels += `<text x="${r.srcCardAt.x}" y="${r.srcCardAt.y}" dominant-baseline="middle" ${cardStyle}>${esc(r.srcCard)}</text>`
     }
-
-    // Cardinality labels with white stroke background (anti-interference, matching reference SVG)
-    const cardStyle = 'stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000"'
-
-    if (info.srcCard) {
-      // Position cardinality near source entity
-      let lx: number, ly: number
-      if (isHorizontal) {
-        lx = srcPos.cx + (tgtPos.cx > srcPos.cx ? 15 : -15)
-        ly = srcPos.cy - 13
-      } else if (isVertical) {
-        lx = srcPos.cx + 15
-        ly = srcPos.cy + (tgtPos.cy > srcPos.cy ? 14 : -14)
-      } else {
-        lx = srcPos.cx + 15
-        ly = srcPos.cy + (diamCy > srcPos.cy ? 14 : -14)
-      }
-      svgLabels += `<text x="${lx}" y="${ly}" dominant-baseline="middle" ${cardStyle}>${esc(info.srcCard)}</text>`
-    }
-    if (info.tgtCard) {
-      let lx: number, ly: number
-      if (isHorizontal) {
-        lx = tgtPos.cx + (srcPos.cx > tgtPos.cx ? 15 : -15)
-        ly = tgtPos.cy - 13
-      } else if (isVertical) {
-        lx = tgtPos.cx + 15
-        ly = tgtPos.cy + (srcPos.cy > tgtPos.cy ? 14 : -14)
-      } else {
-        lx = tgtPos.cx + 15
-        ly = tgtPos.cy + (diamCy < tgtPos.cy ? -14 : 14)
-      }
-      svgLabels += `<text x="${lx}" y="${ly}" dominant-baseline="middle" ${cardStyle}>${esc(info.tgtCard)}</text>`
+    if (r.tgtCard && r.tgtCardAt) {
+      svgLabels += `<text x="${r.tgtCardAt.x}" y="${r.tgtCardAt.y}" dominant-baseline="middle" ${cardStyle}>${esc(r.tgtCard)}</text>`
     }
   })
 
-  // ====== 5. Render: Diamonds (middle layer, on top of lines) ======
-  const diaR = 14
-  const diaHalf = 24
-
-  diamondInfos.forEach(({ dia, cx, cy }) => {
-    // White-filled diamond polygon on top of lines (physical overlay effect)
+  // ====== 5. 菱形（覆盖在连线之上） ======
+  renderRels.forEach(({ dia, diamond }) => {
+    const cx = diamond.x
+    const cy = diamond.y
     svgDiamonds += `<polygon points="${cx},${cy - diaR} ${cx + diaHalf},${cy} ${cx},${cy + diaR} ${cx - diaHalf},${cy}" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="round"/>`
     svgDiamonds += `<text x="${cx}" y="${cy}" dominant-baseline="middle" font-family="'SimHei', 'Heiti SC', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">${esc(safeLabel(dia.data))}</text>`
-
-    svgBoxes.push({ x: cx - diaHalf, y: cy - diaR, w: diaHalf * 2, h: diaR * 2 })
+    acc(cx - diaHalf, cy - diaR, diaHalf * 2, diaR * 2)
   })
 
-  // ====== 6. Render: Entity rectangles (top layer) ======
+  // ====== 6. 实体（最上层） ======
   entities.forEach((ent) => {
     const pos = entityPos.get(ent.id)
     if (!pos) return
 
-    const fs = fontSize(ent.data)
+    const fs = (ent.data.fontSize as number) || ER_ENTITY_FONT
     const ff = esc(fontFamily(ent.data))
-    svgEntities += `<rect x="${pos.x}" y="${pos.y}" width="${entW}" height="${entH}" rx="4" fill="#fff" stroke="#000" stroke-width="2"/>`
+    // 直角矩形（无圆角）
+    svgEntities += `<rect x="${pos.x}" y="${pos.y}" width="${pos.w}" height="${entH}" fill="#fff" stroke="#000" stroke-width="1.5"/>`
     svgEntities += `<text x="${pos.cx}" y="${pos.cy + fs * 0.35}" font-family="'SimHei', '${ff}', sans-serif" font-size="${fs}" font-weight="bold" text-anchor="middle" fill="#000">${esc(safeLabel(ent.data))}</text>`
 
-    svgBoxes.push({ x: pos.x, y: pos.y, w: entW, h: entH })
+    acc(pos.x, pos.y, pos.w, entH)
   })
 
-  // Assemble: lines -> diamonds -> labels -> entities (layer order matches reference SVG)
-  const allSvg = svgLines + svgDiamonds + svgLabels + svgEntities
-  const bb = bounds(svgBoxes)
+  // 图层顺序：分组框 → 连线 → 菱形 → 基数文字 → 实体
+  const allSvg = svgGroups + svgLines + svgDiamonds + svgLabels + svgEntities
+  if (minX === Infinity) { minX = 0; minY = 0; maxX = 400; maxY = 300 }
   const pad = 40
-  return wrapSvg(allSvg, bb.x - pad, bb.y - pad, bb.w + pad * 2, bb.h + pad * 2)
+  return wrapSvg(allSvg, minX - pad, minY - pad, Math.max(1, maxX - minX) + pad * 2, Math.max(1, maxY - minY) + pad * 2)
 }
 

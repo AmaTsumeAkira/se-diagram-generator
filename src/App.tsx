@@ -16,13 +16,14 @@ import ExportDataModal from './components/panels/ExportDataModal'
 import SettingsModal from './components/panels/SettingsModal'
 import { useUndoRedo } from './hooks/useUndoRedo'
 import type { DiagramNodeData, DiagramType, ConfigMap } from './types/diagram'
-import type { UseCaseState, TreeNode, EntityState, SequenceState, ERState } from './components/panels/NodeEditor'
-import { useCasePresets, structureNodes, structureEdges, userEntityPreset } from './data/mockData'
+import type { UseCaseState, TreeNode, EntityState, SequenceState, ERState, ClassState, ActivityState, DeploymentState } from './components/panels/NodeEditor'
+import { useCasePresets, structureNodes, structureEdges, userEntityPreset, erSystemJson } from './data/mockData'
+import { configsToJson, parseDiagram, jsonToConfigs, TAB_KEYS } from './utils/configSerialize'
 import i18n from './i18n'
 
 const LS_KEY = 'diagram-editor-configs'
 
-const tabKeys: DiagramType[] = ['usecase', 'structure', 'entity', 'er', 'sequence', 'class', 'activity', 'deployment']
+const tabKeys = TAB_KEYS
 
 // localStorage 安全操作
 function safeGetItem(key: string): string | null {
@@ -54,92 +55,8 @@ function safeRemoveItem(key: string): boolean {
   }
 }
 
-function parseConfigJson(text: string): { nodes: Node<DiagramNodeData>[]; edges: Edge[] } {
-  const data = JSON.parse(text)
-  const nodes: Node<DiagramNodeData>[] = (data.nodes || []).map((n: any) => ({
-    id: String(n.id),
-    type: n.type ?? 'rectangle',
-    data: {
-      label: String(n.label ?? n.id),
-      rx: n.rx as number | undefined,
-      ry: n.ry as number | undefined,
-      vertical: n.vertical as boolean | undefined,
-      nodeH: n.nodeH as number | undefined,
-      nodeW: n.nodeW as number | undefined,
-      fontSize: n.fontSize as number | undefined,
-      fontFamily: n.fontFamily as string | undefined,
-      spacing: n.spacing as number | undefined,
-      // diagram-specific fields
-      ...(n.attributes && { attributes: n.attributes }),
-      ...(n.methods && { methods: n.methods }),
-      ...(n.isAbstract !== undefined && { isAbstract: n.isAbstract }),
-      ...(n.stereotype && { stereotype: n.stereotype }),
-      ...(n.participantType && { participantType: n.participantType }),
-      ...(n.technology && { technology: n.technology }),
-      ...(n.nodeType && { nodeType: n.nodeType }),
-      ...(n.row !== undefined && { row: n.row }),
-      ...(n.col !== undefined && { col: n.col }),
-    },
-    position: { x: 0, y: 0 },
-  }))
-  const edges: Edge[] = (data.edges || []).map((e: any, i: number) => ({
-    id: e.id ?? `edge_${i}`,
-    source: String(e.source),
-    target: String(e.target),
-    ...(e.data && { data: e.data }),
-    ...(e.label && { label: e.label }),
-  }))
-  return { nodes, edges }
-}
-
-function configsToJson(configs: ConfigMap): string {
-  const flat: Record<string, any> = {}
-  for (const key of Object.keys(configs)) {
-    const cfg = configs[key as DiagramType]
-    flat[key] = {
-      nodes: cfg.nodes.map((n) => {
-        const base: any = { id: n.id, type: n.type, label: n.data.label, rx: n.data.rx, ry: n.data.ry, vertical: n.data.vertical, fontSize: n.data.fontSize, fontFamily: n.data.fontFamily, spacing: n.data.spacing, nodeH: n.data.nodeH, nodeW: (n.data as any).nodeW, row: n.data.row, col: n.data.col }
-        const d = n.data as any
-        if (d.attributes) base.attributes = d.attributes
-        if (d.methods) base.methods = d.methods
-        if (d.isAbstract !== undefined) base.isAbstract = d.isAbstract
-        if (d.stereotype) base.stereotype = d.stereotype
-        if (d.participantType) base.participantType = d.participantType
-        if (d.technology) base.technology = d.technology
-        if (d.nodeType) base.nodeType = d.nodeType
-        return base
-      }),
-      edges: cfg.edges.map((e) => {
-        const base: any = { id: e.id, source: e.source, target: e.target }
-        if ((e as any).data) base.data = (e as any).data
-        if (e.label) base.label = e.label
-        return base
-      }),
-    }
-  }
-  return JSON.stringify(flat, null, 2)
-}
-
-function jsonToConfigs(json: string): ConfigMap | null {
-  try {
-    const flat = JSON.parse(json)
-    const emptyConfig = { nodes: [], edges: [] }
-    const configs: ConfigMap = {
-      usecase: emptyConfig,
-      structure: emptyConfig,
-      entity: emptyConfig,
-      er: emptyConfig,
-      sequence: emptyConfig,
-      class: emptyConfig,
-      activity: emptyConfig,
-      deployment: emptyConfig,
-    }
-    for (const key of tabKeys) {
-      if (flat[key]) configs[key] = parseConfigJson(JSON.stringify(flat[key]))
-    }
-    return configs
-  } catch { return null }
-}
+// 说明：图表配置的（反）序列化统一由 utils/configSerialize 提供，
+// 排除式字段策略保证 ER 图绝对坐标 x/y 等不会在持久化 / 导出时被漏掉。
 
 // ====== Config → Editor state (for undo sync) ======
 
@@ -230,6 +147,9 @@ function configToERState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] })
     label: (n.data.label as string) || '',
     row: n.data.row as number | undefined,
     col: n.data.col as number | undefined,
+    group: n.data.group as string | undefined,
+    x: n.data.x as number | undefined,
+    y: n.data.y as number | undefined,
   }))
 
   // Reconstruct relationships from diamond nodes + edges
@@ -237,17 +157,41 @@ function configToERState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] })
   const relationships: ERState['relationships'] = []
 
   for (const dia of diamonds) {
-    // Find edges: entity -> diamond, diamond -> entity
+    const relId = dia.id.replace(/^(dia_)+/, '')
+    const diamondX = dia.data.x as number | undefined
+    const diamondY = dia.data.y as number | undefined
+
+    // 优先：显式几何（一条完整正交折线边 e_<relId>）
+    const lineEdge = cfg.edges.find((e) => e.id === `e_${relId}`)
+    if (lineEdge) {
+      const d = (lineEdge.data as Record<string, unknown> | undefined) || {}
+      relationships.push({
+        id: relId,
+        label: (dia.data.label as string) || '',
+        source: lineEdge.source,
+        target: lineEdge.target,
+        sourceCard: (d.sourceCard as string) || '1',
+        targetCard: (d.targetCard as string) || 'N',
+        diamondX,
+        diamondY,
+        line: d.line as number[][] | undefined,
+      })
+      continue
+    }
+
+    // 回退：自动布局（实体->菱形 / 菱形->实体 两段边）
     const inEdge = cfg.edges.find((e) => e.target === dia.id)
     const outEdge = cfg.edges.find((e) => e.source === dia.id)
     if (inEdge && outEdge) {
       relationships.push({
-        id: dia.id,
+        id: relId,
         label: (dia.data.label as string) || '',
         source: inEdge.source,
         target: outEdge.target,
-        sourceCard: (inEdge as any).data?.sourceCard || '1',
-        targetCard: (outEdge as any).data?.targetCard || 'N',
+        sourceCard: (inEdge.data?.sourceCard as string) || '1',
+        targetCard: (outEdge.data?.targetCard as string) || 'N',
+        diamondX,
+        diamondY,
       })
     }
   }
@@ -255,24 +199,74 @@ function configToERState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] })
   return { entities, relationships }
 }
 
+function configToClassState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): ClassState {
+  const classes = cfg.nodes.filter((n) => n.type === 'class').map((n) => ({
+    id: n.id,
+    label: (n.data.label as string) || '',
+    attributes: (n.data.attributes as string[]) || [],
+    methods: (n.data.methods as string[]) || [],
+    isAbstract: n.data.isAbstract as boolean | undefined,
+    stereotype: n.data.stereotype as string | undefined,
+  }))
+  const relations = cfg.edges.map((e) => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+    relationType: (e.data?.relationType as string) || 'association',
+    label: (e.data?.label as string) || undefined,
+  }))
+  return { classes, relations }
+}
+
+function configToActivityState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): ActivityState {
+  const nodes = cfg.nodes.map((n) => ({
+    id: n.id,
+    label: (n.data.label as string) || '',
+    nodeType: (n.type as ActivityState['nodes'][number]['nodeType']) || 'action',
+  }))
+  const edges = cfg.edges.map((e) => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+    guard: (e.data?.guard as string) || undefined,
+  }))
+  return { nodes, edges }
+}
+
+function configToDeploymentState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): DeploymentState {
+  const nodes = cfg.nodes.map((n) => ({
+    id: n.id,
+    label: (n.data.label as string) || '',
+    nodeType: (n.type === 'database' ? 'database' : 'server') as 'server' | 'database',
+    technology: (n.data.technology as string) || undefined,
+  }))
+  const edges = cfg.edges.map((e) => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+    label: (e.data?.label as string) || (e.label as string) || undefined,
+  }))
+  return { nodes, edges }
+}
+
 // ====== Initial data ======
 
 const emptyConfig = { nodes: [], edges: [] }
 
 const initialConfigs: ConfigMap = {
-  usecase: parseConfigJson(useCasePresets.admin.json),
-  structure: parseConfigJson(JSON.stringify({
+  usecase: parseDiagram(useCasePresets.admin.json),
+  structure: parseDiagram(JSON.stringify({
     nodes: structureNodes.map((n) => ({ id: n.id, type: n.type, label: n.data.label, vertical: n.data.vertical })),
     edges: structureEdges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
   })),
-  entity: parseConfigJson(JSON.stringify({
+  entity: parseDiagram(JSON.stringify({
     nodes: [
       { id: userEntityPreset.entity.id, type: 'rectangle', label: userEntityPreset.entity.data.label },
       ...userEntityPreset.attributes.map((a) => ({ id: a.id, type: 'ellipse', label: a.data.label, rx: 45, ry: 18 })),
     ],
     edges: userEntityPreset.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
   })),
-  er: emptyConfig,
+  er: parseDiagram(erSystemJson),
   sequence: emptyConfig,
   class: emptyConfig,
   activity: emptyConfig,
@@ -317,7 +311,10 @@ function App() {
   // ? key → toggle shortcut panel
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === '?' && !(e.target as HTMLElement).closest('input')) {
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName
+      const editable = tag === 'INPUT' || tag === 'TEXTAREA' || !!target?.isContentEditable
+      if (e.key === '?' && !editable) {
         e.preventDefault()
         setShowShortcuts((s) => !s)
       }
@@ -329,7 +326,7 @@ function App() {
   const handleApply = useCallback(
     (json: string) => {
       try {
-        const result = parseConfigJson(json)
+        const result = parseDiagram(json)
         pushConfigs({ ...configs, [active]: result })
       } catch { /* ignore */ }
     },
@@ -342,6 +339,9 @@ function App() {
   const entityState = useMemo(() => configToEntityState(configs.entity), [configs.entity])
   const erState = useMemo(() => configToERState(configs.er), [configs.er])
   const seqState = useMemo(() => configToSequenceState(configs.sequence), [configs.sequence])
+  const classState = useMemo(() => configToClassState(configs.class), [configs.class])
+  const activityState = useMemo(() => configToActivityState(configs.activity), [configs.activity])
+  const deploymentState = useMemo(() => configToDeploymentState(configs.deployment), [configs.deployment])
 
   // ====== Derive diagram data ======
   const useCaseGroups = useMemo(() => {
@@ -429,7 +429,7 @@ function App() {
   const mdSectionMap: Record<string, DiagramType> = {
     '用例图': 'usecase', 'Use Case': 'usecase',
     '功能结构图': 'structure', 'Structure': 'structure',
-    '实体属性图': 'entity', 'Entity': 'entity',
+    '实体属性图': 'entity', 'Entity': 'entity', 'E-R Diagram': 'entity',
     '总体ER图': 'er', 'ER Diagram': 'er',
     '时序图': 'sequence', 'Sequence': 'sequence',
     '类图': 'class', 'Class': 'class',
@@ -455,7 +455,11 @@ function App() {
         // MD format
         else if (text.includes('\n# ') || text.startsWith('# ')) {
           const sections = text.split(/(?=^# )/m)
-          const newConfigs: Record<string, any> = { usecase: emptyConfig, structure: emptyConfig, entity: emptyConfig }
+          const newConfigs: Record<string, any> = {
+            usecase: emptyConfig, structure: emptyConfig, entity: emptyConfig,
+            er: emptyConfig, sequence: emptyConfig, class: emptyConfig,
+            activity: emptyConfig, deployment: emptyConfig,
+          }
           let hasData = false
           sections.forEach((sec) => {
             const lines = sec.trim().split('\n')
@@ -518,9 +522,9 @@ function App() {
         {active === 'entity' && <NodeEditor key={`entity-${configVersion}`} type="entity" entity={entityState} onApply={handleApply} />}
         {active === 'er' && <NodeEditor key={`er-${configVersion}`} type="er" er={erState} onApply={handleApply} />}
         {active === 'sequence' && <NodeEditor key={`sequence-${configVersion}`} type="sequence" sequence={seqState} onApply={handleApply} />}
-        {active === 'class' && <NodeEditor key={`class-${configVersion}`} type="class" onApply={handleApply} />}
-        {active === 'activity' && <NodeEditor key={`activity-${configVersion}`} type="activity" onApply={handleApply} />}
-        {active === 'deployment' && <NodeEditor key={`deployment-${configVersion}`} type="deployment" onApply={handleApply} />}
+        {active === 'class' && <NodeEditor key={`class-${configVersion}`} type="class" classState={classState} onApply={handleApply} />}
+        {active === 'activity' && <NodeEditor key={`activity-${configVersion}`} type="activity" activity={activityState} onApply={handleApply} />}
+        {active === 'deployment' && <NodeEditor key={`deployment-${configVersion}`} type="deployment" deployment={deploymentState} onApply={handleApply} />}
 
         <div className="flex-1" ref={flowRef}>
           <ReactFlowProvider>

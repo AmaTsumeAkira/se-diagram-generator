@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect, type ReactNode } from 'react'
+import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useVercount } from '@vercount/react'
+import { layoutErEntities, suggestCenter } from '../../utils/erLayout'
 
 // ====== Types ======
 
@@ -60,6 +61,13 @@ export interface ClassState {
     isAbstract?: boolean
     stereotype?: string
   }[]
+  relations?: {
+    id: string
+    source: string
+    target: string
+    relationType: string
+    label?: string
+  }[]
 }
 
 export interface ActivityState {
@@ -92,7 +100,7 @@ export interface DeploymentState {
 }
 
 export interface ERState {
-  entities: { id: string; label: string; row?: number; col?: number }[]
+  entities: { id: string; label: string; row?: number; col?: number; group?: string; x?: number; y?: number }[]
   relationships: {
     id: string
     label: string
@@ -100,6 +108,11 @@ export interface ERState {
     target: string
     sourceCard: string
     targetCard: string
+    /** 显式几何：菱形中心坐标（px），缺省则自动取中点 */
+    diamondX?: number
+    diamondY?: number
+    /** 显式几何：完整正交折线（源实体边缘 → 干线 → 目标实体边缘） */
+    line?: number[][]
   }[]
 }
 
@@ -119,8 +132,12 @@ interface Props {
 }
 
 // ====== ID generator ======
-let _id = 100
-function uid(): string { return 'n' + _id++ }
+function uid(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return 'n' + crypto.randomUUID().replace(/-/g, '').slice(0, 12)
+  }
+  return 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+}
 
 const DEFAULT_FONT_FAMILY = 'SimSun'
 const DEFAULT_FONT_SIZE = 14
@@ -287,23 +304,34 @@ function erToJson(state: ERState): string {
   const nodes: any[] = []
   const edges: any[] = []
   state.entities.forEach((ent) => {
-    nodes.push({ id: ent.id, type: 'erEntity', label: ent.label, row: ent.row, col: ent.col })
+    nodes.push({ id: ent.id, type: 'erEntity', label: ent.label, row: ent.row, col: ent.col, group: ent.group, x: ent.x, y: ent.y })
   })
   state.relationships.forEach((rel) => {
     const diamondId = `dia_${rel.id}`
-    nodes.push({ id: diamondId, type: 'erDiamond', label: rel.label })
-    edges.push({
-      id: `e_${rel.source}_${diamondId}`,
-      source: rel.source,
-      target: diamondId,
-      data: { sourceCard: rel.sourceCard, targetCard: '' },
-    })
-    edges.push({
-      id: `e_${diamondId}_${rel.target}`,
-      source: diamondId,
-      target: rel.target,
-      data: { sourceCard: '', targetCard: rel.targetCard },
-    })
+    nodes.push({ id: diamondId, type: 'erDiamond', label: rel.label, x: rel.diamondX, y: rel.diamondY })
+    if (rel.line && rel.line.length >= 2) {
+      // 显式几何：单条完整正交折线
+      edges.push({
+        id: `e_${rel.id}`,
+        source: rel.source,
+        target: rel.target,
+        data: { sourceCard: rel.sourceCard, targetCard: rel.targetCard, line: rel.line },
+      })
+    } else {
+      // 自动布局：实体->菱形 / 菱形->实体 两段
+      edges.push({
+        id: `e_${rel.source}_${diamondId}`,
+        source: rel.source,
+        target: diamondId,
+        data: { sourceCard: rel.sourceCard, targetCard: '' },
+      })
+      edges.push({
+        id: `e_${diamondId}_${rel.target}`,
+        source: diamondId,
+        target: rel.target,
+        data: { sourceCard: '', targetCard: rel.targetCard },
+      })
+    }
   })
   return JSON.stringify({ nodes, edges }, null, 2)
 }
@@ -458,13 +486,13 @@ function parseMermaidClass(code: string): { classes: { id: string; label: string
       const cls = classes.find((c) => c.id === currentClassId)
       if (cls) {
         // Method: contains parentheses like "+makeSound() void"
-        const methodMatch = line.match(/^[+#-]\s*([\w]+)\s*\([^)]*\)\s*(.*)?$/)
+        const methodMatch = line.match(/^[+#-]?\s*([\w]+)\s*\([^)]*\)\s*(.*)?$/)
         if (methodMatch) {
-          cls.methods.push(line.replace(/^[+#-]\s*/, ''))
+          cls.methods.push(line.replace(/^[+#-]\s*/, '').trim())
           continue
         }
-        // Attribute: "+String name" or "-int age"
-        const attrMatch = line.match(/^[+#-]\s*(.+)$/)
+        // Attribute: "+String name", "-int age" or "String name"
+        const attrMatch = line.match(/^[+#-]?\s*(.+)$/)
         if (attrMatch) {
           cls.attributes.push(attrMatch[1].trim())
           continue
@@ -690,7 +718,7 @@ function parseMermaidDeployment(code: string): DeploymentState | null {
 
 // ====== Main ======
 
-export default function NodeEditor({ type, useCase, tree, entity, er, sequence, onApply }: Props) {
+export default function NodeEditor({ type, useCase, tree, entity, er, sequence, classState, activity, deployment, onApply }: Props) {
   const { t } = useTranslation()
   const { sitePv, pagePv, siteUv } = useVercount()
   const titleKeys: Record<DiagramType, string> = {
@@ -716,9 +744,9 @@ export default function NodeEditor({ type, useCase, tree, entity, er, sequence, 
         {type === 'entity' && entity && <EntityEditor state={entity} onApply={onApply} />}
         {type === 'er' && <EREditor state={er} onApply={onApply} />}
         {type === 'sequence' && <SequenceEditor state={sequence} onApply={onApply} />}
-        {type === 'class' && <ClassEditor onApply={onApply} />}
-        {type === 'activity' && <ActivityEditor onApply={onApply} />}
-        {type === 'deployment' && <DeploymentEditor onApply={onApply} />}
+        {type === 'class' && <ClassEditor state={classState} onApply={onApply} />}
+        {type === 'activity' && <ActivityEditor state={activity} onApply={onApply} />}
+        {type === 'deployment' && <DeploymentEditor state={deployment} onApply={onApply} />}
       </div>
       <div className="px-3 py-2 border-t border-gray-200 bg-white text-[10px] text-gray-400 text-center">
         <div className="mb-1">{t('stats.sitePv')}: {sitePv} &nbsp; {t('stats.pagePv')}: {pagePv} &nbsp; {t('stats.siteUv')}: {siteUv}</div>
@@ -1532,16 +1560,16 @@ function SequenceEditor({ state: initial, onApply }: { state?: SequenceState; on
 
 // ====== Class Editor ======
 
-function ClassEditor({ onApply }: { onApply: (json: string) => void }) {
+function ClassEditor({ state: initial, onApply }: { state?: ClassState; onApply: (json: string) => void }) {
   const { t } = useTranslation()
-  const [classes, setClasses] = useState<{ id: string; label: string; attributes: string[]; methods: string[]; isAbstract?: boolean; stereotype?: string }[]>([])
+  const [classes, setClasses] = useState<{ id: string; label: string; attributes: string[]; methods: string[]; isAbstract?: boolean; stereotype?: string }[]>(initial?.classes || [])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingField, setEditingField] = useState<'label' | 'attr' | 'method' | null>(null)
   const [newAttr, setNewAttr] = useState('')
   const [newMethod, setNewMethod] = useState('')
   const [showMermaid, setShowMermaid] = useState(false)
   const [mermaidText, setMermaidText] = useState('')
-  const [relations, setRelations] = useState<{ id: string; source: string; target: string; relationType: string; label?: string }[]>([])
+  const [relations, setRelations] = useState<{ id: string; source: string; target: string; relationType: string; label?: string }[]>(initial?.relations || [])
 
   // AI states
   const [classAiText, setClassAiText] = useState('')
@@ -1757,10 +1785,10 @@ function ClassEditor({ onApply }: { onApply: (json: string) => void }) {
 
 // ====== Activity Editor ======
 
-function ActivityEditor({ onApply }: { onApply: (json: string) => void }) {
+function ActivityEditor({ state: initial, onApply }: { state?: ActivityState; onApply: (json: string) => void }) {
   const { t } = useTranslation()
-  const [nodes, setNodes] = useState<{ id: string; label: string; nodeType: 'start' | 'end' | 'action' | 'decision' }[]>([])
-  const [edges, setEdges] = useState<{ id: string; source: string; target: string; guard?: string }[]>([])
+  const [nodes, setNodes] = useState<{ id: string; label: string; nodeType: 'start' | 'end' | 'action' | 'decision' }[]>(initial?.nodes || [])
+  const [edges, setEdges] = useState<{ id: string; source: string; target: string; guard?: string }[]>(initial?.edges || [])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showMermaid, setShowMermaid] = useState(false)
   const [mermaidText, setMermaidText] = useState('')
@@ -1890,10 +1918,10 @@ function ActivityEditor({ onApply }: { onApply: (json: string) => void }) {
 
 // ====== Deployment Editor ======
 
-function DeploymentEditor({ onApply }: { onApply: (json: string) => void }) {
+function DeploymentEditor({ state: initial, onApply }: { state?: DeploymentState; onApply: (json: string) => void }) {
   const { t } = useTranslation()
-  const [nodes, setNodes] = useState<{ id: string; label: string; nodeType: 'server' | 'database'; technology?: string }[]>([])
-  const [edges, setEdges] = useState<{ id: string; source: string; target: string; label?: string }[]>([])
+  const [nodes, setNodes] = useState<{ id: string; label: string; nodeType: 'server' | 'database'; technology?: string }[]>(initial?.nodes || [])
+  const [edges, setEdges] = useState<{ id: string; source: string; target: string; label?: string }[]>(initial?.edges || [])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showMermaid, setShowMermaid] = useState(false)
   const [mermaidText, setMermaidText] = useState('')
@@ -2020,6 +2048,8 @@ function EREditor({ state: initial, onApply }: { state?: ERState; onApply: (json
   const [parseError, setParseError] = useState('')
   const [isParsing, setIsParsing] = useState(false)
   const [aiLayout, setAiLayout] = useState(true)
+  const [mergeMn, setMergeMn] = useState(true)
+  const [centerId, setCenterId] = useState('auto')
   const [parsePreview, setParsePreview] = useState<{ tables: number; relations: number; source: string } | null>(null)
 
   const handleParseSql = async () => {
@@ -2032,14 +2062,35 @@ function EREditor({ state: initial, onApply }: { state?: ERState; onApply: (json
       const apiKey = getApiKey()
 
       if (apiKey) {
-        // AI Parsing (always used for translation + relationship analysis)
         const { generateERFromAI } = await import('../../utils/aiService')
         const aiState = await generateERFromAI(sqlText, apiKey, aiLayout)
-        setState(aiState)
-        setParsePreview({ tables: aiState.entities.length, relations: aiState.relationships.length, source: aiLayout ? 'AI+\u5e03\u5c40' : 'AI' })
+        // 关闭 AI 网格时改用本地图布局（按外键结构），而不是退回声明顺序网格
+        const finalState = aiLayout
+          ? aiState
+          : (() => {
+              const placed = layoutErEntities(
+                aiState.entities.map(e => ({ id: e.id, label: e.label })),
+                aiState.relationships.map(r => ({ source: r.source, target: r.target })),
+                centerId === 'auto' ? {} : { centerId },
+              )
+              const pos = new Map(placed.map(p => [p.id, p]))
+              return {
+                ...aiState,
+                entities: aiState.entities.map(e => {
+                  const p = pos.get(e.id)
+                  return p ? { id: e.id, label: e.label, x: p.x, y: p.y } : { id: e.id, label: e.label }
+                }),
+              }
+            })()
+        setState(finalState)
+        setParsePreview({
+          tables: finalState.entities.length,
+          relations: finalState.relationships.length,
+          source: aiLayout ? 'AI+\u5e03\u5c40' : 'AI+\u672c\u5730\u5e03\u5c40',
+        })
       } else {
-        // Fallback to local regex parser
-        const { parseSql, deriveRelationships } = await import('../../utils/sqlParser')
+        // Fallback to local parser（本地解析 + 本地图布局，全链路不依赖 AI）
+        const { parseSql, buildErModel } = await import('../../utils/sqlParser')
         const result = parseSql(sqlText)
         if (result.errors.length > 0 && result.tables.length === 0) {
           setParseError(result.errors.join('\n') + '\n\n' + t('editor.sqlAiFallback'))
@@ -2047,11 +2098,24 @@ function EREditor({ state: initial, onApply }: { state?: ERState; onApply: (json
           return
         }
 
-        const relationships = deriveRelationships(result.tables)
-        const entities = result.tables.map(table => ({
+        // mergeMn：纯连接表折叠成一个 M:N 联系（Chen 表示法），不再保留关联实体
+        const model = buildErModel(result.tables, { mergeManyToMany: mergeMn })
+        const relationships = model.relationships
+        const baseEntities = model.entities.map(table => ({
           id: `ent_${table.name}`,
-          label: table.name,
+          label: table.label || table.name,
         }))
+        // 按外键结构布局（主表居中、近邻落在同行/同列），避免声明顺序造成的扇形长线
+        const placed = layoutErEntities(
+          baseEntities,
+          relationships.map(rel => ({ source: `ent_${rel.sourceTable}`, target: `ent_${rel.targetTable}` })),
+          centerId === 'auto' ? {} : { centerId },
+        )
+        const pos = new Map(placed.map(p => [p.id, p]))
+        const entities = baseEntities.map(e => {
+          const p = pos.get(e.id)
+          return p ? { ...e, x: p.x, y: p.y } : e
+        })
         const rels = relationships.map(rel => ({
           id: uid(),
           label: rel.label,
@@ -2069,6 +2133,35 @@ function EREditor({ state: initial, onApply }: { state?: ERState; onApply: (json
     } finally {
       setIsParsing(false)
     }
+  }
+
+  /** 系统建议的中心实体（下拉里直接显示，避免"算法猜了但用户不知道"） */
+  const autoCenter = useMemo(
+    () => suggestCenter(
+      state.entities.map((e) => ({ id: e.id, label: e.label })),
+      state.relationships.map((r) => ({ source: r.source, target: r.target })),
+    ),
+    [state.entities, state.relationships],
+  )
+
+  /** 重新排版：可指定中心实体（解决"度数最高 ≠ 业务核心"） */
+  const applyAutoLayout = (center: string) => {
+    setState((s) => {
+      if (s.entities.length < 2) return s
+      const placed = layoutErEntities(
+        s.entities.map((e) => ({ id: e.id, label: e.label })),
+        s.relationships.map((r) => ({ source: r.source, target: r.target })),
+        center === 'auto' ? {} : { centerId: center },
+      )
+      const pos = new Map(placed.map((p) => [p.id, p]))
+      return {
+        ...s,
+        entities: s.entities.map((e) => {
+          const p = pos.get(e.id)
+          return p ? { ...e, x: p.x, y: p.y } : e
+        }),
+      }
+    })
   }
 
   const handleDrop = (e: React.DragEvent) => {
@@ -2108,6 +2201,13 @@ function EREditor({ state: initial, onApply }: { state?: ERState; onApply: (json
     setState(s => ({
       ...s,
       entities: s.entities.map(e => e.id === entId ? { ...e, label } : e),
+    }))
+  }
+
+  const updateEntity = (entId: string, updates: Partial<ERState['entities'][0]>) => {
+    setState(s => ({
+      ...s,
+      entities: s.entities.map(e => e.id === entId ? { ...e, ...updates } : e),
     }))
   }
 
@@ -2170,8 +2270,41 @@ function EREditor({ state: initial, onApply }: { state?: ERState; onApply: (json
           >
             {aiLayout ? t('editor.aiLayoutOn') : t('editor.aiLayoutOff')}
           </button>
-          <span className="text-[10px] text-gray-400 flex-1">{t('editor.aiLayoutHint')}</span>
+          <button
+            onClick={() => setMergeMn(!mergeMn)}
+            className={`px-3 py-1 text-xs rounded border font-medium transition-colors ${mergeMn ? 'bg-black text-white border-black' : 'bg-white text-gray-600 border-gray-300 hover:border-gray-500'}`}
+            title={t('editor.mergeMnHint')}
+          >
+            {mergeMn ? t('editor.mergeMnOn') : t('editor.mergeMnOff')}
+          </button>
         </div>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-[10px] text-gray-400 flex-1">
+            {t('editor.aiLayoutHint')} · {t('editor.mergeMnHint')}
+          </span>
+        </div>
+        {state.entities.length >= 2 && (
+          <div className="flex items-center gap-2 mb-2">
+            <label className="text-[10px] text-gray-400 shrink-0">{t('editor.layoutCenter')}</label>
+            <select
+              className="flex-1 px-1 py-1 text-xs border border-gray-300 rounded bg-white"
+              value={centerId}
+              onChange={(e) => {
+                setCenterId(e.target.value)
+                applyAutoLayout(e.target.value)
+              }}
+            >
+              <option value="auto">
+                {t('editor.layoutCenterAuto', {
+                  name: autoCenter?.label ?? t('editor.layoutCenterAutoFallback'),
+                })}
+              </option>
+              {state.entities.map((e) => (
+                <option key={e.id} value={e.id}>{e.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <button
           onClick={handleParseSql}
           disabled={!sqlText.trim() || isParsing}
@@ -2188,18 +2321,26 @@ function EREditor({ state: initial, onApply }: { state?: ERState; onApply: (json
         </button>
         <div className="space-y-2">
           {state.entities.map((ent) => (
-            <div key={ent.id} className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg bg-white">
-              <span className="text-xs text-gray-400 shrink-0">▪</span>
+            <div key={ent.id} className="px-3 py-2 border border-gray-200 rounded-lg bg-white">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400 shrink-0">▪</span>
+                <input
+                  className="flex-1 text-sm bg-transparent focus:outline-none font-medium"
+                  value={ent.label}
+                  onChange={(e) => renameEntity(ent.id, e.target.value)}
+                />
+                <button
+                  onClick={() => removeEntity(ent.id)}
+                  className="text-gray-400 hover:text-red-500 text-sm"
+                  title={t('editor.deleteErEntity')}
+                >×</button>
+              </div>
               <input
-                className="flex-1 text-sm bg-transparent focus:outline-none font-medium"
-                value={ent.label}
-                onChange={(e) => renameEntity(ent.id, e.target.value)}
+                className="w-full mt-1 px-1 py-0.5 text-xs border border-gray-300 rounded"
+                placeholder={t('editor.erGroupPlaceholder')}
+                value={ent.group || ''}
+                onChange={(e) => updateEntity(ent.id, { group: e.target.value.trim() || undefined })}
               />
-              <button
-                onClick={() => removeEntity(ent.id)}
-                className="text-gray-400 hover:text-red-500 text-sm"
-                title={t('editor.deleteErEntity')}
-              >×</button>
             </div>
           ))}
         </div>

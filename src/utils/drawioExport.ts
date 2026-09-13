@@ -1,6 +1,7 @@
 import type { Node, Edge } from '@xyflow/react'
 import type { DiagramNodeData } from '../types/diagram'
 import { layoutTreeStructure } from './layout'
+import { collectERRelations, routeRelations } from './erRouting'
 
 type DNode = Node<DiagramNodeData>
 
@@ -504,20 +505,22 @@ export function erDrawio(nodes: DNode[], edges: Edge[]): string {
   const entities = nodes.filter(n => n.type === 'erEntity')
   const diamonds = nodes.filter(n => n.type === 'erDiamond')
 
-  // Layout: arrange entities in a grid
-  const entCount = entities.length
-  const cols = Math.max(2, Math.ceil(Math.sqrt(entCount)))
-  const cellW = 300   // horizontal spacing between entities
-  const cellH = 240   // vertical spacing between entities
-  const entW = 160
+  // 按标签长度自适应实体宽度，保证「中文表名（english）」单行显示
   const entH = 46
+  const cellH = 240
   const startX = 100
   const startY = 80
+  const entWOf = (ent: DNode) =>
+    Math.max(110, Math.min(260, Math.round(textWidth(String(ent.data.label || ''), fontSize(ent.data))) + 30))
+  const maxEntW = entities.length ? Math.max(...entities.map(entWOf)) : 160
+  const cellW = maxEntW + 150
+  const cols = Math.max(2, Math.ceil(Math.sqrt(Math.max(1, entities.length))))
 
   // Track entity positions for diamond placement
-  const entityPos = new Map<string, { x: number; y: number; cx: number; cy: number }>()
+  const entityPos = new Map<string, { x: number; y: number; w: number; cx: number; cy: number }>()
 
-  // Entity rectangles
+  // Entity rectangles（先收集，稍后与分组框按图层顺序统一输出）
+  const entityCells: string[] = []
   entities.forEach((ent, i) => {
     const hasAI = ent.data.col !== undefined && ent.data.row !== undefined
     const col = hasAI ? Number(ent.data.col) : (i % cols)
@@ -526,115 +529,143 @@ export function erDrawio(nodes: DNode[], edges: Edge[]): string {
     const finalCol = isNaN(col) ? 0 : col
     const finalRow = isNaN(row) ? 0 : row
 
-    const x = startX + finalCol * cellW
-    const y = startY + finalRow * cellH
-    const cx = x + entW / 2
-    const cy = y + entH / 2
+    const w = entWOf(ent)
+    const hasAbs = typeof ent.data.x === 'number' && typeof ent.data.y === 'number'
+    const x = hasAbs ? (ent.data.x as number) : startX + finalCol * cellW
+    const y = hasAbs ? (ent.data.y as number) : startY + finalRow * cellH
+    entityPos.set(ent.id, { x, y, w, cx: x + w / 2, cy: y + entH / 2 })
 
     const did = nid()
     idMap.set(ent.id, did)
-    entityPos.set(ent.id, { x, y, cx, cy })
 
     const fs = fontSize(ent.data)
     const ff = fontStyle(ent.data)
-    cells.push(`<mxCell id="${did}" value="${esc(ent.data.label || '')}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;arcSize=8;${ff}fontStyle=1;fontSize=${fs};" vertex="1" parent="1"><mxGeometry x="${x}" y="${y}" width="${entW}" height="${entH}" as="geometry"/></mxCell>`)
+    entityCells.push(`<mxCell id="${did}" value="${esc(ent.data.label || '')}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;arcSize=8;${ff}fontStyle=1;fontSize=${fs};" vertex="1" parent="1"><mxGeometry x="${Math.round(x)}" y="${Math.round(y)}" width="${w}" height="${entH}" as="geometry"/></mxCell>`)
   })
 
-  // Diamond relationships + edges
-  // Group edges by diamond: each diamond should have exactly 2 edges (source entity and target entity)
-  const diamondEdges = new Map<string, { srcEntityId: string; tgtEntityId: string; srcCard: string; tgtCard: string }>()
+  // ===== 虚线分组框（置于最底层） =====
+  const groupMembers = new Map<string, string[]>()
+  entities.forEach((ent) => {
+    const g = ent.data.group
+    if (!g) return
+    const list = groupMembers.get(g) || []
+    list.push(ent.id)
+    groupMembers.set(g, list)
+  })
+  const groupCells: string[] = []
+  groupMembers.forEach((ids, label) => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    ids.forEach((id) => {
+      const p = entityPos.get(id)
+      if (!p) return
+      minX = Math.min(minX, p.x)
+      minY = Math.min(minY, p.y)
+      maxX = Math.max(maxX, p.x + p.w)
+      maxY = Math.max(maxY, p.y + entH)
+    })
+    if (minX === Infinity) return
+    const pad = 26
+    const header = 26
+    const gx = minX - pad
+    const gy = minY - pad - header
+    const gw = Math.max(maxX - minX + pad * 2, Math.round(textWidth(label, 12)) + 40)
+    const gh = maxY - minY + pad * 2 + header
+    const gid = nid()
+    groupCells.push(`<mxCell id="${gid}" value="${esc(label)}" style="rounded=0;dashed=1;dashPattern=6 4;fillColor=none;strokeColor=#000000;html=1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=6;fontSize=12;fontColor=#333333;" vertex="1" parent="1"><mxGeometry x="${Math.round(gx)}" y="${Math.round(gy)}" width="${Math.round(gw)}" height="${Math.round(gh)}" as="geometry"/></mxCell>`)
+  })
+  cells.push(...groupCells, ...entityCells)
 
-  for (const e of edges) {
-    const eData = (e as any).data || {}
-    const srcCard = eData.sourceCard || ''
-    const tgtCard = eData.targetCard || ''
+  // 智能正交寻线（与 SVG 渲染共用同一引擎）
+  const { relations, manual } = collectERRelations(
+    diamonds.map((d) => ({ id: d.id, label: String(d.data.label || '') })),
+    edges.map((e) => ({ id: e.id, source: e.source, target: e.target, data: e.data as Record<string, unknown> | undefined })),
+  )
+  const routedById = new Map(
+    routeRelations(
+      entities.map((ent) => {
+        const p = entityPos.get(ent.id)
+        return { id: ent.id, x: p ? p.x : 0, y: p ? p.y : 0, w: p ? p.w : 120, h: entH }
+      }),
+      relations,
+    ).map((r) => [r.id, r]),
+  )
+  const diaById = new Map(diamonds.map((d) => [d.id.replace(/^(dia_)+/, ''), d]))
 
-    // Find the diamond in source or target
-    const srcIsDiamond = diamonds.some(d => d.id === e.source)
-    const tgtIsDiamond = diamonds.some(d => d.id === e.target)
+  const diaW = 56
+  const diaH = 32
 
-    if (tgtIsDiamond) {
-      // entity -> diamond edge
-      const existing = diamondEdges.get(e.target) || { srcEntityId: '', tgtEntityId: '', srcCard: '', tgtCard: '' }
-      existing.srcEntityId = e.source
-      existing.srcCard = srcCard
-      diamondEdges.set(e.target, existing)
-    } else if (srcIsDiamond) {
-      // diamond -> entity edge
-      const existing = diamondEdges.get(e.source) || { srcEntityId: '', tgtEntityId: '', srcCard: '', tgtCard: '' }
-      existing.tgtEntityId = e.target
-      existing.tgtCard = tgtCard
-      diamondEdges.set(e.source, existing)
+  // 手动折线时的基数落点（带错开）
+  const placedCards: { x: number; y: number }[] = []
+  const manualCardAt = (pts: number[][], atEnd: boolean) => {
+    const i0 = atEnd ? pts.length - 1 : 0
+    const i1 = atEnd ? pts.length - 2 : 1
+    const p0 = pts[i0]
+    const p1 = pts[i1]
+    const ddx = p1[0] - p0[0]
+    const ddy = p1[1] - p0[1]
+    const len = Math.hypot(ddx, ddy) || 1
+    const dist = Math.min(30, len * 0.45)
+    const x = p0[0] + (ddx / len) * dist
+    const y = p0[1] + (ddy / len) * dist
+    const horizontal = Math.abs(ddx) >= Math.abs(ddy)
+    let px = horizontal ? x : x - 12
+    let py = horizontal ? y - 9 : y
+    let k = 0
+    while (placedCards.some((c) => Math.hypot(c.x - px, c.y - py) < 16) && k < 12) {
+      k++
+      if (horizontal) py -= 15 * k
+      else px -= 15 * k
     }
+    placedCards.push({ x: px, y: py })
+    return { x: px, y: py }
   }
+  const cardCell = (value: string, x: number, y: number) =>
+    `<mxCell id="${nid()}" value="${esc(value)}" style="text;html=1;align=center;verticalAlign=middle;fontStyle=1;fontSize=14;fontFamily=Arial, sans-serif;" vertex="1" parent="1"><mxGeometry x="${Math.round(x - 10)}" y="${Math.round(y - 10)}" width="20" height="20" as="geometry"/></mxCell>`
 
-  const placedDiamonds = new Map<string, number>()
+  // 逐条联系输出：菱形 + 完整正交折线 + 基数
+  for (const rel of relations) {
+    const dia = diaById.get(rel.id)
+    if (!dia) continue
+    const absX = dia.data.x as number | undefined
+    const absY = dia.data.y as number | undefined
+    const hasAbs = typeof absX === 'number' && typeof absY === 'number'
+    const manualLine = manual.get(rel.id)
 
-  // Place diamonds and draw edges
-  diamonds.forEach((dia) => {
-    const info = diamondEdges.get(dia.id)
-    if (!info) return
+    let pts: number[][]
+    let diamond: { x: number; y: number }
+    let srcCardAt: { x: number; y: number } | null = null
+    let tgtCardAt: { x: number; y: number } | null = null
 
-    const srcPos = entityPos.get(info.srcEntityId)
-    const tgtPos = entityPos.get(info.tgtEntityId)
-    if (!srcPos || !tgtPos) return
-
-    // Diamond positioned at midpoint between the two entities
-    const diaW = 56
-    const diaH = 32
-    let diaCx = (srcPos.cx + tgtPos.cx) / 2
-    let diaCy = (srcPos.cy + tgtPos.cy) / 2
-
-    // Offset to prevent overlapping with entities if skipping a row/col
-    const dx = Math.abs(srcPos.cx - tgtPos.cx)
-    const dy = Math.abs(srcPos.cy - tgtPos.cy)
-    if (dx >= cellW * 1.5 && dy < cellH * 0.5) diaCy -= 90
-    else if (dy >= cellH * 1.5 && dx < cellW * 0.5) diaCx += 110
-    else if (dx >= cellW * 1.5 && dy >= cellH * 1.5) diaCx += 60
-
-    // Offset to prevent multiple diamonds overlapping exactly
-    const posKey = `${Math.round(diaCx)},${Math.round(diaCy)}`
-    const count = placedDiamonds.get(posKey) || 0
-    placedDiamonds.set(posKey, count + 1)
-    if (count > 0) diaCy += 45 * count
-
-    const diaX = diaCx - diaW / 2
-    const diaY = diaCy - diaH / 2
+    if (manualLine) {
+      const n = manualLine.length
+      pts = manualLine
+      diamond = hasAbs ? { x: absX!, y: absY! } : { x: (manualLine[0][0] + manualLine[n - 1][0]) / 2, y: (manualLine[0][1] + manualLine[n - 1][1]) / 2 }
+    } else {
+      const rd = routedById.get(rel.id)
+      if (!rd) continue
+      pts = rd.points
+      diamond = hasAbs ? { x: absX!, y: absY! } : rd.diamond
+      srcCardAt = rd.srcCardAt
+      tgtCardAt = rd.tgtCardAt
+    }
 
     const diaId = nid()
     idMap.set(dia.id, diaId)
-
     const diaFs = fontSize(dia.data) || 14
-    cells.push(`<mxCell id="${diaId}" value="${esc(dia.data.label || '')}" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontStyle=1;fontSize=${diaFs};fontFamily='SimHei', 'Heiti SC', sans-serif;" vertex="1" parent="1"><mxGeometry x="${Math.round(diaX)}" y="${Math.round(diaY)}" width="${diaW}" height="${diaH}" as="geometry"/></mxCell>`)
+    cells.push(`<mxCell id="${diaId}" value="${esc(dia.data.label || '')}" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontStyle=1;fontSize=${diaFs};fontFamily='SimHei', 'Heiti SC', sans-serif;" vertex="1" parent="1"><mxGeometry x="${Math.round(diamond.x - diaW / 2)}" y="${Math.round(diamond.y - diaH / 2)}" width="${diaW}" height="${diaH}" as="geometry"/></mxCell>`)
 
-    // Edge: source entity -> diamond
-    const srcEntId = idMap.get(info.srcEntityId)
-    if (srcEntId) {
-      const edgeId = nid()
-      let edgeStyle = 'html=1;strokeColor=#000000;endArrow=none;startArrow=none;edgeStyle=orthogonalEdgeStyle;rounded=0;'
-      cells.push(`<mxCell id="${edgeId}" value="" style="${edgeStyle}" edge="1" parent="1" source="${srcEntId}" target="${diaId}"><mxGeometry relative="1" as="geometry"/></mxCell>`)
+    const mid = pts.slice(1, -1).map((p) => `<mxPoint x="${p[0]}" y="${p[1]}"/>`).join('')
+    cells.push(`<mxCell id="${nid()}" style="html=1;strokeColor=#000000;endArrow=none;startArrow=none;edgeStyle=none;rounded=0;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="${pts[0][0]}" y="${pts[0][1]}" as="sourcePoint"/><mxPoint x="${pts[pts.length - 1][0]}" y="${pts[pts.length - 1][1]}" as="targetPoint"/><Array as="points">${mid}</Array></mxGeometry></mxCell>`)
 
-      // Cardinality label near source entity
-      if (info.srcCard) {
-        const labelId = nid()
-        cells.push(`<mxCell id="${labelId}" value="${esc(info.srcCard)}" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontStyle=1;fontSize=14;fontFamily=Arial, sans-serif;" vertex="1" connectable="0" parent="${edgeId}"><mxGeometry x="-0.7" relative="1" as="geometry"><mxPoint y="-12" as="offset"/></mxGeometry></mxCell>`)
-      }
+    if (rel.srcCard) {
+      const p = srcCardAt || manualCardAt(pts, false)
+      cells.push(cardCell(rel.srcCard, p.x, p.y))
     }
-
-    // Edge: diamond -> target entity
-    const tgtEntId = idMap.get(info.tgtEntityId)
-    if (tgtEntId) {
-      const edgeId = nid()
-      let edgeStyle = 'html=1;strokeColor=#000000;endArrow=none;startArrow=none;edgeStyle=orthogonalEdgeStyle;rounded=0;'
-      cells.push(`<mxCell id="${edgeId}" value="" style="${edgeStyle}" edge="1" parent="1" source="${diaId}" target="${tgtEntId}"><mxGeometry relative="1" as="geometry"/></mxCell>`)
-
-      // Cardinality label near target entity
-      if (info.tgtCard) {
-        const labelId = nid()
-        cells.push(`<mxCell id="${labelId}" value="${esc(info.tgtCard)}" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontStyle=1;fontSize=14;fontFamily=Arial, sans-serif;" vertex="1" connectable="0" parent="${edgeId}"><mxGeometry x="0.7" relative="1" as="geometry"><mxPoint y="-12" as="offset"/></mxGeometry></mxCell>`)
-      }
+    if (rel.tgtCard) {
+      const p = tgtCardAt || manualCardAt(pts, true)
+      cells.push(cardCell(rel.tgtCard, p.x, p.y))
     }
-  })
+  }
 
   return wrap('总体ER图', cells.join('\n'))
 }

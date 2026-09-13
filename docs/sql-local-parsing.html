@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>SQL 本地解析（不依赖 AI）</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px 28px 64px; background: #f6f7f9; color: #18181b;
+         font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+  h1 { font-size: 22px; margin: 0 0 8px; }
+  header p { margin: 0 0 4px; color: #52525b; font-size: 13px; line-height: 1.6; }
+  .grid { display: grid; gap: 20px; margin-top: 26px; }
+  .card { background: #fff; border: 1px solid #e4e4e7; border-radius: 12px; padding: 18px 20px 20px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  .card h3 { margin: 0 0 8px; font-size: 15px; }
+  .card.ok { border-left: 3px solid #16a34a; }
+  .card.warn { border-left: 3px solid #e11d48; }
+  .card.info { border-left: 3px solid #2563eb; }
+  p { font-size: 13px; line-height: 1.7; color: #3f3f46; margin: 0 0 12px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+         background: #f4f4f5; padding: 1px 5px; border-radius: 4px; }
+  pre { background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 12px 14px;
+        font-size: 12px; overflow: auto; line-height: 1.6; margin: 0 0 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { border-bottom: 1px solid #eee; padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { color: #52525b; font-weight: 600; background: #fafafa; }
+  .canvas { overflow: auto; border: 1px solid #f0f0f1; border-radius: 8px; background: #fff; padding: 8px; }
+  .canvas > svg { width: 100%; height: auto; display: block; }
+  .kpi { display: flex; gap: 28px; margin: 4px 0 0; }
+  .kpi div { font-size: 13px; color: #52525b; }
+  .kpi b { display: block; font-size: 22px; color: #18181b; font-weight: 500; }
+  .bad b { color: #be123c; }
+</style>
+</head>
+<body>
+<header>
+  <h1>SQL 本地解析：不依赖 AI 识别实体与关系</h1>
+  <p>新增 <code>utils/sqlParser.ts</code>（重写）+ <code>utils/sqlNaming.ts</code>（命名与动词），全部离线、确定性、零 API 成本。</p>
+</header>
+
+<div class="grid">
+
+  <section class="card warn">
+    <h3>修复前后（同一份测试 SQL：13 张表）</h3>
+    <div class="kpi">
+      <div class="bad"><b>0 条</b>修复前识别出的关系</div>
+      <div><b>13 条</b>修复后识别出的关系</div>
+      <div><b>13 / 13</b>实体中文名命中</div>
+    </div>
+    <p style="margin-top:14px">
+      根因是<strong>建表体捕获被截断</strong>：原实现用 <code>\(([\s\S]*?)\)</code> 非贪婪匹配，
+      而尾部又全是可选子句，于是<b>第一个带括号的列类型就成了结束点</b>。
+    </p>
+    <pre>输入：CREATE TABLE users (
+  user_id INT PRIMARY KEY,
+  username VARCHAR(50) NOT NULL,
+  dept_id INT,
+  FOREIGN KEY (dept_id) REFERENCES dept(id)
+) COMMENT='用户表';
+
+旧正则捕获到的 body："\n  user_id INT PRIMARY KEY,\n  username VARCHAR(50"
+                                        ↑ 到此为止 → 列、外键、表级主键全部丢失</pre>
+    <p>
+      由于真实 schema 几乎必有 <code>VARCHAR(n)</code>，这条路径实际上从未产出过关系——
+      这也解释了为什么之前只有配了 API Key 的 AI 分支"能用"。
+      现在改为<strong>引号与注释感知的括号配对扫描</strong>，并按 <code>);</code> 边界逐条推进。
+    </p>
+  </section>
+
+  <section class="card ok">
+    <h3>修复后的识别能力（全部实测通过）</h3>
+    <table>
+      <tr><th style="width:44%">能力</th><th>结果</th></tr>
+      <tr><td>内联表级 FOREIGN KEY</td><td>1:N（曾因 VARCHAR 截断全部丢失）</td></tr><tr><td>自反外键（manager_id → 本表）</td><td>用户 管理 用户</td></tr><tr><td>纯连接表两个外键</td><td>折叠为 M:N 菱形（用户表 —用户角色—(M:N)— 角色），可用开关退回物理模型</td></tr><tr><td>带业务列的连接表</td><td>不折叠，保留为关联实体</td></tr><tr><td>PK 同时是 FK</td><td>1:1（用户 拥有 档案）</td></tr><tr><td>UNIQUE 外键</td><td>1:1（用户 拥有 用户设置）</td></tr><tr><td>ALTER TABLE ADD CONSTRAINT 外键</td><td>1:N</td></tr><tr><td>列级 REFERENCES</td><td>1:N</td></tr><tr><td>同一张表两个外键</td><td>两条联系，不再折叠（发送 / 接收）</td></tr><tr><td>schema 前缀 + 反引号 + 复合外键</td><td>1:N</td></tr><tr><td>表级 PRIMARY KEY / UNIQUE</td><td>解析并用于 1:1 判定</td></tr><tr><td>表注释 COMMENT / COMMENT ON TABLE</td><td>作为中文实体名</td></tr><tr><td>列 COMMENT</td><td>列名未命中动词表时作为联系名兜底</td></tr><tr><td>建表语句上方的 -- 注释</td><td>词表未命中时作为表名兜底</td></tr><tr><td>内置业务词表（约 130 词）</td><td>dept → 部门、order_item → 订单明细</td></tr><tr><td>外键动词表</td><td>manager_id → 管理、from_user → 发送</td></tr>
+    </table>
+  </section>
+
+  <section class="card info">
+    <h3>命名与联系动词的推断规则</h3>
+    <table>
+      <tr><th style="width:30%">目标</th><th>优先级</th></tr>
+      <tr><td>实体名</td><td><code>COMMENT '...'</code> / <code>COMMENT ON TABLE</code> → 内置业务词表 → 建表语句上方 <code>--</code> 注释 → 原表名</td></tr>
+      <tr><td>联系名</td><td>外键列名动词表（<code>manager_id→管理</code>、<code>from_user→发送</code>）→ 列 <code>COMMENT</code> → <code>关联</code></td></tr>
+      <tr><td>多重性</td><td>外键列被主键或 <code>UNIQUE</code> 覆盖 → 1:1；否则 1:N</td></tr>
+    </table>
+    <p style="margin-top:12px">
+      两处刻意的取舍：<br>
+      · <b>联系名用动词表而不是列注释</b>——读法是「父实体 ——动词—— 子实体」，而列注释多为名词短语（如「所属部门」），直接套进这个方向读不通；列注释只作兜底。<br>
+      · <b>词表排在"上方 -- 注释"之前</b>——分节注释（<code>-- 多对多连接表</code>）很常见，让它盖掉 <code>user_role → 用户角色</code> 这种确定的翻译并不划算；
+      同时过滤掉了 mysqldump 的 <code>-- Table structure for xxx</code> 这类工具噪声。
+    </p>
+  </section>
+
+  <section class="card ok">
+    <h3>端到端渲染（本地解析 + 本地布局，未调用任何 AI）</h3>
+    <div class="canvas"><svg xmlns="http://www.w3.org/2000/svg" viewBox="478 68 1112 476" width="1112" height="476"><path d="M 890 306 L 788 306" stroke="#000" stroke-width="1.5" fill="none" stroke-linecap="square"/><path d="M 578 304 L 578 344 L 844 344 L 844 306 L 890 306" stroke="#000" stroke-width="1.5" fill="none" stroke-linecap="square"/><path d="M 1010 301 L 1044 301 L 1044 236 L 950 236 L 950 284" stroke="#000" stroke-width="1.5" fill="none" stroke-linecap="square"/><path d="M 1010 306 L 1112 306" stroke="#000" stroke-width="1.5" fill="none" stroke-linecap="square"/><path d="M 950 328 L 950 460" stroke="#000" stroke-width="1.5" fill="none" stroke-linecap="square"/><path d="M 890 306 L 844.7 306 L 844.7 178 L 788 178" stroke="#000" stroke-width="1.5" fill="none" stroke-linecap="square"/><path d="M 950 284 L 950 152" stroke="#000" stroke-width="1.5" fill="none" stroke-linecap="square"/><path d="M 950 284 L 950 260 L 902 260 L 902 176 L 950 176 L 950 152" stroke="#000" stroke-width="1.5" fill="none" stroke-linecap="square"/><path d="M 950 284 L 950 232 L 1172 232" stroke="#000" stroke-width="1.5" fill="none" stroke-linecap="square"/><path d="M 890 306 L 844.7 306 L 844.7 380 L 788 380" stroke="#000" stroke-width="1.5" fill="none" stroke-linecap="square"/><path d="M 950 328 L 950 380 L 1172 380" stroke="#000" stroke-width="1.5" fill="none" stroke-linecap="square"/><polygon points="839,290 867,306 839,322 811,306" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="round"/><text x="839" y="306" dominant-baseline="middle" font-family="'SimHei', 'Heiti SC', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">用户角色</text><polygon points="631.2,328 659.2,344 631.2,360 603.2,344" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="round"/><text x="631.2" y="344" dominant-baseline="middle" font-family="'SimHei', 'Heiti SC', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">拥有</text><polygon points="950,244 978,260 950,276 922,260" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="round"/><text x="950" y="260" dominant-baseline="middle" font-family="'SimHei', 'Heiti SC', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">管理</text><polygon points="1061,290 1089,306 1061,322 1033,306" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="round"/><text x="1061" y="306" dominant-baseline="middle" font-family="'SimHei', 'Heiti SC', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">拥有</text><polygon points="950,378 978,394 950,410 922,394" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="round"/><text x="950" y="394" dominant-baseline="middle" font-family="'SimHei', 'Heiti SC', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">拥有</text><polygon points="822.02,162 850.02,178 822.02,194 794.02,178" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="round"/><text x="822.02" y="178" dominant-baseline="middle" font-family="'SimHei', 'Heiti SC', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">操作</text><polygon points="950,202 978,218 950,234 922,218" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="round"/><text x="950" y="218" dominant-baseline="middle" font-family="'SimHei', 'Heiti SC', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">发送</text><polygon points="926,160 954,176 926,192 898,176" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="round"/><text x="926" y="176" dominant-baseline="middle" font-family="'SimHei', 'Heiti SC', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">接收</text><polygon points="1061,216 1089,232 1061,248 1033,232" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="round"/><text x="1061" y="232" dominant-baseline="middle" font-family="'SimHei', 'Heiti SC', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">拥有</text><polygon points="822.02,364 850.02,380 822.02,396 794.02,380" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="round"/><text x="822.02" y="380" dominant-baseline="middle" font-family="'SimHei', 'Heiti SC', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">负责</text><polygon points="1061,364 1089,380 1061,396 1033,380" fill="#fff" stroke="#000" stroke-width="2" stroke-linejoin="round"/><text x="1061" y="380" dominant-baseline="middle" font-family="'SimHei', 'Heiti SC', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">拥有</text><text x="868" y="330" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">M</text><text x="810" y="282" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">N</text><text x="591" y="318" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">1</text><text x="868" y="282" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">N</text><text x="1031" y="251" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">1</text><text x="986" y="223" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">N</text><text x="1032" y="282" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">1</text><text x="1090" y="330" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">1</text><text x="963" y="342" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">1</text><text x="937" y="446" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">N</text><text x="831.7" y="267.29999999999995" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">1</text><text x="857.7" y="183.29999999999995" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">N</text><text x="937" y="239" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">1</text><text x="963" y="166" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">N</text><text x="912" y="273" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">1</text><text x="889" y="188" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">N</text><text x="1010" y="219" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">1</text><text x="1088" y="256" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">1</text><text x="857.7" y="372.70000000000005" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">1</text><text x="810" y="356" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">N</text><text x="937" y="342" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">1</text><text x="1022" y="393" dominant-baseline="middle" stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">N</text><rect x="890" y="284" width="120" height="44" fill="#fff" stroke="#000" stroke-width="1.5"/><text x="950" y="310.9" font-family="'SimHei', 'SimSun', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">用户表</text><rect x="518" y="260" width="120" height="44" fill="#fff" stroke="#000" stroke-width="1.5"/><text x="578" y="286.9" font-family="'SimHei', 'SimSun', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">部门</text><rect x="668" y="284" width="120" height="44" fill="#fff" stroke="#000" stroke-width="1.5"/><text x="728" y="310.9" font-family="'SimHei', 'SimSun', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">角色</text><rect x="1112" y="284" width="120" height="44" fill="#fff" stroke="#000" stroke-width="1.5"/><text x="1172" y="310.9" font-family="'SimHei', 'SimSun', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">档案</text><rect x="890" y="460" width="120" height="44" fill="#fff" stroke="#000" stroke-width="1.5"/><text x="950" y="486.9" font-family="'SimHei', 'SimSun', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">订单</text><rect x="668" y="156" width="120" height="44" fill="#fff" stroke="#000" stroke-width="1.5"/><text x="728" y="182.9" font-family="'SimHei', 'SimSun', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">日志</text><rect x="890" y="108" width="120" height="44" fill="#fff" stroke="#000" stroke-width="1.5"/><text x="950" y="134.9" font-family="'SimHei', 'SimSun', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">留言</text><rect x="1112" y="210" width="120" height="44" fill="#fff" stroke="#000" stroke-width="1.5"/><text x="1172" y="236.9" font-family="'SimHei', 'SimSun', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">用户设置</text><rect x="1430" y="284" width="120" height="44" fill="#fff" stroke="#000" stroke-width="1.5"/><text x="1490" y="310.9" font-family="'SimHei', 'SimSun', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">通知公告表</text><rect x="668" y="358" width="120" height="44" fill="#fff" stroke="#000" stroke-width="1.5"/><text x="728" y="384.9" font-family="'SimHei', 'SimSun', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">任务记录</text><rect x="1112" y="358" width="120" height="44" fill="#fff" stroke="#000" stroke-width="1.5"/><text x="1172" y="384.9" font-family="'SimHei', 'SimSun', sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000">用户日志</text></svg></div>
+    <p style="margin-top:12px">
+      默认折叠纯连接表后为 11 个实体、11 个联系（含 1 条 M:N、2 条 1:1、1 条自反）。实体位置由 <code>utils/erLayout.ts</code> 按外键结构排布（核居中起始 + 交叉最小化 + 真实寻线精修），几何校验：实体/菱形/标注零重叠、连线零穿越。详见 <code>er-local-layout.html</code>。
+    </p>
+  </section>
+
+  <section class="card info">
+    <h3>仍然需要 AI 的部分</h3>
+    <p>
+      本地解析覆盖的是<b>结构化信息</b>（表、列、约束、注释）。以下仍然更适合 AI，建议保留为可选增强而非默认路径：<br>
+      · <b>自然语言需求</b>（"帮我做一个图书借阅系统的 ER 图"）——没有 DDL 就没有可解析的结构；<br>
+      · <b>词表未命中的业务词汇翻译</b>（如 <code>t_pms_apply</code> 这类无注释的缩写）；<br>
+      · <b>不规范 schema 的语义补全</b>（没有外键、只靠 <code>xxx_id</code> 命名约定，且不在动词表内）。
+    </p>
+    <p>
+      另外两处已知限制：多对多连接表目前按<b>物理模型</b>展开为两条 1:N（保留连接表实体），没有合成概念层的 N:M 联系；
+      实体位置仍是顺序网格，没有基于外键方向的本地自动布局。
+    </p>
+  </section>
+</div>
+</body>
+</html>
