@@ -20,6 +20,21 @@ export type ActivityEdgeType = 'flow' | 'condition'
 export type DeploymentEdgeType = 'communication' | 'association'
 
 // ====== 节点数据接口 ======
+
+/** ER 图：实体字段（"字段环绕"与"表格型"两种表示法使用；Chen 表示法不需要） */
+export interface ERField {
+  name: string
+  type?: string
+  /** 主键 */
+  pk?: boolean
+  /** 外键 */
+  fk?: boolean
+  comment?: string
+}
+
+/** ER 图表示法：陈氏（实体+菱形联系）/ 实体直连 / 实体+字段环绕 / 表格型 */
+export type ERNotation = 'chen' | 'entity' | 'attribute' | 'table'
+
 export interface DiagramNodeData extends Record<string, unknown> {
   label: string
   rx?: number
@@ -38,6 +53,8 @@ export interface DiagramNodeData extends Record<string, unknown> {
   /** ER 图：绝对坐标（px）。实体为左上角，菱形为中心点；缺省则回退网格自动布局 */
   x?: number
   y?: number
+  /** ER 图：实体字段列表 */
+  fields?: ERField[]
 }
 
 // 时序图参与者数据

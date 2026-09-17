@@ -264,3 +264,184 @@ export function layoutTreeStructure(
 
   return { nodes: layoutedNodes, edges: styledEdges }
 }
+
+/**
+ * 流程图分层（活动图用）：从 start 出发 BFS 求每个节点的层号。
+ *
+ * 关键点：已经分过层的节点不再改动 —— 像「重新派单 → 上门维修」这种回边会让 BFS
+ * 回到浅层节点，若允许覆盖就会在环上无限循环。回边保持原层由图形库自己绕行。
+ *
+ * drawio 导出与 SVG 导出共用这一份实现，避免两处排版算法各写一套、行为不一致。
+ */
+export function rankOfFlow(
+  nodes: { id: string; type?: string }[],
+  edges: { source: string; target: string }[],
+): Map<string, number> {
+  const adj = new Map<string, string[]>(nodes.map((n) => [n.id, []]))
+  for (const e of edges) {
+    const list = adj.get(e.source)
+    if (list && adj.has(e.target)) list.push(e.target)
+  }
+  const rank = new Map<string, number>()
+  const queue: string[] = nodes.filter((n) => n.type === 'start').map((n) => n.id)
+  if (!queue.length && nodes.length) queue.push(nodes[0].id)
+  queue.forEach((id) => rank.set(id, 0))
+  for (let head = 0; head < queue.length; head++) {
+    const cur = queue[head]
+    const next = (rank.get(cur) ?? 0) + 1
+    for (const nx of adj.get(cur) || []) {
+      if (rank.has(nx)) continue
+      rank.set(nx, next)
+      queue.push(nx)
+    }
+  }
+  // 未与 start 连通的节点排在最后
+  let maxRank = 0
+  rank.forEach((r) => {
+    if (r > maxRank) maxRank = r
+  })
+  nodes.forEach((n) => {
+    if (!rank.has(n.id)) rank.set(n.id, maxRank + 1)
+  })
+  return rank
+}
+
+export interface LayeredItem {
+  id: string
+  w: number
+  h: number
+}
+
+/**
+ * 分层布局（类图用）：把"被依赖方"放上层、依赖方放下层。
+ *
+ * 类图里箭头指向被依赖的一方（子类 → 父类、实现类 → 接口、使用方 → 被使用方），
+ * 所以层号取"沿出边走到汇点的最长路径"：汇点（没人可依赖的基础类/接口）在第 0 层，
+ * 越往下越是具体的业务类 —— 这正是类图习惯的阅读顺序，继承箭头也自然朝上。
+ *
+ * 之后做一轮重心排序（层内按上一层邻居的平均位置排），最后每层横向居中。
+ * 原来的 sqrt 网格会让关系线长距离斜穿整张图，标签也会被框压住。
+ */
+export function layeredLayoutOf(
+  nodes: LayeredItem[],
+  edges: { source: string; target: string }[],
+  opts: {
+    hGap?: number
+    vGap?: number
+    startX?: number
+    startY?: number
+    /**
+     * 参与"定层"的边（缺省表示全部）。类图应只传继承/实现边：
+     * 关联/依赖只影响层内排序 —— 否则一条 业主 → 维修评价 → 报修单 → 设施 的依赖链
+     * 会把子类压到最底层，拉出几百像素的长斜线。
+     */
+    rankEdges?: { source: string; target: string }[]
+  } = {},
+): Map<string, { x: number; y: number }> {
+  const hGap = opts.hGap ?? 60
+  const vGap = opts.vGap ?? 90
+  const startX = opts.startX ?? 100
+  const startY = opts.startY ?? 60
+
+  const rankEdges = (opts.rankEdges && opts.rankEdges.length ? opts.rankEdges : edges).filter(
+    (e) => e.source !== e.target,
+  )
+
+  // 层内排序用的（全部）邻接
+  const inn = new Map<string, string[]>(nodes.map((n) => [n.id, []]))
+  for (const e of edges) {
+    if (e.source === e.target) continue
+    if (inn.has(e.source) && inn.has(e.target)) inn.get(e.target)!.push(e.source)
+  }
+
+  // 定层用的（只含 rankEdges）邻接
+  const rankOut = new Map<string, string[]>(nodes.map((n) => [n.id, []]))
+  const touched = new Set<string>()
+  for (const e of rankEdges) {
+    if (rankOut.has(e.source) && rankOut.has(e.target)) {
+      rankOut.get(e.source)!.push(e.target)
+      touched.add(e.source)
+      touched.add(e.target)
+    }
+  }
+
+  // 层号 = 沿 rankEdges 到汇点的最长路径（DFS + 记忆化；环上不死循环）
+  const rank = new Map<string, number>()
+  const visiting = new Set<string>()
+  const rankOf = (id: string): number => {
+    const cached = rank.get(id)
+    if (cached !== undefined) return cached
+    if (visiting.has(id)) return 0
+    visiting.add(id)
+    let r = 0
+    for (const nx of rankOut.get(id) || []) r = Math.max(r, rankOf(nx) + 1)
+    visiting.delete(id)
+    rank.set(id, r)
+    return r
+  }
+  nodes.forEach((n) => rankOf(n.id))
+
+  // 不参与继承/实现的类（如报修单/设施）统一排到继承层次之下，
+  // 而不是跟基础类一起挤在第 0 层
+  const hierarchyNodes = nodes.filter((n) => touched.has(n.id))
+  if (hierarchyNodes.length && hierarchyNodes.length < nodes.length) {
+    const maxHier = Math.max(...hierarchyNodes.map((n) => rank.get(n.id) ?? 0))
+    nodes.forEach((n) => {
+      if (!touched.has(n.id)) rank.set(n.id, maxHier + 1)
+    })
+  }
+
+  // 层内排序：按上一层邻居的平均 x 位置（重心）迭代两轮
+  const byRank = new Map<number, LayeredItem[]>()
+  nodes.forEach((n) => {
+    const r = rank.get(n.id) ?? 0
+    const list = byRank.get(r)
+    if (list) list.push(n)
+    else byRank.set(r, [n])
+  })
+  const ranks = [...byRank.keys()].sort((a, b) => a - b)
+  const orderIndex = new Map<string, number>()
+  for (const r of ranks) {
+    const list = byRank.get(r)!
+    list.forEach((n, i) => orderIndex.set(n.id, i))
+  }
+  for (let pass = 0; pass < 2; pass++) {
+    for (const r of ranks) {
+      const list = byRank.get(r)!
+      const bary = new Map<string, number>()
+      list.forEach((n) => {
+        const prev = inn.get(n.id) || []
+        const vals = prev.map((p) => orderIndex.get(p)).filter((v): v is number => v !== undefined)
+        bary.set(n.id, vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : orderIndex.get(n.id) ?? 0)
+      })
+      list.sort((a, b) => (bary.get(a.id) ?? 0) - (bary.get(b.id) ?? 0))
+      list.forEach((n, i) => orderIndex.set(n.id, i))
+    }
+  }
+
+  // 计算每层的行高与行宽，逐层横向居中
+  const rowInfo = new Map<number, { y: number; items: LayeredItem[]; width: number }>()
+  let cursorY = startY
+  const maxRowWidth = Math.max(
+    ...ranks.map((r) => byRank.get(r)!.reduce((acc, n) => acc + n.w, 0) + Math.max(0, byRank.get(r)!.length - 1) * hGap),
+    1,
+  )
+  for (const r of ranks) {
+    const list = byRank.get(r)!
+    const rowH = Math.max(...list.map((n) => n.h))
+    const rowW = list.reduce((acc, n) => acc + n.w, 0) + Math.max(0, list.length - 1) * hGap
+    rowInfo.set(r, { y: cursorY, items: list, width: rowW })
+    cursorY += rowH + vGap
+  }
+
+  const pos = new Map<string, { x: number; y: number }>()
+  for (const r of ranks) {
+    const info = rowInfo.get(r)!
+    let x = startX + (maxRowWidth - info.width) / 2
+    for (const n of info.items) {
+      pos.set(n.id, { x: Math.round(x), y: Math.round(info.y) })
+      x += n.w + hGap
+    }
+  }
+  return pos
+}

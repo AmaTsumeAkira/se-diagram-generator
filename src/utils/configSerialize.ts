@@ -72,35 +72,17 @@ export const TAB_KEYS: DiagramType[] = [
 /** 单张图的平面 JSON → 运行时配置 */
 export function parseDiagram(text: string): ConfigLike {
   const data = JSON.parse(text)
-  const nodes: Node<DiagramNodeData>[] = (data.nodes || []).map((n: any) => ({
-    id: String(n.id),
-    type: n.type ?? 'rectangle',
-    data: {
-      label: String(n.label ?? n.id),
-      rx: n.rx as number | undefined,
-      ry: n.ry as number | undefined,
-      vertical: n.vertical as boolean | undefined,
-      nodeH: n.nodeH as number | undefined,
-      nodeW: n.nodeW as number | undefined,
-      fontSize: n.fontSize as number | undefined,
-      fontFamily: n.fontFamily as string | undefined,
-      spacing: n.spacing as number | undefined,
-      // diagram-specific fields
-      ...(n.attributes && { attributes: n.attributes }),
-      ...(n.methods && { methods: n.methods }),
-      ...(n.isAbstract !== undefined && { isAbstract: n.isAbstract }),
-      ...(n.stereotype && { stereotype: n.stereotype }),
-      ...(n.participantType && { participantType: n.participantType }),
-      ...(n.technology && { technology: n.technology }),
-      ...(n.nodeType && { nodeType: n.nodeType }),
-      ...(n.row !== undefined && { row: n.row }),
-      ...(n.col !== undefined && { col: n.col }),
-      ...(n.group && { group: n.group }),
-      ...(n.x !== undefined && { x: n.x }),
-      ...(n.y !== undefined && { y: n.y }),
-    } as DiagramNodeData,
-    position: { x: 0, y: 0 },
-  }))
+  const nodes: Node<DiagramNodeData>[] = (data.nodes || []).map((n: any) => {
+    // 除 id / type 外的字段整体保留（排除式）：读入侧此前是白名单，
+    // 任何新增字段（例如 ER 图的 fields）都会在"写盘 → 读回"之间被静默丢掉。
+    const { id: rawId, type: rawType, ...rest } = n || {}
+    return {
+      id: String(rawId),
+      type: rawType ?? 'rectangle',
+      data: { ...rest, label: String(rest.label ?? rawId) } as DiagramNodeData,
+      position: { x: 0, y: 0 },
+    }
+  })
   const edges: Edge[] = (data.edges || []).map((e: any, i: number) => ({
     id: e.id ?? `edge_${i}`,
     source: String(e.source),

@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useVercount } from '@vercount/react'
 import { layoutErEntities, suggestCenter } from '../../utils/erLayout'
+import type { ERField } from '../../types/diagram'
+import { parseFieldsText, fieldsToText, fieldsFromTable } from '../../utils/erFields'
 
 // ====== Types ======
 
@@ -88,7 +90,7 @@ export interface DeploymentState {
   nodes: {
     id: string
     label: string
-    nodeType: 'server' | 'database'
+    nodeType: 'server' | 'database' | 'component' | 'artifact' | 'node'
     technology?: string
   }[]
   edges: {
@@ -100,7 +102,17 @@ export interface DeploymentState {
 }
 
 export interface ERState {
-  entities: { id: string; label: string; row?: number; col?: number; group?: string; x?: number; y?: number }[]
+  entities: {
+    id: string
+    label: string
+    row?: number
+    col?: number
+    group?: string
+    x?: number
+    y?: number
+    /** 字段列表（字段环绕 / 表格型表示法使用，可由 SQL 导入或手动填写） */
+    fields?: ERField[]
+  }[]
   relationships: {
     id: string
     label: string
@@ -304,7 +316,7 @@ function erToJson(state: ERState): string {
   const nodes: any[] = []
   const edges: any[] = []
   state.entities.forEach((ent) => {
-    nodes.push({ id: ent.id, type: 'erEntity', label: ent.label, row: ent.row, col: ent.col, group: ent.group, x: ent.x, y: ent.y })
+    nodes.push({ id: ent.id, type: 'erEntity', label: ent.label, row: ent.row, col: ent.col, group: ent.group, x: ent.x, y: ent.y, fields: ent.fields })
   })
   state.relationships.forEach((rel) => {
     const diamondId = `dia_${rel.id}`
@@ -1858,7 +1870,15 @@ function ActivityEditor({ state: initial, onApply }: { state?: ActivityState; on
         {nodes.map((node, i) => (
           <div key={node.id} className="bg-white border border-gray-200 rounded p-2">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-gray-400">{node.nodeType}</span>
+              <span className="text-xs text-gray-400">
+                {node.nodeType === 'start'
+                  ? t('editor.startNode')
+                  : node.nodeType === 'end'
+                    ? t('editor.endNode')
+                    : node.nodeType === 'decision'
+                      ? t('editor.decisionNode')
+                      : t('editor.actionNode')}
+              </span>
               <button onClick={() => removeNode(node.id)} className="text-gray-400 hover:text-red-500 text-sm" title={t('editor.deleteAction')}>×</button>
             </div>
             {node.nodeType === 'start' || node.nodeType === 'end' ? (
@@ -1920,14 +1940,18 @@ function ActivityEditor({ state: initial, onApply }: { state?: ActivityState; on
 
 function DeploymentEditor({ state: initial, onApply }: { state?: DeploymentState; onApply: (json: string) => void }) {
   const { t } = useTranslation()
-  const [nodes, setNodes] = useState<{ id: string; label: string; nodeType: 'server' | 'database'; technology?: string }[]>(initial?.nodes || [])
+  type DepNodeType = DeploymentState['nodes'][number]['nodeType']
+  const DEP_TYPES: DepNodeType[] = ['server', 'database', 'component', 'artifact', 'node']
+  const depLabel = (tp: DepNodeType) =>
+    t('editor.depNode' + (tp === 'node' ? 'Device' : tp.charAt(0).toUpperCase() + tp.slice(1)))
+  const [nodes, setNodes] = useState<{ id: string; label: string; nodeType: DepNodeType; technology?: string }[]>(initial?.nodes || [])
   const [edges, setEdges] = useState<{ id: string; source: string; target: string; label?: string }[]>(initial?.edges || [])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showMermaid, setShowMermaid] = useState(false)
   const [mermaidText, setMermaidText] = useState('')
 
-  const addNode = (nodeType: 'server' | 'database') => {
-    setNodes((n) => [...n, { id: uid(), label: t('editor.newServer'), nodeType, technology: '' }])
+  const addNode = (nodeType: DepNodeType) => {
+    setNodes((n) => [...n, { id: uid(), label: depLabel(nodeType), nodeType, technology: '' }])
   }
 
   const removeNode = (id: string) => {
@@ -1963,14 +1987,12 @@ function DeploymentEditor({ state: initial, onApply }: { state?: DeploymentState
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
-        <button onClick={() => addNode('server')}
-          className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
-          {t('editor.addServer')}
-        </button>
-        <button onClick={() => addNode('database')}
-          className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
-          {t('editor.addDatabase')}
-        </button>
+        {DEP_TYPES.map((tp) => (
+          <button key={tp} onClick={() => addNode(tp)}
+            className="px-3 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
+            {'+ ' + depLabel(tp)}
+          </button>
+        ))}
         <button onClick={() => setShowMermaid(true)}
           className="px-3 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 text-gray-500">
           {t('editor.importMermaid')}
@@ -1981,7 +2003,7 @@ function DeploymentEditor({ state: initial, onApply }: { state?: DeploymentState
         {nodes.map((node, i) => (
           <div key={node.id} className="bg-white border border-gray-200 rounded p-2">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-gray-400">{node.nodeType}</span>
+              <span className="text-xs text-gray-400">{depLabel(node.nodeType)}</span>
               <button onClick={() => removeNode(node.id)} className="text-gray-400 hover:text-red-500 text-sm" title={t('editor.deleteServer')}>×</button>
             </div>
             {editingId === node.id ? (
@@ -2078,7 +2100,7 @@ function EREditor({ state: initial, onApply }: { state?: ERState; onApply: (json
                 ...aiState,
                 entities: aiState.entities.map(e => {
                   const p = pos.get(e.id)
-                  return p ? { id: e.id, label: e.label, x: p.x, y: p.y } : { id: e.id, label: e.label }
+                  return p ? { ...e, x: p.x, y: p.y, row: undefined, col: undefined } : e
                 }),
               }
             })()
@@ -2104,6 +2126,8 @@ function EREditor({ state: initial, onApply }: { state?: ERState; onApply: (json
         const baseEntities = model.entities.map(table => ({
           id: `ent_${table.name}`,
           label: table.label || table.name,
+          // 把列信息带进来：表格型 / 字段环绕型表示法要用
+          fields: fieldsFromTable(table),
         }))
         // 按外键结构布局（主表居中、近邻落在同行/同列），避免声明顺序造成的扇形长线
         const placed = layoutErEntities(
@@ -2340,6 +2364,16 @@ function EREditor({ state: initial, onApply }: { state?: ERState; onApply: (json
                 placeholder={t('editor.erGroupPlaceholder')}
                 value={ent.group || ''}
                 onChange={(e) => updateEntity(ent.id, { group: e.target.value.trim() || undefined })}
+              />
+              <textarea
+                className="w-full mt-1 px-1 py-1 text-xs border border-gray-300 rounded font-mono resize-y"
+                rows={Math.min(7, Math.max(2, (ent.fields?.length || 0) + 1))}
+                placeholder={t('editor.erFieldsPlaceholder')}
+                value={fieldsToText(ent.fields)}
+                onChange={(e) => {
+                  const fields = parseFieldsText(e.target.value)
+                  updateEntity(ent.id, { fields: fields.length ? fields : undefined })
+                }}
               />
             </div>
           ))}

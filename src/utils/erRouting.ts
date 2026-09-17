@@ -68,6 +68,13 @@ const GAP = 40
 const PAD = 10
 /** 菱形落点的安全边距（比连线更小，便于在贴近目标的分支段上落脚） */
 const PAD_DIA = 3
+/**
+ * 额外障碍（字段扇区）的外扩量。
+ *
+ * 取 36 而不是 PAD(10)：联系菱形自身有 28px 半宽，而菱形落点就在路径上 ——
+ * 路径只离扇区 10px 时，菱形的尖角仍会搭到字段椭圆上（实测擦碰 3px）。
+ */
+const PAD_EXTRA = 120
 /** 判定同行/同列的阈值 */
 const EPS = 6
 /** 菱形尺寸 */
@@ -351,13 +358,42 @@ function overlapLen(s1: OrthoSeg, s2: OrthoSeg): number {
  */
 const MIN_OVERLAP = 40
 
-function countShared(pts: number[][], used: OrthoSeg[]): number {
+/**
+ * 跨实体对的共线重叠：按"重叠长度"计代价（每 px 权重，`separateOverlaps` 时启用）。
+ *
+ * 用长度而不是"段数"是有意的：只叠了 40px 的短桩不值得为它绕一个大弯，
+ * 而叠了 400px 必须分开。于是 CROSS_PENALTY(200) 自然成为分界 ——
+ * 重叠超过 200px 时宁可多一个交叉，因为**两条线压在一起比一个交叉更难读**
+ * （交叉还能看出各走各的，压线则完全分不清哪条是哪条）。
+ * 上限仍远小于避障的 1000，所以永远不会为了分开而穿过实体。
+ */
+const OVERLAP_LEN_WEIGHT = 1
+
+function countShared(pts: number[][], used: OrthoSeg[], min = MIN_OVERLAP): number {
   if (used.length === 0) return 0
   let n = 0
   for (const s of pathSegs(pts)) {
-    if (used.some((u) => overlapLen(s, u) > MIN_OVERLAP)) n++
+    if (used.some((u) => overlapLen(s, u) > min)) n++
   }
   return n
+}
+
+/**
+ * 与"任意已放置折线"共线重叠的**总长度**（同一片段取与其重叠最长的那一条，避免重复计数）。
+ * 与 countShared 的区别：后者数"有几段重叠"，这里量"叠了多长"。
+ */
+function sharedLen(pts: number[][], used: OrthoSeg[], min = MIN_OVERLAP): number {
+  if (used.length === 0) return 0
+  let total = 0
+  for (const s of pathSegs(pts)) {
+    let worst = 0
+    for (const u of used) {
+      const l = overlapLen(s, u)
+      if (l > worst) worst = l
+    }
+    if (worst > min) total += worst
+  }
+  return total
 }
 
 /**
@@ -448,18 +484,50 @@ export interface RouteOptions {
    * 而标注放置是这里最贵的一段（候选多、每条联系都要比较），跳过可大幅提速。
    */
   skipCards?: boolean
+  /**
+   * 出口锚点沿边错开。默认 false（保持既有表示法的手感）。
+   *
+   * 引擎原本每条联系都从"边中点"引出 —— 一个实体只有 4 个候选锚点（四条边的中点）。
+   * 枢纽表（连接度高的表）的多条联系因此全部共用同一个点，首段完全重叠。
+   * 开启后按"该边上的第 k 条联系"沿边均分锚点，形成扇形引出。
+   */
+  spreadAnchors?: boolean
+  /**
+   * 把"与其他实体对的连线共线重叠"也计入代价。默认 false。
+   *
+   * 原本只有"同一对实体之间的多条联系"会被惩罚（`pairUsedSegs`），
+   * 不同来源的两条线画在同一条线上没有任何代价 —— 实测出现两条线共线 427px。
+   * 开启后跨实体对也会主动分道。
+   */
+  separateOverlaps?: boolean
+  /**
+   * 额外障碍：不作为连线端点、但连线必须绕开的矩形。
+   *
+   * "实体 + 字段环绕"表示法用它来登记每个实体的**字段扇区** —— 否则别的实体的连线
+   * 会从字段椭圆中间穿过去。`owner` 是归属实体，每条联系会自动排除自己两端所属的障碍，
+   * 这样实体自己的连线不会被自己的字段区挡住。
+   */
+  extraObstacles?: { id: string; owner: string; x: number; y: number; w: number; h: number }[]
 }
 
 export function routeRelations(boxesIn: ERBoxInput[], rels: ERRelationInput[], opts: RouteOptions = {}): ERRoutedRelation[] {
   const boxes = boxesIn.map(toBox)
   if (boxes.length === 0) return []
   const byId = new Map(boxes.map((b) => [b.id, b]))
-  const obstacles: Rect[] = boxes.map((b) => ({
-    id: b.id, x: b.x - PAD, y: b.y - PAD, r: b.r + PAD, b: b.b + PAD,
+  const extraRects: Rect[] = (opts.extraObstacles || []).map((o) => ({
+    id: o.id, x: o.x - PAD_EXTRA, y: o.y - PAD_EXTRA, r: o.x + o.w + PAD_EXTRA, b: o.y + o.h + PAD_EXTRA,
   }))
-  const diaObstacles: Rect[] = boxes.map((b) => ({
-    id: b.id, x: b.x - PAD_DIA, y: b.y - PAD_DIA, r: b.r + PAD_DIA, b: b.b + PAD_DIA,
+  const extraDiaRects: Rect[] = (opts.extraObstacles || []).map((o) => ({
+    id: o.id, x: o.x - PAD_EXTRA, y: o.y - PAD_EXTRA, r: o.x + o.w + PAD_EXTRA, b: o.y + o.h + PAD_EXTRA,
   }))
+  const obstacles: Rect[] = [
+    ...boxes.map((b) => ({ id: b.id, x: b.x - PAD, y: b.y - PAD, r: b.r + PAD, b: b.b + PAD })),
+    ...extraRects,
+  ]
+  const diaObstacles: Rect[] = [
+    ...boxes.map((b) => ({ id: b.id, x: b.x - PAD_DIA, y: b.y - PAD_DIA, r: b.r + PAD_DIA, b: b.b + PAD_DIA })),
+    ...extraDiaRects,
+  ]
   // 障碍命中用空间索引（结果与逐一遍历一致，见 buildRectIndex 注释）
   const obstacleIndex = buildRectIndex(obstacles)
   // 已路由的连线片段：让后续连线主动避让（否则各走各的必然交叉）。用空间索引加速查询。
@@ -484,15 +552,66 @@ export function routeRelations(boxesIn: ERBoxInput[], rels: ERRelationInput[], o
   // 用于让"同一对实体之间的多条联系"错开成平行车道，而不是完全重叠。
   const pairUsedSegs = new Map<string, OrthoSeg[]>()
   const pairLane = new Map<string, number>()
+  /** 跨实体对的已用片段（仅 separateOverlaps 时累积） */
+  const globalSegs: OrthoSeg[] = []
+  const separateOverlaps = !!opts.separateOverlaps
+
+  /**
+   * 出口锚点预排：同一实体、同一条边上的多条联系沿边均分。
+   *
+   * 侧别按"到目标的位移主导方向"判定（与候选生成里的 dir 判据一致），
+   * 于是每条联系在源端、目标端各占一个"边槽位"。
+   */
+  const anchorSlot = new Map<string, { k: number; n: number }>()
+  if (opts.spreadAnchors) {
+    const use = new Map<string, string[]>()
+    const enqueue = (key: string, id: string) => {
+      const list = use.get(key)
+      if (list) list.push(id)
+      else use.set(key, [id])
+    }
+    for (const rel of rels) {
+      const a = byId.get(rel.srcId)
+      const b = byId.get(rel.tgtId)
+      if (!a || !b || a.id === b.id) continue
+      for (const [from, to] of [[a, b], [b, a]] as [Box, Box][]) {
+        const dx = to.cx - from.cx
+        const dy = to.cy - from.cy
+        // 每条联系会同时生成"横向主导"和"纵向主导"两套候选，二者都可能被选中，
+        // 所以左右侧与上下侧要各自独立排队，而不是只按主导方向排一次。
+        enqueue(`${from.id}|${dx >= 0 ? 'R' : 'L'}`, rel.id)
+        enqueue(`${from.id}|${dy >= 0 ? 'D' : 'U'}`, rel.id)
+      }
+    }
+    for (const [key, ids] of use) {
+      ids.forEach((id, i) => anchorSlot.set(`${id}|${key}`, { k: i, n: ids.length }))
+    }
+  }
 
   for (const rel of rels) {
     const S = byId.get(rel.srcId)
     const T = byId.get(rel.tgtId)
     if (!S || !T) continue
 
+    /**
+     * 出口沿边错开的位移。同一实体同一条边上有 n 条联系时，第 k 条错开
+     * (k - (n-1)/2) × step，即围绕边中点对称展开；单条联系（n ≤ 1）不偏移，保持原样。
+     * step 不超过 30px，且保证最外侧不超出实体边长的一半。
+     */
+    const anchorOff = (side: 'L' | 'R' | 'D' | 'U', span: number) => {
+      const slot = anchorSlot.get(`${rel.id}|${S.id}|${side}`)
+      if (!slot || slot.n <= 1) return 0
+      const step = Math.min(30, span / (slot.n + 1))
+      return (slot.k - (slot.n - 1) / 2) * step
+    }
+
     // 自反联系（source === target）：走自环，不再静默丢弃
     const selfRef = S.id === T.id
     const obs = new Set([S.id, T.id])
+    // 额外障碍里，属于本联系两端的那些要排除掉（实体自己的字段区不该挡住自己的连线）
+    if (opts.extraObstacles) {
+      for (const o of opts.extraObstacles) if (o.owner !== S.id && o.owner !== T.id) obs.add(o.id)
+    }
 
     // 同一对实体的第 n 条联系 → 第 n 条平行车道
     const pairKey = `${rel.srcId}->${rel.tgtId}`
@@ -516,10 +635,11 @@ export function routeRelations(boxesIn: ERBoxInput[], rels: ERRelationInput[], o
     // —— 横向主导：出口在左右侧，干线为竖直 ——
     if (!selfRef) {
       const dir = T.cx - S.cx >= 0 ? 1 : -1
-      const start: number[] = [dir > 0 ? S.r : S.x, S.cy]
+      const sy = S.cy + anchorOff(dir > 0 ? 'R' : 'L', S.b - S.y)
+      const start: number[] = [dir > 0 ? S.r : S.x, sy]
       const end: number[] = [dir > 0 ? T.x : T.r, T.cy]
       // 源/目标已共线时，Z 型干线与"折向目标中心"都会退化成同一条直线，不再生成
-      const collinear = Math.abs(T.cy - S.cy) < EPS
+      const collinear = Math.abs(T.cy - sy) < EPS
       if (collinear) candidates.push({ pts: [start, end] })
 
       // 平行车道（置于绕行方案之前，同分时优先分道，而不是贴边绕过）
@@ -530,7 +650,7 @@ export function routeRelations(boxesIn: ERBoxInput[], rels: ERRelationInput[], o
         if (okSpan) {
           for (const off of LANE_OFFSETS) {
             candidates.push({
-              pts: [start, [j1, S.cy], [j1, S.cy + off], [j2, S.cy + off], [j2, T.cy], end],
+              pts: [start, [j1, sy], [j1, sy + off], [j2, sy + off], [j2, T.cy], end],
               trunk: { axis: 'x', coord: j1 },
             })
           }
@@ -544,25 +664,31 @@ export function routeRelations(boxesIn: ERBoxInput[], rels: ERRelationInput[], o
         if (dir > 0 ? span > 10 : span < -10) {
           for (let k = 1; k <= 6; k++) {
             const tx = ta + span * (k / 6)
-            candidates.push({ pts: [start, [tx, S.cy], [tx, T.cy], end], trunk: { axis: 'x', coord: tx } })
+            candidates.push({ pts: [start, [tx, sy], [tx, T.cy], end], trunk: { axis: 'x', coord: tx } })
           }
         }
       }
 
-      const ox = dir > 0 ? S.r + GAP : S.x - GAP
-      for (const corr of [T.y - 46, T.b + 46, outerTop, outerBottom]) {
-        const entY = corr < T.y ? T.y : T.b
-        candidates.push({ pts: [start, [ox, S.cy], [ox, corr], [T.cx, corr], [T.cx, entY]], penalty: CORRIDOR_PENALTY })
-      }
-      if (!collinear) candidates.push({ pts: [start, [T.cx, S.cy], [T.cx, T.cy]] })
+      // 走廊"层高"：spreadAnchors 时多给两层，让同一侧的多条联系分层走，
+      // 否则它们会挤在同一条横线上（实测三条线共线 390px）。越外层代价略高，空着时优选最内层。
+      const oxBase = dir > 0 ? S.r + GAP : S.x - GAP
+      const oxStep = dir > 0 ? GAP : -GAP
+      const oxList = opts.spreadAnchors ? [oxBase, oxBase + oxStep, oxBase + oxStep * 2] : [oxBase]
+      for (let oi = 0; oi < oxList.length; oi++)
+        for (const corr of [T.y - 46, T.b + 46, outerTop, outerBottom]) {
+          const entY = corr < T.y ? T.y : T.b
+          candidates.push({ pts: [start, [oxList[oi], sy], [oxList[oi], corr], [T.cx, corr], [T.cx, entY]], penalty: CORRIDOR_PENALTY + oi * 4 })
+        }
+      if (!collinear) candidates.push({ pts: [start, [T.cx, sy], [T.cx, T.cy]] })
     }
 
     // —— 纵向主导：出口在上下侧，干线为水平 ——
     if (!selfRef) {
       const dir = T.cy - S.cy >= 0 ? 1 : -1
-      const start: number[] = [S.cx, dir > 0 ? S.b : S.y]
+      const sx = S.cx + anchorOff(dir > 0 ? 'D' : 'U', S.r - S.x)
+      const start: number[] = [sx, dir > 0 ? S.b : S.y]
       const end: number[] = [T.cx, dir > 0 ? T.y : T.b]
-      const collinear = Math.abs(T.cx - S.cx) < EPS
+      const collinear = Math.abs(T.cx - sx) < EPS
       if (collinear) candidates.push({ pts: [start, end] })
 
       if (lane > 0) {
@@ -572,7 +698,7 @@ export function routeRelations(boxesIn: ERBoxInput[], rels: ERRelationInput[], o
         if (okSpan) {
           for (const off of LANE_OFFSETS) {
             candidates.push({
-              pts: [start, [S.cx, j1], [S.cx + off, j1], [S.cx + off, j2], [T.cx, j2], end],
+              pts: [start, [sx, j1], [sx + off, j1], [sx + off, j2], [T.cx, j2], end],
               trunk: { axis: 'y', coord: j1 },
             })
           }
@@ -586,17 +712,20 @@ export function routeRelations(boxesIn: ERBoxInput[], rels: ERRelationInput[], o
         if (dir > 0 ? span > 10 : span < -10) {
           for (let k = 1; k <= 6; k++) {
             const ty = ta + span * (k / 6)
-            candidates.push({ pts: [start, [S.cx, ty], [T.cx, ty], end], trunk: { axis: 'y', coord: ty } })
+            candidates.push({ pts: [start, [sx, ty], [T.cx, ty], end], trunk: { axis: 'y', coord: ty } })
           }
         }
       }
 
-      const oy = dir > 0 ? S.b + GAP : S.y - GAP
-      for (const corr of [T.x - 46, T.r + 46, outerLeft, outerRight]) {
-        const entX = corr < T.x ? T.x : T.r
-        candidates.push({ pts: [start, [S.cx, oy], [corr, oy], [corr, T.cy], [entX, T.cy]], penalty: CORRIDOR_PENALTY })
-      }
-      if (!collinear) candidates.push({ pts: [start, [S.cx, T.cy], [T.cx, T.cy]] })
+      const oyBase = dir > 0 ? S.b + GAP : S.y - GAP
+      const oyStep = dir > 0 ? GAP : -GAP
+      const oyList = opts.spreadAnchors ? [oyBase, oyBase + oyStep, oyBase + oyStep * 2] : [oyBase]
+      for (let oi = 0; oi < oyList.length; oi++)
+        for (const corr of [T.x - 46, T.r + 46, outerLeft, outerRight]) {
+          const entX = corr < T.x ? T.x : T.r
+          candidates.push({ pts: [start, [sx, oyList[oi]], [corr, oyList[oi]], [corr, T.cy], [entX, T.cy]], penalty: CORRIDOR_PENALTY + oi * 4 })
+        }
+      if (!collinear) candidates.push({ pts: [start, [sx, T.cy], [T.cx, T.cy]] })
     }
 
     // 选路：障碍最少 → 弯数最少 → 越靠前越优先 → 复用已有干线 → 避免与同对实体的既有折线重叠
@@ -616,8 +745,14 @@ export function routeRelations(boxesIn: ERBoxInput[], rels: ERRelationInput[], o
         if (pool.some((v) => Math.abs(v - tk.coord) <= 6)) shared = 1
       }
       const overlap = countShared(pts, usedSegs)
+      // 跨实体对的共线重叠：按重叠长度计（阈值 20，比同对的 40 更严），
+      // 连"贴着实体的短引出段"也算，否则几条线会在枢纽旁边叠成一条粗线。
+      const overlapGlobalLen = separateOverlaps ? sharedLen(pts, globalSegs, 20) : 0
       const crossings = placedSegs.count(pts)
-      const score = hits * 1000 + bends * 10 + idx * 0.5 - shared * 3 + overlap * LANE_PENALTY + crossings * CROSS_PENALTY + (c.penalty ?? 0)
+      const score =
+        hits * 1000 + bends * 10 + idx * 0.5 - shared * 3 +
+        overlap * LANE_PENALTY + overlapGlobalLen * OVERLAP_LEN_WEIGHT + crossings * CROSS_PENALTY +
+        (c.penalty ?? 0)
       if (score < bestScore) {
         bestScore = score
         chosen = pts
@@ -632,6 +767,7 @@ export function routeRelations(boxesIn: ERBoxInput[], rels: ERRelationInput[], o
     }
     // 记录本对实体已用片段与车道序号，供后续同对联系避让
     pairUsedSegs.set(pairKey, [...usedSegs, ...pathSegs(pts)])
+    if (separateOverlaps) globalSegs.push(...pathSegs(pts))
     pairLane.set(pairKey, lane + 1)
     // 记为"已路由"，供后续连线避让
     placedSegs.add(segsOf(pts))
@@ -744,6 +880,53 @@ export function routeRelations(boxesIn: ERBoxInput[], rels: ERRelationInput[], o
   if (!opts.skipCards) placeAllCards(cardJobs, obstacleIndex, placedDiamonds, placedSegs, out)
 
   return out
+}
+
+export interface LayoutScore {
+  /** 折线总长 */
+  len: number
+  /** 折线之间的共线重叠总长（超过 20px 才算） */
+  overlap: number
+  /** 折线之间的交叉数 */
+  cross: number
+}
+
+/**
+ * 快速给一套布局打分：把盒子 + 联系跑一遍 `skipCards` 寻线，量出
+ * 总线长 / 共线重叠 / 交叉数。
+ *
+ * 用途是"候选布局比选" —— 例如表格型要在"枢纽居中"和"按声明顺序铺开"之间选，
+ * 用真实寻线结果比较比任何几何代理都准（代理看不出寻线引擎的贪心偏好）。
+ * `skipCards` 让寻线只算路径、不摆标注，快很多。
+ */
+export function scoreLayout(boxes: ERBoxInput[], rels: ERRelationInput[], opts: RouteOptions = {}): LayoutScore {
+  const routed = routeRelations(boxes, rels, { ...opts, skipCards: true })
+  const segs: (OrthoSeg & { pi: number })[] = []
+  let len = 0
+  routed.forEach((r, pi) => {
+    for (const s of pathSegs(r.points)) {
+      len += s.b - s.a
+      segs.push({ ...s, pi })
+    }
+  })
+  let overlap = 0
+  let cross = 0
+  for (let i = 0; i < segs.length; i++) {
+    for (let j = i + 1; j < segs.length; j++) {
+      const a = segs[i]
+      const b = segs[j]
+      if (a.pi === b.pi) continue
+      if (a.h === b.h) {
+        const l = overlapLen(a, b)
+        if (l > 20) overlap += l
+      } else {
+        const h = a.h ? a : b
+        const v = a.h ? b : a
+        if (v.k > h.a + 0.5 && v.k < h.b - 0.5 && h.k > v.a + 0.5 && h.k < v.b - 0.5) cross++
+      }
+    }
+  }
+  return { len, overlap, cross }
 }
 
 /** 待放置的基数标注 */

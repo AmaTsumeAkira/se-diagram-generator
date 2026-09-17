@@ -15,9 +15,9 @@ import ExportModal from './components/panels/ExportModal'
 import ExportDataModal from './components/panels/ExportDataModal'
 import SettingsModal from './components/panels/SettingsModal'
 import { useUndoRedo } from './hooks/useUndoRedo'
-import type { DiagramNodeData, DiagramType, ConfigMap } from './types/diagram'
+import type { DiagramNodeData, DiagramType, ConfigMap, ERNotation } from './types/diagram'
 import type { UseCaseState, TreeNode, EntityState, SequenceState, ERState, ClassState, ActivityState, DeploymentState } from './components/panels/NodeEditor'
-import { useCasePresets, structureNodes, structureEdges, userEntityPreset, erSystemJson } from './data/mockData'
+import { useCasePresets, structureNodes, structureEdges, userEntityPreset, erSystemJson, sequenceSystemJson, classSystemJson, activitySystemJson, deploymentSystemJson } from './data/mockData'
 import { configsToJson, parseDiagram, jsonToConfigs, TAB_KEYS } from './utils/configSerialize'
 import i18n from './i18n'
 
@@ -150,6 +150,7 @@ function configToERState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] })
     group: n.data.group as string | undefined,
     x: n.data.x as number | undefined,
     y: n.data.y as number | undefined,
+    fields: n.data.fields as ERState['entities'][number]['fields'],
   }))
 
   // Reconstruct relationships from diamond nodes + edges
@@ -237,7 +238,10 @@ function configToDeploymentState(cfg: { nodes: Node<DiagramNodeData>[]; edges: E
   const nodes = cfg.nodes.map((n) => ({
     id: n.id,
     label: (n.data.label as string) || '',
-    nodeType: (n.type === 'database' ? 'database' : 'server') as 'server' | 'database',
+    // 原实现把非 database 一律当成 server —— 组件/制品/设备这些类型在切页签时会被悄悄改掉
+    nodeType: (['server', 'database', 'component', 'artifact', 'node'].includes(String(n.type))
+      ? n.type
+      : 'server') as DeploymentState['nodes'][number]['nodeType'],
     technology: (n.data.technology as string) || undefined,
   }))
   const edges = cfg.edges.map((e) => ({
@@ -251,10 +255,9 @@ function configToDeploymentState(cfg: { nodes: Node<DiagramNodeData>[]; edges: E
 
 // ====== Initial data ======
 
-const emptyConfig = { nodes: [], edges: [] }
-
 const initialConfigs: ConfigMap = {
-  usecase: parseDiagram(useCasePresets.admin.json),
+  // 默认给整个系统的完整用例图（全部角色 + 全部用例），而不是单个角色那一份
+  usecase: parseDiagram(useCasePresets.system.json),
   structure: parseDiagram(JSON.stringify({
     nodes: structureNodes.map((n) => ({ id: n.id, type: n.type, label: n.data.label, vertical: n.data.vertical })),
     edges: structureEdges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
@@ -267,10 +270,10 @@ const initialConfigs: ConfigMap = {
     edges: userEntityPreset.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
   })),
   er: parseDiagram(erSystemJson),
-  sequence: emptyConfig,
-  class: emptyConfig,
-  activity: emptyConfig,
-  deployment: emptyConfig,
+  sequence: parseDiagram(sequenceSystemJson),
+  class: parseDiagram(classSystemJson),
+  activity: parseDiagram(activitySystemJson),
+  deployment: parseDiagram(deploymentSystemJson),
 }
 
 function loadConfigs(): ConfigMap {
@@ -377,6 +380,20 @@ function App() {
   const [showDataExport, setShowDataExport] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [pendingImport, setPendingImport] = useState<ConfigMap | null>(null)
+  // ER 图表示法（chen=陈氏 / entity=实体直连 / attribute=字段环绕 / table=表格型）
+  const [erNotation, setErNotation] = useState<ERNotation>(() => {
+    try {
+      const saved = localStorage.getItem('diagram-er-notation')
+      if (saved === 'entity' || saved === 'attribute' || saved === 'table' || saved === 'chen') return saved
+    } catch { /* 忽略隐私模式等异常 */ }
+    return 'chen'
+  })
+  const changeErNotation = (n: ERNotation) => {
+    setErNotation(n)
+    try {
+      localStorage.setItem('diagram-er-notation', n)
+    } catch { /* 忽略 */ }
+  }
   const [showGrid, setShowGrid] = useState(true)
 
   // ====== Reset ======
@@ -512,6 +529,25 @@ function App() {
           <button onClick={() => setShowShortcuts(true)} className="px-2 py-1 text-xs text-gray-400 border rounded hover:bg-gray-50 ml-1" title={t('toolbar.shortcuts')}>?</button>
           <button onClick={() => setShowGrid(!showGrid)} className={`px-2 py-1 text-xs border rounded hover:bg-gray-50 ml-1 ${!showGrid ? 'text-red-400 border-red-200' : ''}`}>{showGrid ? t('toolbar.gridOn') : t('toolbar.gridOff')}</button>
           <button onClick={toggleLang} className="px-2 py-1 text-xs border rounded hover:bg-gray-50 ml-1">{t('toolbar.lang')}</button>
+          {active === 'er' && (
+            <div className="flex items-center gap-0.5 ml-2 pl-2 border-l" title={t('editor.erNotationHint')}>
+              <span className="text-[10px] text-gray-400 mr-1">{t('editor.erNotation')}</span>
+              {([
+                ['chen', t('editor.erNotationChen')],
+                ['entity', t('editor.erNotationEntity')],
+                ['attribute', t('editor.erNotationAttribute')],
+                ['table', t('editor.erNotationTable')],
+              ] as [ERNotation, string][]).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => changeErNotation(key)}
+                  className={`px-2 py-1 text-xs border rounded ${erNotation === key ? 'bg-black text-white border-black' : 'hover:bg-gray-50'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </header>
 
@@ -546,7 +582,7 @@ function App() {
             <StructureDiagram key={`structure-${configVersion}`} nodes={configs.structure.nodes} edges={configs.structure.edges} />
           )}
           {active === 'er' && configs.er.nodes.length > 0 && (
-            <ERDiagram key={`er-${configVersion}`} nodes={configs.er.nodes} edges={configs.er.edges} />
+            <ERDiagram key={`er-${configVersion}`} nodes={configs.er.nodes} edges={configs.er.edges} notation={erNotation} />
           )}
           {active === 'er' && configs.er.nodes.length === 0 && (
             <div className="flex items-center justify-center h-full text-gray-400">{t('editor.addErEntityHint')}</div>

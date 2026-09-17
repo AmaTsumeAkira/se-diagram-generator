@@ -1,6 +1,6 @@
 import type { Node, Edge } from '@xyflow/react'
 import type { DiagramNodeData } from '../types/diagram'
-import { layoutTreeStructure } from './layout'
+import { layoutTreeStructure, rankOfFlow, layeredLayoutOf } from './layout'
 import { collectERRelations, routeRelations } from './erRouting'
 
 type DNode = Node<DiagramNodeData>
@@ -22,8 +22,21 @@ const ELLIPSE = 'ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0
 const TREE_EDGE = 'edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=8;html=1;strokeColor=#000000;startArrow=none;endArrow=none;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;'
 const LINE = 'html=1;strokeColor=#000000;startArrow=none;endArrow=none;'
 const ARROW = 'endArrow=block;html=1;strokeColor=#000000;'
-const ARROW_DASHED = 'endArrow=block;html=1;strokeColor=#000000;dashed=1;'
+const ARROW_DASHED = 'endArrow=open;html=1;strokeColor=#000000;dashed=1;'   // 返回消息：虚线 + 开放箭头
+const ARROW_OPEN = 'endArrow=open;html=1;strokeColor=#000000;'   // 异步消息：开放箭头
 const UML_ACTOR = 'shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fillColor=none;strokeColor=#000000;'
+const UML_DB = 'shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;size=12;'
+
+/**
+ * 取边的显示文字。
+ * 项目里有两种约定：类图把关系名放在 data.label，活动/部署/时序图放在顶层 label。
+ * 两边都读，避免"生产者改了位置、消费者读不到"导致标注静默丢失。
+ */
+function edgeLabel(e: Edge<any>): string {
+  const top = (e as { label?: string }).label
+  const inData = (e.data as { label?: string } | undefined)?.label
+  return top || inData || ''
+}
 
 function rect(id: string, x: number, y: number, w: number, h: number, label: string, st = RECT) {
   return `<mxCell id="${id}" value="${esc(label)}" style="${st}" vertex="1" parent="1"><mxGeometry x="${Math.round(x)}" y="${Math.round(y)}" width="${Math.round(w)}" height="${Math.round(h)}" as="geometry"/></mxCell>`
@@ -36,6 +49,42 @@ function edge(id: string, src: string, tgt: string, st = LINE) {
 function anchoredEdge(id: string, src: string, tgt: string, st: string, exitX: number, exitY: number, entryX: number, entryY: number) {
   const style = `${st}exitX=${exitX};exitY=${exitY};exitDx=0;exitDy=0;entryX=${entryX};entryY=${entryY};entryDx=0;entryDy=0;`
   return edge(id, src, tgt, style)
+}
+
+/**
+ * 按"源/目标相对方位"决定出边点与入边点，并走正交折线。
+ * 默认的直线走法会斜穿中间的类框，连线标签也常被框压住。
+ */
+function orientedEdgeStyle(
+  src: { x: number; y: number; w: number; h: number },
+  tgt: { x: number; y: number; w: number; h: number },
+): string {
+  const scx = src.x + src.w / 2
+  const scy = src.y + src.h / 2
+  const tcx = tgt.x + tgt.w / 2
+  const tcy = tgt.y + tgt.h / 2
+  const dx = tcx - scx
+  const dy = tcy - scy
+  let ex = 0.5
+  let ey = 0.5
+  let nx = 0.5
+  let ny = 0.5
+  if (Math.abs(dy) >= Math.abs(dx)) {
+    if (dy > 0) {
+      ey = 1
+      ny = 0
+    } else {
+      ey = 0
+      ny = 1
+    }
+  } else if (dx > 0) {
+    ex = 1
+    nx = 0
+  } else {
+    ex = 0
+    nx = 1
+  }
+  return `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;exitX=${ex};exitY=${ey};exitDx=0;exitDy=0;entryX=${nx};entryY=${ny};entryDx=0;entryDy=0;`
 }
 
 function wrap(name: string, cells: string) {
@@ -248,43 +297,57 @@ export function sequenceDrawio(nodes: DNode[], edges: Edge[]): string {
   const startX = 100
   const startY = 50
 
-  // 参与者
+  // 列中心：与旧的参与者几何保持一致（左边缘 + 60）
+  const colCenter = (i: number) => startX + i * spacing + 60
+  // 参与者按角色/系统/数据库用不同图形（编辑器可以切换类型，此前一律画成矩形）
+  const boxOf = (t?: string) =>
+    t === 'actor'
+      ? { w: 56, h: 76, style: UML_ACTOR, below: true }
+      : t === 'database'
+        ? { w: 120, h: 60, style: UML_DB, below: false }
+        : { w: 120, h: 50, style: RECT, below: false }
+
   participants.forEach((p, i) => {
     const pid = nid()
     idMap.set(p.id, pid)
-    cells.push(rect(pid, startX + i * spacing, startY, 120, 50, p.data.label || '', RECT + 'verticalAlign=middle;'))
+    const box = boxOf(p.data.participantType as string | undefined)
+    const cx = colCenter(i)
+    const style = box.below
+      ? `${box.style}verticalLabelPosition=bottom;verticalAlign=top;html=1;`
+      : `${box.style}verticalAlign=middle;`
+    cells.push(
+      `<mxCell id="${pid}" value="${esc(p.data.label || '')}" style="${style}" vertex="1" parent="1">` +
+      `<mxGeometry x="${Math.round(cx - box.w / 2)}" y="${startY}" width="${box.w}" height="${box.h}" as="geometry"/></mxCell>`,
+    )
 
-    // 生命线
+    // 生命线：从图形底部往下
     const lifelineId = nid()
+    const top = startY + box.h
+    const bottom = startY + 130 + edges.length * 60
     cells.push(`<mxCell id="${lifelineId}" value="" style="endArrow=none;dashed=1;html=1;strokeColor=#000000;strokeWidth=1;" edge="1" parent="1">
       <mxGeometry relative="1" as="geometry">
-        <mxPoint x="${startX + i * spacing + 60}" y="${startY + 50}" as="sourcePoint" />
-        <mxPoint x="${startX + i * spacing + 60}" y="${startY + 50 + edges.length * 60 + 100}" as="targetPoint" />
+        <mxPoint x="${cx}" y="${top}" as="sourcePoint" />
+        <mxPoint x="${cx}" y="${bottom}" as="targetPoint" />
       </mxGeometry>
     </mxCell>`)
   })
 
-  // 消息
+  // 消息：同步=实心箭头，异步=开放箭头，返回=虚线（此前异步与同步画法相同）
   edges.forEach((msg, i) => {
-    const srcId = idMap.get(msg.source)
-    const tgtId = idMap.get(msg.target)
-    if (!srcId || !tgtId) return
-
-    const msgId = nid()
     const srcIdx = participants.findIndex(p => p.id === msg.source)
     const tgtIdx = participants.findIndex(p => p.id === msg.target)
-    const srcX = startX + srcIdx * spacing + 60
-    const tgtX = startX + tgtIdx * spacing + 60
-    const y = startY + 80 + i * 60
+    if (srcIdx < 0 || tgtIdx < 0) return
 
-    const msgData = (msg as any).data || {}
+    const msgId = nid()
+    const msgData = (msg.data || {}) as { messageType?: string }
     const msgType = msgData.messageType || 'sync'
-    const arrowStyle = msgType === 'return' ? ARROW_DASHED : ARROW
+    const arrowStyle = msgType === 'return' ? ARROW_DASHED : msgType === 'async' ? ARROW_OPEN : ARROW
+    const y = startY + 130 + i * 60
 
-    cells.push(`<mxCell id="${msgId}" value="${esc((msg as any).label || '')}" style="${arrowStyle}" edge="1" parent="1">
+    cells.push(`<mxCell id="${msgId}" value="${esc(edgeLabel(msg))}" style="${arrowStyle}" edge="1" parent="1">
       <mxGeometry relative="1" as="geometry">
-        <mxPoint x="${srcX}" y="${y}" as="sourcePoint" />
-        <mxPoint x="${tgtX}" y="${y}" as="targetPoint" />
+        <mxPoint x="${colCenter(srcIdx)}" y="${y}" as="sourcePoint" />
+        <mxPoint x="${colCenter(tgtIdx)}" y="${y}" as="targetPoint" />
       </mxGeometry>
     </mxCell>`)
   })
@@ -299,47 +362,73 @@ export function classDrawio(nodes: DNode[], edges: Edge[]): string {
   const nid = () => String(cellId++)
   const idMap = new Map<string, string>()
   const cells: string[] = []
-  const cols = Math.ceil(Math.sqrt(nodes.length))
-  const spacing = 200
   const startX = 100
   const startY = 60
 
-  nodes.forEach((node, i) => {
+  // 先按成员行数算每个类的高度（原来固定 120，成员一多就被 overflow=hidden 裁掉），
+  // 再按行累计 y，行距取该行最高者 + 70（留给关系线）
+  const LINE_H = 18
+  const geo = nodes.map((node) => {
+    const attrs = ((node.data as any).attributes as string[]) || []
+    const methods = ((node.data as any).methods as string[]) || []
+    const type = String(node.type || 'class')
+    // 节点类型也要体现在图上：interface / enum 即使没填 stereotype 也要标出来
+    const stereotype =
+      ((node.data as any).stereotype as string | undefined) ||
+      (type === 'interface' ? 'interface' : type === 'enum' ? 'enumeration' : undefined)
+    const attrH = Math.max(24, attrs.length * LINE_H + 8)
+    const methodH = Math.max(24, methods.length * LINE_H + 8)
+    return { node, attrs, methods, stereotype, attrH, methodH, w: 180, h: 26 + attrH + methodH }
+  })
+  // 按"依赖深度"分层摆位：基础类/接口在上、业务类在下，继承箭头自然朝上；
+  // 原来用 sqrt 网格，关系线会横穿整张图、标签被框压住
+  const layout = layeredLayoutOf(
+    geo.map((g) => ({ id: g.node.id, w: g.w, h: g.h })),
+    edges.map((e) => ({ source: e.source, target: e.target })),
+    {
+      hGap: 70,
+      vGap: 90,
+      startX,
+      startY,
+      // 层号只由继承/实现决定；关联/依赖只参与层内排序 ——
+      // 否则「业主 → 维修评价 → 报修单 → 设施」这种依赖链会把子类压到最底层、拉出长斜线
+      rankEdges: edges
+        .filter((e) =>
+          ['inheritance', 'implementation'].includes(String((e.data as { relationType?: string } | undefined)?.relationType)),
+        )
+        .map((e) => ({ source: e.source, target: e.target })),
+    },
+  )
+
+  geo.forEach((g) => {
     const cid = nid()
-    idMap.set(node.id, cid)
-    const x = startX + (i % cols) * spacing
-    const y = startY + Math.floor(i / cols) * 250
-    const w = 180
-    const h = 120
+    idMap.set(g.node.id, cid)
+    const at = layout.get(g.node.id) || { x: startX, y: startY }
+    const x = at.x
+    const y = at.y
+    const { w, h, attrH, methodH, attrs, methods, stereotype } = g
+    const isAbstract = !!(g.node.data as any).isAbstract
 
-    const attrs = (node.data as any).attributes || []
-    const methods = (node.data as any).methods || []
-    const stereotype = (node.data as any).stereotype
-    const isAbstract = (node.data as any).isAbstract
+    let text = g.node.data.label || ''
+    if (stereotype) text = `\u00ab${stereotype}\u00bb\\n${text}`
+    // 抽象类名用斜体：draw.io 的标签是 HTML（html=1），所以 <i> 必须保持原样，
+    // 只转义里面的文字 —— 之前整体 esc() 会把 <i> 变成 &lt;i&gt;，图上直接显示成 "<i>Name</i>"
+    const labelValue = isAbstract ? `<i>${esc(text)}</i>` : esc(text)
 
-    let label = node.data.label || ''
-    if (stereotype) label = `«${stereotype}»\\n${label}`
-    if (isAbstract) label = `<i>${label}</i>`
-
-    // 类容器
     const CLASS_STYLE = 'swimlane;fontStyle=0;align=center;startSize=26;html=1;fillColor=#ffffff;strokeColor=#000000;'
-    cells.push(`<mxCell id="${cid}" value="${esc(label)}" style="${CLASS_STYLE}" vertex="1" parent="1">
+    cells.push(`<mxCell id="${cid}" value="${labelValue}" style="${CLASS_STYLE}" vertex="1" parent="1">
       <mxGeometry x="${x}" y="${y}" width="${w}" height="${h}" as="geometry" />
     </mxCell>`)
 
-    // 属性区域
-    const attrId = nid()
-    const attrText = attrs.join('\\n')
     const ATTR_STYLE = 'text;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fillColor=#ffffff;strokeColor=#000000;'
-    cells.push(`<mxCell id="${attrId}" value="${esc(attrText)}" style="${ATTR_STYLE}" vertex="1" parent="${cid}">
-      <mxGeometry y="26" width="${w}" height="40" as="geometry" />
+    const attrId = nid()
+    cells.push(`<mxCell id="${attrId}" value="${esc(attrs.join('\\n'))}" style="${ATTR_STYLE}" vertex="1" parent="${cid}">
+      <mxGeometry y="26" width="${w}" height="${attrH}" as="geometry" />
     </mxCell>`)
 
-    // 方法区域
     const methodId = nid()
-    const methodText = methods.join('\\n')
-    cells.push(`<mxCell id="${methodId}" value="${esc(methodText)}" style="${ATTR_STYLE}" vertex="1" parent="${cid}">
-      <mxGeometry y="66" width="${w}" height="54" as="geometry" />
+    cells.push(`<mxCell id="${methodId}" value="${esc(methods.join('\\n'))}" style="${ATTR_STYLE}" vertex="1" parent="${cid}">
+      <mxGeometry y="${26 + attrH}" width="${w}" height="${methodH}" as="geometry" />
     </mxCell>`)
   })
 
@@ -372,8 +461,20 @@ export function classDrawio(nodes: DNode[], edges: Edge[]): string {
         style += 'endArrow=open;endFill=0;'
     }
 
+    const srcPos = layout.get(edge.source)
+    const tgtPos = layout.get(edge.target)
+    const srcGeo = geo.find((g) => g.node.id === edge.source)
+    const tgtGeo = geo.find((g) => g.node.id === edge.target)
+    const geom =
+      srcPos && tgtPos && srcGeo && tgtGeo
+        ? orientedEdgeStyle(
+            { ...srcPos, w: srcGeo.w, h: srcGeo.h },
+            { ...tgtPos, w: tgtGeo.w, h: tgtGeo.h },
+          )
+        : ''
+
     const edgeId = nid()
-    cells.push(`<mxCell id="${edgeId}" value="${esc((edge as any).data?.label || '')}" style="${style}" edge="1" parent="1" source="${srcId}" target="${tgtId}">
+    cells.push(`<mxCell id="${edgeId}" value="${esc(edgeLabel(edge))}" style="${geom}${style}" edge="1" parent="1" source="${srcId}" target="${tgtId}">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>`)
   })
@@ -388,36 +489,67 @@ export function activityDrawio(nodes: DNode[], edges: Edge[]): string {
   const nid = () => String(cellId++)
   const idMap = new Map<string, string>()
   const cells: string[] = []
-  const cols = Math.ceil(Math.sqrt(nodes.length))
-  const spacing = 150
   const startX = 100
   const startY = 60
+  // 活动图是"从上往下读"的流程图：先沿流程方向分层（从 start 出发 BFS），同层横向居中排列。
+  // （原实现用 sqrt 网格，流程顺序会被打乱。）
+  const rank = rankOfFlow(nodes, edges)
+  const nodeGeom = new Map<string, { x: number; y: number; w: number; h: number }>()
 
-  nodes.forEach((node, i) => {
+  const byRank = new Map<number, string[]>()
+  nodes.forEach((n) => {
+    const r = rank.get(n.id) ?? 0
+    const list = byRank.get(r)
+    if (list) list.push(n.id)
+    else byRank.set(r, [n.id])
+  })
+  const sizeOf = (t?: string, label = '') => {
+    if (t === 'start' || t === 'end') return { w: 30, h: 30 }
+    if (t === 'decision') {
+      // 菱形要能装下判断文字（原来固定 80×80，"设施是否在保修期"会溢出菱形）
+      const tw = textWidth(label, 11)
+      // 菱形内接矩形的宽只有 w/2，所以 w 至少要 2×文字宽
+      const w = Math.max(96, Math.round(tw * 2) + 20)
+      return { w, h: Math.max(64, Math.round(w * 0.62)) }
+    }
+    return { w: 150, h: 50 }
+  }
+  const cellW = 200
+  const rowPitch = 130
+  const maxCols = Math.max(1, ...[...byRank.values()].map((v) => v.length))
+  const totalW = maxCols * cellW
+
+  nodes.forEach((node) => {
     const nid2 = nid()
     idMap.set(node.id, nid2)
-    const x = startX + (i % cols) * spacing
-    const y = startY + Math.floor(i / cols) * 120
+    const r = rank.get(node.id) ?? 0
+    const row = byRank.get(r) || [node.id]
+    const col = row.indexOf(node.id)
+    const size = sizeOf(node.type, node.data.label || '')
+    // 每层整体居中；层内节点在格子里居中（圆心/菱形中心对齐）
+    const x = startX + (totalW - row.length * cellW) / 2 + col * cellW + (cellW - size.w) / 2
+    const y = startY + r * rowPitch + (rowPitch - size.h) / 2
+    nodeGeom.set(node.id, { x: Math.round(x), y: Math.round(y), w: size.w, h: size.h })
 
     switch (node.type) {
       case 'start':
         cells.push(`<mxCell id="${nid2}" value="" style="ellipse;fillColor=#000000;strokeColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="${x}" y="${y}" width="30" height="30" as="geometry" />
+          <mxGeometry x="${Math.round(x)}" y="${Math.round(y)}" width="${size.w}" height="${size.h}" as="geometry" />
         </mxCell>`)
         break
       case 'end':
         cells.push(`<mxCell id="${nid2}" value="" style="ellipse;fillColor=#000000;strokeColor=#000000;strokeWidth=2;" vertex="1" parent="1">
-          <mxGeometry x="${x}" y="${y}" width="30" height="30" as="geometry" />
+          <mxGeometry x="${Math.round(x)}" y="${Math.round(y)}" width="${size.w}" height="${size.h}" as="geometry" />
         </mxCell>`)
         break
       case 'decision':
         cells.push(`<mxCell id="${nid2}" value="${esc(node.data.label)}" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;" vertex="1" parent="1">
-          <mxGeometry x="${x}" y="${y}" width="60" height="60" as="geometry" />
+          <mxGeometry x="${Math.round(x)}" y="${Math.round(y)}" width="${size.w}" height="${size.h}" as="geometry" />
         </mxCell>`)
         break
       default:
         cells.push(`<mxCell id="${nid2}" value="${esc(node.data.label)}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;arcSize=20;" vertex="1" parent="1">
-          <mxGeometry x="${x}" y="${y}" width="140" height="50" as="geometry" />
+          <mxGeometry x="${Math.round(x)}" y="${Math.round(y)}" width="${size.w}" height="${size.h}" as="geometry" />
         </mxCell>`)
     }
   })
@@ -429,7 +561,12 @@ export function activityDrawio(nodes: DNode[], edges: Edge[]): string {
     if (!srcId || !tgtId) return
 
     const edgeId = nid()
-    cells.push(`<mxCell id="${edgeId}" value="${esc((edge as any).data?.guard ? `[${(edge as any).data.guard}]` : '')}" style="${ARROW}" edge="1" parent="1" source="${srcId}" target="${tgtId}">
+    const guard = (edge.data as { guard?: string } | undefined)?.guard
+    const guardText = guard ? `[${guard}]` : edgeLabel(edge)
+    const sp = nodeGeom.get(edge.source)
+    const tp = nodeGeom.get(edge.target)
+    const geom = sp && tp ? orientedEdgeStyle(sp, tp) : ''
+    cells.push(`<mxCell id="${edgeId}" value="${esc(guardText)}" style="${geom}${ARROW}" edge="1" parent="1" source="${srcId}" target="${tgtId}">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>`)
   })
@@ -449,32 +586,39 @@ export function deploymentDrawio(nodes: DNode[], edges: Edge[]): string {
   const startX = 100
   const startY = 60
 
+  // 各类型的图形与尺寸：服务器=立方体、数据库=圆柱（draw.io 无专用图形的用 UML 构造型标注）
+  const styleOf = (t?: string) => {
+    switch (t) {
+      case 'database':
+        return { w: 110, h: 90, prefix: '', style: 'shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;size=12;' }
+      case 'artifact':
+        return { w: 140, h: 80, prefix: '\u00abartifact\u00bb', style: 'shape=note;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;size=14;' }
+      case 'component':
+        return { w: 150, h: 80, prefix: '\u00abcomponent\u00bb', style: RECT }
+      case 'node':
+        return { w: 150, h: 80, prefix: '\u00abdevice\u00bb', style: RECT }
+      default:
+        return { w: 140, h: 100, prefix: '', style: 'shape=cube;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;size=15;' }
+    }
+  }
+
   nodes.forEach((node, i) => {
     const nid2 = nid()
     idMap.set(node.id, nid2)
     const x = startX + (i % cols) * spacing
-    const y = startY + Math.floor(i / cols) * 200
+    const y = startY + Math.floor(i / cols) * 210
+    const sh = styleOf(node.type)
+    const text = node.data.label || ''
+    const value = sh.prefix ? `${sh.prefix}\n${esc(text)}` : esc(text)
+    cells.push(`<mxCell id="${nid2}" value="${value}" style="${sh.style}" vertex="1" parent="1">
+      <mxGeometry x="${x}" y="${y}" width="${sh.w}" height="${sh.h}" as="geometry" />
+    </mxCell>`)
 
-    switch (node.type) {
-      case 'server':
-        cells.push(`<mxCell id="${nid2}" value="${esc(node.data.label)}" style="shape=cube;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;size=15;" vertex="1" parent="1">
-          <mxGeometry x="${x}" y="${y}" width="140" height="100" as="geometry" />
-        </mxCell>`)
-        break
-      case 'database':
-        cells.push(`<mxCell id="${nid2}" value="${esc(node.data.label)}" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;size=15;" vertex="1" parent="1">
-          <mxGeometry x="${x}" y="${y}" width="100" height="80" as="geometry" />
-        </mxCell>`)
-        break
-      default:
-        cells.push(rect(nid2, x, y, 120, 60, node.data.label || ''))
-    }
-
-    // 技术栈标签
-    if ((node.data as any).technology) {
+    // 技术栈标签：贴在节点正下方（按各类型实际高度偏移，原来固定 +100 对矮节点会浮空）
+    if (node.data.technology) {
       const techId = nid()
-      cells.push(`<mxCell id="${techId}" value="${esc((node.data as any).technology)}" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;fontSize=10;fontColor=#666666;" vertex="1" parent="1">
-        <mxGeometry x="${x}" y="${y + 100}" width="140" height="20" as="geometry" />
+      cells.push(`<mxCell id="${techId}" value="${esc(node.data.technology as string)}" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;fontSize=10;fontColor=#666666;" vertex="1" parent="1">
+        <mxGeometry x="${x}" y="${y + sh.h + 6}" width="${sh.w}" height="20" as="geometry" />
       </mxCell>`)
     }
   })
@@ -486,7 +630,7 @@ export function deploymentDrawio(nodes: DNode[], edges: Edge[]): string {
     if (!srcId || !tgtId) return
 
     const edgeId = nid()
-    cells.push(`<mxCell id="${edgeId}" value="${esc((edge as any).data?.label || '')}" style="html=1;strokeColor=#000000;endArrow=none;dashed=1;" edge="1" parent="1" source="${srcId}" target="${tgtId}">
+    cells.push(`<mxCell id="${edgeId}" value="${esc(edgeLabel(edge))}" style="html=1;strokeColor=#000000;endArrow=none;dashed=1;" edge="1" parent="1" source="${srcId}" target="${tgtId}">
       <mxGeometry relative="1" as="geometry" />
     </mxCell>`)
   })

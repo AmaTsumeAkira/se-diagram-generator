@@ -1,7 +1,8 @@
 import type { ERState } from '../components/panels/NodeEditor'
+import { parseFieldsText } from './erFields'
 
 interface AiERResult {
-  entities: { id: string; label: string; row?: number; col?: number }[]
+  entities: { id: string; label: string; row?: number; col?: number; fields?: string[] }[]
   relationships: {
     source: string
     target: string
@@ -52,14 +53,17 @@ export async function generateERFromAI(input: string, apiKey: string, withLayout
     : ''
 
   const entityInterface = withLayout
-    ? '{ id: string; label: string; row: number; col: number }'
-    : '{ id: string; label: string }'
+    ? '{ id: string; label: string; row: number; col: number; fields: string[] }'
+    : '{ id: string; label: string; fields: string[] }'
 
   const prompt = `你是一个资深的数据库架构师。用户将提供一段 SQL 建表语句或关于数据库的自然语言描述。
 你的任务是：提取其中的所有实体（表），将英文表名准确翻译为易懂的中文名，并推断它们之间的逻辑关联。
 
 规则：
 1. 实体（表）：提取所有的表作为实体。'id' 必须是以 'ent_' 开头的原英文表名，'label' 必须是翻译好的纯中文名。
+   - 'fields'：该表的字段列表，每个字段写成一行字符串，格式为「字段名 类型 [PK] [FK]」，
+     例如 ["user_id INT PK", "dept_id INT FK", "name VARCHAR(50)"]。主键标 PK、外键标 FK；
+     类型按 SQL 原始类型填写，没有依据时可以省略类型。
 ${layoutRule}
 2. 关系（连线）：根据外键或业务逻辑推导实体间的关系。
    - 'source' 和 'target' 必须对应实体的 id。
@@ -120,12 +124,16 @@ ${input}
     }))
 
     return {
-      entities: (result.entities || []).map(e => ({
-        id: e.id,
-        label: e.label,
-        ...(withLayout && e.row !== undefined && { row: e.row }),
-        ...(withLayout && e.col !== undefined && { col: e.col }),
-      })),
+      entities: (result.entities || []).map(e => {
+        const fields = Array.isArray(e.fields) ? parseFieldsText((e.fields as string[]).join('\n')) : []
+        return {
+          id: e.id,
+          label: e.label,
+          ...(fields.length ? { fields } : {}),
+          ...(withLayout && e.row !== undefined && { row: e.row }),
+          ...(withLayout && e.col !== undefined && { col: e.col }),
+        }
+      }),
       relationships
     }
   } catch (error: any) {

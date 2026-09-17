@@ -714,8 +714,13 @@ export function layoutErEntities(
   return placed
 }
 
-/** 按"环序 → 与中心同行/同列优先 → 曼哈顿距离"排好的格子（奇数行列，有唯一中心格） */
-function ringOrderedCells(rows: number, cols: number): Cell[] {
+/**
+ * 按"环序 → 与中心同行/同列优先 → 曼哈顿距离"排好的格子。
+ *
+ * 用途：把"实体按 BFS 展开的顺序"填进这些格子，就是枢纽居中、邻居围成一圈的版式。
+ * 表格型也复用这个排序（见 svgExport 的 erSvgTable）。
+ */
+export function ringOrderedCells(rows: number, cols: number): Cell[] {
   const cr = (rows - 1) / 2
   const cc = (cols - 1) / 2
   const cells: Cell[] = []

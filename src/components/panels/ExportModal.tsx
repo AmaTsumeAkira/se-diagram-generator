@@ -5,12 +5,14 @@ import { useCaseSvg, structureSvg, entitySvg, erSvg, sequenceSvg, classSvg, acti
 import { useCaseDrawio, structureDrawio, entityDrawio, erDrawio, sequenceDrawio, classDrawio, activityDrawio, deploymentDrawio } from '../../utils/drawioExport'
 import { useCaseVisio, structureVisio, entityVisio, erVisio, sequenceVisio, classVisio, activityVisio, deploymentVisio } from '../../utils/visioExport'
 import type { Node, Edge } from '@xyflow/react'
-import type { DiagramNodeData } from '../../types/diagram'
+import type { DiagramNodeData, ERNotation } from '../../types/diagram'
 
 interface Props {
   active: string
   config: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }
   flowRef: React.RefObject<HTMLDivElement | null>
+  /** ER 图的表示法：导出与屏幕上看到的一致 */
+  erNotation?: ERNotation
   onClose: () => void
 }
 
@@ -41,12 +43,12 @@ function buildGroups(nodes: Node<DiagramNodeData>[], edges: Edge[], active: stri
   })
 }
 
-function buildSvg(active: string, nodes: Node<DiagramNodeData>[], edges: Edge[]) {
+function buildSvg(active: string, nodes: Node<DiagramNodeData>[], edges: Edge[], erNotation: ERNotation = 'chen') {
   switch (active) {
     case 'usecase': return useCaseSvg(nodes, edges)
     case 'structure': return structureSvg(nodes, edges)
     case 'entity': return entitySvg(nodes, edges)
-    case 'er': return erSvg(nodes, edges)
+    case 'er': return erSvg(nodes, edges, { notation: erNotation })
     case 'sequence': return sequenceSvg(nodes, edges)
     case 'class': return classSvg(nodes, edges)
     case 'activity': return activitySvg(nodes, edges)
@@ -71,7 +73,7 @@ function buildDrawio(active: string, nodes: Node<DiagramNodeData>[], edges: Edge
 
 const svgPngExportTypes = new Set(['structure', 'er', 'sequence', 'class', 'activity', 'deployment'])
 
-export default function ExportModal({ active, config, flowRef, onClose }: Props) {
+export default function ExportModal({ active, config, flowRef, erNotation = 'chen', onClose }: Props) {
   const { t } = useTranslation()
   // 仅用例图/实体属性图支持按角色/实体分图导出
   const splitSupported = active === 'usecase' || active === 'entity'
@@ -120,7 +122,7 @@ export default function ExportModal({ active, config, flowRef, onClose }: Props)
 
       // 结构图：iframe 跨域无法截图，用 SVG 转 Canvas
       if (svgPngExportTypes.has(active)) {
-        const svg = buildSvg(active, config.nodes, config.edges)
+        const svg = buildSvg(active, config.nodes, config.edges, erNotation)
         const img = new Image()
         const svgBlob = new Blob([svg], { type: 'image/svg+xml' })
         const url = URL.createObjectURL(svgBlob)
@@ -175,7 +177,7 @@ export default function ExportModal({ active, config, flowRef, onClose }: Props)
   }
 
   const handleSvg = () => {
-    const svg = buildSvg(active, config.nodes, config.edges)
+    const svg = buildSvg(active, config.nodes, config.edges, erNotation)
     if (!svg) return
     const blob = new Blob([svg], { type: 'image/svg+xml' })
     const url = URL.createObjectURL(blob)
