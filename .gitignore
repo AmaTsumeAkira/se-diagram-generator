@@ -23,3 +23,5 @@ dist-ssr
 *.sln
 *.sw?
 .claude/
+# 本地工作状态（与 .claude/ 同理，不进版本库）
+.workbuddy/
