@@ -258,6 +258,7 @@ export default {
     close: '收起',
   },
   diagram: {
+    fitView: '适应画布',
     zoomIn: '放大',
     zoomOut: '缩小',
     zoomReset: '恢复 100%',

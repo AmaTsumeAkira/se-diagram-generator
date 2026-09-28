@@ -258,6 +258,7 @@ export default {
     close: 'Collapse',
   },
   diagram: {
+    fitView: 'Fit view',
     zoomIn: 'Zoom in',
     zoomOut: 'Zoom out',
     zoomReset: 'Reset to 100%',
