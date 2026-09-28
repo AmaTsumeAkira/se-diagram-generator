@@ -78,13 +78,17 @@ export function translateTableName(name: string): string {
   // 去掉 schema 前缀
   const base = cleaned.includes('.') ? cleaned.split('.').pop()! : cleaned
   if (/[\u4e00-\u9fa5]/.test(base)) return base
-  const parts = base
-    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
-    .split(/[_\-\s]+/)
-    .filter(Boolean)
+  const normalized = base.replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+  const parts = normalized.split(/[_\-\s]+/).filter(Boolean)
   if (!parts.length) return base
-  const mapped = parts.map((p) => lookupWord(p) ?? p)
-  return mapped.join('')
+  const mapped = parts.map((p) => lookupWord(p))
+  // 整段命中才拼接中文（user_role → 用户角色）
+  if (mapped.every((v) => v !== undefined)) return mapped.join('')
+  // 有未命中的词：保留原分隔符，只翻译命中的段（tb_emp → tb_emp、sys_dept → sys_部门）
+  return normalized
+    .split(/([_\-\s]+)/)
+    .map((seg) => (/^[_\-\s]*$/.test(seg) ? seg : lookupWord(seg) ?? seg))
+    .join('')
 }
 
 /** 多词表名优先整体命中（如 order_item → 订单明细） */

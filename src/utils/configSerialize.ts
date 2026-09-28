@@ -97,11 +97,18 @@ export function parseDiagram(text: string): ConfigLike {
 export function jsonToConfigs(json: string): Record<DiagramType, ConfigLike> | null {
   try {
     const flat = JSON.parse(json)
+    // 形状校验：必须是对象，且至少含一个图表类型的键。
+    // 否则（例如单图 `{nodes,edges}`、空对象 `{}`、数组）返回 null，
+    // 由调用方提示「JSON 格式不正确」，不再静默把 8 张图全部清空。
+    if (!flat || typeof flat !== 'object' || Array.isArray(flat)) return null
+    if (!TAB_KEYS.some((key) => flat[key] !== undefined)) return null
+
     const configs = {} as Record<DiagramType, ConfigLike>
     for (const key of TAB_KEYS) {
       configs[key] = flat[key] ? parseDiagram(JSON.stringify(flat[key])) : { nodes: [], edges: [] }
-      // 用例图：读入时归一化，避免历史/导入数据里"同一个用例被多个角色引用"而膨胀
+      // 读入时归一化，避免历史/导入数据里"同一个子节点被多个父级引用"而膨胀
       if (key === 'usecase') configs[key] = normalizeUseCaseConfig(configs[key])
+      if (key === 'entity') configs[key] = normalizeEntityConfig(configs[key])
     }
     return configs
   } catch { return null }
@@ -166,6 +173,70 @@ export function normalizeUseCaseConfig(cfg: ConfigLike): ConfigLike {
   }
 
   // 未被任何角色引用的节点 / 边原样保留（例如导入数据里的未关联用例）
+  const emitted = new Set(outNodes.map((n) => n.id))
+  for (const n of nodes) {
+    if (emitted.has(n.id)) continue
+    emitted.add(n.id)
+    outNodes.push(n)
+  }
+  edges.forEach((e, i) => { if (!consumedEdge.has(i)) outEdges.push(e) })
+
+  return { nodes: outNodes, edges: outEdges }
+}
+
+/**
+ * 实体属性图配置归一化 —— 与用例图同源的问题：一个属性（ellipse）被多个实体引用时，
+ * 「配置（一个属性一个节点）」与「编辑态（每个实体一份属性清单）」互转会交叉放大
+ * （实测每次「应用修改」节点数翻倍）。
+ *
+ * 规则与 normalizeUseCaseConfig 完全一致：按实体出边顺序收集属性、同实体内重复引用只留第一条、
+ * 同一属性 id 被多个实体引用时从第二个实体起派生 `${attrId}__${entityId}`；
+ * 未被任何实体引用的节点/边原样保留（编辑器里有「未关联属性」区块可管理）。
+ */
+export function normalizeEntityConfig(cfg: ConfigLike): ConfigLike {
+  const nodes = Array.isArray(cfg?.nodes) ? cfg.nodes : []
+  const edges = Array.isArray(cfg?.edges) ? cfg.edges : []
+
+  const firstById = new Map<string, Node<DiagramNodeData>>()
+  for (const n of nodes) if (!firstById.has(n.id)) firstById.set(n.id, n)
+
+  const entities: Node<DiagramNodeData>[] = []
+  const entityIds = new Set<string>()
+  for (const n of nodes) {
+    if (n.type !== 'rectangle' || entityIds.has(n.id)) continue
+    entityIds.add(n.id)
+    entities.push(n)
+  }
+
+  const usedIds = new Set<string>(entityIds)
+  const outNodes: Node<DiagramNodeData>[] = []
+  const outEdges: Edge[] = []
+  const consumedEdge = new Set<number>()
+
+  for (const entity of entities) {
+    outNodes.push(entity)
+    const seenTargets = new Set<string>()
+    edges.forEach((e, i) => {
+      if (consumedEdge.has(i) || String(e.source) !== entity.id) return
+      const src = firstById.get(String(e.target))
+      if (!src || src.type !== 'ellipse') return
+      consumedEdge.add(i)
+      if (seenTargets.has(src.id)) return
+      seenTargets.add(src.id)
+
+      let id = src.id
+      if (usedIds.has(id)) {
+        let k = 1
+        let candidate = `${src.id}__${entity.id}`
+        while (usedIds.has(candidate)) candidate = `${src.id}__${entity.id}_${++k}`
+        id = candidate
+      }
+      usedIds.add(id)
+      outNodes.push(id === src.id ? src : { ...src, id })
+      outEdges.push({ ...e, target: id })
+    })
+  }
+
   const emitted = new Set(outNodes.map((n) => n.id))
   for (const n of nodes) {
     if (emitted.has(n.id)) continue

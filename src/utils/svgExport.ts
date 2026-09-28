@@ -897,13 +897,25 @@ function erPathD(pts: number[][]): string {
 
 /** 折线中点（按弧长一半），用于放联系名 */
 function midOfPolyline(pts: number[][]): number[] {
+  return pointAlong(pts, 0.5)
+}
+
+/**
+ * 折线上按弧长比例取点（frac ∈ [0,1]），用于给"联系名"找备选落点。
+ *
+ * 场景：联系名默认放折线中点，而折线中段常常正压在某张表格上（实测「担任」压住
+ * emp_id/emp_name 两行文字）。折线两端一定在表外，所以把 25%/40%/60%/75% 也交给
+ * 放置器当备选锚点，它才能把标签挪出表格。
+ */
+function pointAlong(pts: number[][], frac: number): number[] {
   let total = 0
   for (let i = 0; i < pts.length - 1; i++) total += Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1])
+  const target = total * frac
   let acc = 0
   for (let i = 0; i < pts.length - 1; i++) {
     const d = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1])
-    if (acc + d >= total / 2) {
-      const t = d > 0 ? (total / 2 - acc) / d : 0
+    if (acc + d >= target) {
+      const t = d > 0 ? (target - acc) / d : 0
       return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * t, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * t]
     }
     acc += d
@@ -916,6 +928,21 @@ function measureText(s: string, fs = 12): number {
   let w = 0
   for (const ch of s) w += ch.charCodeAt(0) > 127 ? fs : fs * 0.6
   return w
+}
+
+/**
+ * 联系名的备选锚点：折线上 25%/40%/60%/75% 处。
+ * 中点常常正落在表格/实体内部（联系名会压住里面的文字），而折线两端一定在外侧，
+ * 把它们交给 makeLabelPlacer 当锚点，标签才有地方可挪。
+ */
+function labelAltPoints(pts: number[][]): [number, number][] {
+  if (pts.length < 2) return []
+  const out: [number, number][] = []
+  for (const f of [0.12, 0.25, 0.4, 0.6, 0.75, 0.88]) {
+    const p = pointAlong(pts, f)
+    out.push([p[0], p[1] - 10])
+  }
+  return out
 }
 
 /** 带白色描边的文字（压在线/框上也读得清） */
@@ -965,38 +992,87 @@ function erGroupFrames(
  * 需要的场景：寻线引擎已经把基数标注放好了，而"联系名"是渲染层后放的 ——
  * 两者互不知情就会压在一起（同一条联系的中点、以及同一对实体的多条联系尤其明显）。
  */
-function makeLabelPlacer(avoidBoxes: { x: number; y: number; w: number; h: number }[] = []) {
+function makeLabelPlacer(
+  avoidBoxes: { x: number; y: number; w: number; h: number }[] = [],
+  anchor: 'middle' | 'alphabetic' = 'alphabetic',
+) {
   const placed: { x: number; y: number; w: number; h: number }[] = []
+  /**
+   * 估算文字的"实际渲染盒"。
+   * 基数/联系名都带 4px 白色描边（paint-order: stroke），而 getBBox 会把描边算进去 ——
+   * 只按 measureText 估宽会让"看起来已经避开"的标签实际仍有 1~2px 相交
+   * （实测「N」压住联系名「发布」148px²）。这里把描边计入，并按锚点方式摆正盒子：
+   * middle = dominant-baseline:middle（基数标注）；alphabetic = 常规基线（erText）。
+   */
   const boxOf = (x: number, y: number, text: string, size: number) => {
-    const w = measureText(text, size)
-    return { x: x - w / 2, y: y - 8, w, h: 16 }
+    const w = measureText(text, size) + 4
+    const h = size * 1.15 + 4
+    const top = anchor === 'middle' ? y - h / 2 : y - size * 0.8 - 2
+    return { x: x - w / 2, y: top, w, h }
   }
-  const overlap = (a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }, m: number) =>
-    a.x < b.x + b.w + m && b.x < a.x + a.w + m && a.y < b.y + b.h + m && b.y < a.y + a.h + m
-  const clash = (a: { x: number; y: number; w: number; h: number }) =>
-    placed.some((b) => overlap(a, b, 2)) || avoidBoxes.some((b) => overlap(a, b, 4))
+  /** 两个盒子（各外扩 m/2，等价于旧实现里"留 m 净空"）的重叠面积；0 = 互不干扰 */
+  const overlapArea = (
+    a: { x: number; y: number; w: number; h: number },
+    b: { x: number; y: number; w: number; h: number },
+    m: number,
+  ) => {
+    const ox = Math.min(a.x + a.w + m / 2, b.x + b.w + m / 2) - Math.max(a.x - m / 2, b.x - m / 2)
+    const oy = Math.min(a.y + a.h + m / 2, b.y + b.h + m / 2) - Math.max(a.y - m / 2, b.y - m / 2)
+    return ox > 0 && oy > 0 ? ox * oy : 0
+  }
+  const costOf = (a: { x: number; y: number; w: number; h: number }) => {
+    let c = 0
+    for (const b of placed) c += overlapArea(a, b, 2)
+    // 实体框 / 表格行文字代价 ×2：宁可离自己的连线远一点，也不要压住图形里的文字
+    for (const b of avoidBoxes) c += overlapArea(a, b, 4) * 2
+    return c
+  }
   return {
     /** 预占位（寻线引擎放好的基数标注） */
     reserve(x: number, y: number, text: string, size: number) {
       placed.push(boxOf(x, y, text, size))
     },
-    place(x: number, y: number, text: string, size: number): { x: number; y: number } {
+    /**
+     * 放置一个浮动标签。
+     * @param alts 备选锚点（例如折线上 25%/75% 处的点）—— 主锚点周围全被占满时用它们。
+     * 所有候选都冲突时**不再退回主锚点**（那正是"联系名压住表格行文字"的来源），
+     * 而是取重叠面积最小的那个候选。
+     */
+    place(x: number, y: number, text: string, size: number, alts: [number, number][] = []): { x: number; y: number } {
       const w = measureText(text, size)
+      // 阶梯要"够长"：寻线引擎在候选全被挡住时会兜底把标注放回原处（默认示例实测有基数
+      // 标注落在表框内部、离最近空位 >60px），旧阶梯最多只能挪 64px，于是两个标签一起
+      // 卡在表里互相压住（「N」压「发布」148px²）。这里把纵向扩到 ±128、横向扩到 ±(w+100)。
       const ladder: [number, number][] = [
-        [0, 0], [0, -16], [0, 16], [0, -30], [0, 30],
+        [0, 0], [0, -16], [0, 16], [0, -30], [0, 30], [0, -46], [0, 46], [0, -64], [0, 64],
+        [0, -96], [0, 96], [0, -128], [0, 128],
         [-w / 2 - 10, 0], [w / 2 + 10, 0],
-        [-w / 2 - 24, -16], [w / 2 + 24, -16], [-w / 2 - 24, 16], [w / 2 + 24, 16],
+        [-w / 2 - 10, -16], [w / 2 + 10, -16], [-w / 2 - 10, 16], [w / 2 + 10, 16],
+        [-w / 2 - 24, -30], [w / 2 + 24, -30], [-w / 2 - 24, 30], [w / 2 + 24, 30],
+        [-w / 2 - 40, -46], [w / 2 + 40, -46], [-w / 2 - 40, 46], [w / 2 + 40, 46],
+        [-w / 2 - 56, -64], [w / 2 + 56, -64], [-w / 2 - 56, 64], [w / 2 + 56, 64],
+        [-w / 2 - 72, -96], [w / 2 + 72, -96], [-w / 2 - 72, 96], [w / 2 + 72, 96],
+        [-w / 2 - 100, -128], [w / 2 + 100, -128], [-w / 2 - 100, 128], [w / 2 + 100, 128],
       ]
-      for (const [dx, dy] of ladder) {
-        const cand = boxOf(x + dx, y + dy, text, size)
-        if (!clash(cand)) {
-          placed.push(cand)
-          return { x: x + dx, y: y + dy }
+      const anchors: [number, number][] = [[x, y], ...alts]
+      let best: { x: number; y: number; box: { x: number; y: number; w: number; h: number } } | null = null
+      let bestCost = Infinity
+      for (const [ax, ay] of anchors) {
+        for (const [dx, dy] of ladder) {
+          const cand = boxOf(ax + dx, ay + dy, text, size)
+          const c = costOf(cand)
+          if (c === 0) {
+            placed.push(cand)
+            return { x: ax + dx, y: ay + dy }
+          }
+          if (c < bestCost) {
+            bestCost = c
+            best = { x: ax + dx, y: ay + dy, box: cand }
+          }
         }
       }
-      const fallback = boxOf(x, y, text, size)
-      placed.push(fallback)
-      return { x, y }
+      placed.push(best!.box)
+      return { x: best!.x, y: best!.y }
     },
   }
 }
@@ -1061,7 +1137,7 @@ function erSvgDirect(nodes: DNode[], edges: Edge[]): string {
     if (rel?.tgtCard && rd.tgtCardAt) labels += erText(rd.tgtCardAt.x, rd.tgtCardAt.y, rel.tgtCard, 13)
     if (rel?.label) {
       const mid = midOfPolyline(rd.points)
-      const at = placer.place(mid[0], mid[1] - 10, rel.label, 12)
+      const at = placer.place(mid[0], mid[1] - 10, rel.label, 12, labelAltPoints(rd.points))
       labels += erText(at.x, at.y, rel.label, 12)
     }
   }
@@ -1119,13 +1195,16 @@ function erSvgAttribute(nodes: DNode[], edges: Edge[]): string {
 
   /**
    * 环的半径 = 三者取最大：
-   *   · 容下实体框（半对角线 + 余量）；
-   *   · 整圈均分 n 个字段也不重叠（保底公式）；
-   *   · 让 n 个字段**一行就能排进一个扇区**（按"保守扇区宽 115°"估算，
-   *     实际扇区通常更宽，于是字段自然聚成一簇）。
+   *   · 容下实体框（半对角线 + 余量）与最长的字段椭圆（否则椭圆会压在实体框上）；
+   *   · 按"整圈可用弧长"容纳全部字段的保守估计（可用弧只按 80% 算 —— 剩下 20% 留给连线出口）。
+   *
+   * **不再设硬顶**（原来是 RING_MAX = 240）：字段多/字段长时半径随需求增大。
+   * 硬顶 + "兜底全塞进第一个扇区"正是 42 字段表 82 组椭圆相交（最深 9641px²）的根因；
+   * 半径变大只是画布变大（容器可横向滚动、字号不变），不会再让椭圆互相重叠。
    */
-  const RING_SECTOR_GUESS = 2.0 // rad ≈ 115°
-  const RING_MAX = 240
+  const RING_USABLE_ARC = Math.PI * 2 * 0.8
+  /** 相邻字段椭圆包围盒之间要留的净空（吸收坐标取整带来的 ±0.5px 误差） */
+  const ELLIPSE_GAP = 2
   const baseRing = (ent: DNode) => {
     const fs = fieldsOf(ent)
     if (!fs.length) return { a: 0, rxMax: 0 }
@@ -1133,11 +1212,11 @@ function erSvgAttribute(nodes: DNode[], edges: Edge[]): string {
     let rxMax = 0
     for (const v of rx) rxMax = Math.max(rxMax, v)
     let needSum = 0
-    for (let i = 1; i < rx.length; i++) needSum += rx[i] + rx[i - 1] + 14
+    for (let i = 1; i < rx.length; i++) needSum += rx[i] + rx[i - 1] + ELLIPSE_GAP
     const half = Math.hypot(entWOf(ent) / 2, ENT_H / 2)
-    const aBase = Math.max(Math.round(half) + 56, 84 + 11 * fs.length)
-    const aFit = needSum > 0 ? Math.ceil(needSum / (RING_SECTOR_GUESS - 0.16)) : 0
-    return { a: Math.min(RING_MAX, Math.max(aBase, aFit)), rxMax }
+    const aBase = Math.max(Math.round(half) + 56, 84 + 11 * fs.length, rxMax + 12)
+    const aFit = needSum > 0 ? Math.ceil(needSum / RING_USABLE_ARC) : 0
+    return { a: Math.max(aBase, aFit), rxMax }
   }
 
   // ── 2) 把"实体 + 字段环"当作一个单元做分离，避免环与环相撞 ──
@@ -1277,6 +1356,58 @@ function erSvgAttribute(nodes: DNode[], edges: Edge[]): string {
   const placeFans = (routed: Routed) => {
     const exits = exitsFrom(routed)
     const attrOf = new Map<string, AttrSpot[]>()
+
+    /**
+     * 候选角度：空闲扇区优先（宽度降序、从扇区中心向两侧交替推进 —— 保持"字段贴着排成一簇"
+     * 的教材外观），全部扇区扫完后**兜底再扫整圈**。
+     *
+     * 兜底扫整圈是必需的一道安全网：只要圆环上还有位置就一定能找到，绝不会像旧实现那样
+     * 把剩余字段无脑塞进第一个扇区（42 字段时 82 组椭圆相交的直接原因）。
+     */
+    const candidateAngles = (sectors: [number, number][]): number[] => {
+      const STEP = 0.006
+      const TAU = Math.PI * 2
+      const out: number[] = []
+      for (const [s0, s1] of sectors) {
+        const mid = (s0 + s1) / 2
+        const half = (s1 - s0) / 2 - 0.02
+        for (let k = 0; k * STEP <= half; k++) {
+          out.push(mid + k * STEP)
+          if (k) out.push(mid - k * STEP)
+        }
+      }
+      for (let k = 0; k * STEP < TAU; k++) out.push(-Math.PI / 2 + k * STEP)
+      return out
+    }
+
+    /**
+     * 该位置放一个字段椭圆，是否会被某条联系折线穿过。
+     *
+     * 前面已经用"环带占用角度"避开了连线，但那条路只保证**本实体的**连线不占用
+     * 扇区方向 —— 别的实体的连线仍可能从这片扇区穿过去（实测残留 1 个椭圆被穿）。
+     * 所以这里直接拿最终折线做一次精确检查。
+     */
+    const lineHits = (cx: number, cy: number, rx2: number) => {
+      let n = 0
+      for (const rd of routed) {
+        for (let i = 0; i + 1 < rd.points.length; i++) {
+          const x1 = rd.points[i][0]
+          const y1 = rd.points[i][1]
+          const x2 = rd.points[i + 1][0]
+          const y2 = rd.points[i + 1][1]
+          const steps = Math.max(1, Math.ceil(Math.hypot(x2 - x1, y2 - y1) / 8))
+          for (let k = 0; k <= steps; k++) {
+            const x = x1 + ((x2 - x1) * k) / steps
+            const y = y1 + ((y2 - y1) * k) / steps
+            const nx = (x - cx) / (rx2 + 2)
+            const ny = (y - cy) / (RY + 2)
+            if (nx * nx + ny * ny < 1) n++
+          }
+        }
+      }
+      return n
+    }
+
     entities.forEach((ent) => {
       const fs = fieldsOf(ent)
       if (!fs.length) return
@@ -1284,113 +1415,51 @@ function erSvgAttribute(nodes: DNode[], edges: Edge[]): string {
       const { a } = baseRing(ent)
       const rx = fs.map((f) => rxOf(labelOf(f)))
 
-      // 无连线：沿用"整圈从正上方起均分"（与实体属性图一致）
-      const sectors = freeSectorsOf(exits.get(ent.id) || [])
-      if (!sectors.length) {
-        attrOf.set(
-          ent.id,
-          fs.map((f, i) => {
-            const t = -Math.PI / 2 + (Math.PI * 2 * i) / fs.length
-            return { f, x: p.cx + a * Math.cos(t), y: p.cy + a * Math.sin(t), rx: rx[i] }
-          }),
-        )
-        return
+      // 候选角度：无连线时沿用"整圈从正上方起均分"（与实体属性图一致）打头，
+      // 再跟上空闲扇区（贴着排）与整圈兜底。
+      const exitList = exits.get(ent.id) || []
+      const sectors = freeSectorsOf(exitList)
+      const cands: number[] = []
+      if (!exitList.length) {
+        for (let i = 0; i < fs.length; i++) cands.push(-Math.PI / 2 + (Math.PI * 2 * i) / fs.length)
       }
+      cands.push(...candidateAngles(sectors))
 
-      /** 在圆环上从 0 起推进角度，使相邻椭圆刚好不重叠 */
-      const walk = (from: number, count: number) => {
-        const offs: number[] = [0]
-        for (let i = 1; i < count; i++) {
-          const need = rx[from + i] + rx[from + i - 1] + 14
-          let t = offs[i - 1]
-          let k = 0
-          while (k++ < 500) {
-            t += 0.02
-            const dx = a * (Math.cos(t) - Math.cos(offs[i - 1]))
-            const dy = a * (Math.sin(t) - Math.sin(offs[i - 1]))
-            if (Math.hypot(dx, dy) >= need) break
-          }
-          offs.push(t)
-        }
-        return offs
-      }
-
-      // 字段分配到各个空闲扇区（按宽度从大到小），每个扇区的字段贴着排在扇区中心。
-      // 故意**不往外再套一层环**：那会超出 baseRing 的外接框，而分离用的单元尺寸
-      // 正是按这个外接框算的 —— 一旦超出就可能撞上邻居。塞不下的转到下一个扇区。
       const spots: AttrSpot[] = []
-      /**
-       * 该位置放一个字段椭圆，是否会被某条联系折线穿过。
-       *
-       * 前面已经用"环带占用角度"避开了连线，但那条路只保证**本实体的**连线不占用
-       * 扇区方向 —— 别的实体的连线仍可能从这片扇区穿过去（实测残留 1 个椭圆被穿）。
-       * 所以这里直接拿最终折线做一次精确检查。
-       */
-      const lineHits = (cx: number, cy: number, rx2: number) => {
-        let n = 0
-        for (const rd of routed) {
-          for (let i = 0; i + 1 < rd.points.length; i++) {
-            const x1 = rd.points[i][0]
-            const y1 = rd.points[i][1]
-            const x2 = rd.points[i + 1][0]
-            const y2 = rd.points[i + 1][1]
-            const steps = Math.max(1, Math.ceil(Math.hypot(x2 - x1, y2 - y1) / 8))
-            for (let k = 0; k <= steps; k++) {
-              const x = x1 + ((x2 - x1) * k) / steps
-              const y = y1 + ((y2 - y1) * k) / steps
-              const nx = (x - cx) / (rx2 + 2)
-              const ny = (y - cy) / (RY + 2)
-              if (nx * nx + ny * ny < 1) n++
-            }
+      /** 与已放置字段椭圆的包围盒是否相交（与验收口径一致），并留 ELLIPSE_GAP 净空吸收取整误差 */
+      const hitsSpot = (x: number, y: number, r: number) =>
+        spots.some(
+          (s) =>
+            Math.abs(x - s.x) < r + s.rx + ELLIPSE_GAP &&
+            Math.abs(y - s.y) < RY * 2 + ELLIPSE_GAP,
+        )
+
+      // 逐个字段放置：取"第一个与已放置椭圆都不相交"的候选角度；同一次里再用 lineHits
+      // 挑"没被连线穿过"的那个（上限 10 个候选，避免逐点检查拖慢渲染）。
+      // 半径 a 按 needSum ≤ 0.8·2πa 选取，整圈必然放得下；万一扇区被连线切得太碎，
+      // 逐级外扩半径重扫 —— 半径越大角度需求越小，一定能放下，绝不重叠。
+      fs.forEach((f, i) => {
+        let best: { x: number; y: number; hits: number } | null = null
+        let radius = a
+        for (let round = 0; round < 24 && !best; round++) {
+          let examined = 0
+          for (const t of cands) {
+            const x = p.cx + radius * Math.cos(t)
+            const y = p.cy + radius * Math.sin(t)
+            if (hitsSpot(x, y, rx[i])) continue
+            const hits = lineHits(x, y, rx[i])
+            if (!best || hits < best.hits) best = { x, y, hits }
+            if (best.hits === 0 || ++examined >= 10) break
           }
+          if (!best) radius += Math.max(40, RY * 3)
         }
-        return n
-      }
-      const put = (from: number, cnt: number, s0: number, s1: number) => {
-        const offs = walk(from, cnt)
-        const w = offs[offs.length - 1]
-        const mid = (s0 + s1) / 2
-        const lo = s0 + 0.08 + w / 2
-        const hi = s1 - 0.08 - w / 2
-        // 把整簇字段沿扇区平移：先找"完全没被连线穿过"的位置；都不行就取冲突最少的那个
-        // （单调改进 —— 至少不会比扇区中心更差）。候选按"离中心近"优先，同分时取靠中间的。
-        const ts = hi > lo ? [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8, 0.1, 0.9, 0.02, 0.98] : [0.5]
-        let base = mid
-        let bestHits = Infinity
-        for (const t of ts) {
-          const cand = hi > lo ? lo + (hi - lo) * t : mid
-          let n = 0
-          for (let i = 0; i < cnt; i++) {
-            const tt = cand - w / 2 + offs[i]
-            n += lineHits(p.cx + a * Math.cos(tt), p.cy + a * Math.sin(tt), rx[from + i])
-          }
-          if (n < bestHits) {
-            bestHits = n
-            base = cand
-            if (n === 0) break
-          }
+        if (!best) {
+          // 理论不可达（整圈可用时半径 a 就能放下全部字段）；保底仍取不同角度，不留重叠。
+          const t = -Math.PI / 2 + (Math.PI * 2 * i) / Math.max(1, fs.length)
+          best = { x: p.cx + radius * Math.cos(t), y: p.cy + radius * Math.sin(t), hits: 0 }
         }
-        for (let i = 0; i < cnt; i++) {
-          const t = base - w / 2 + offs[i]
-          spots.push({ f: fs[from + i], x: p.cx + a * Math.cos(t), y: p.cy + a * Math.sin(t), rx: rx[from + i] })
-        }
-      }
-      let done = 0
-      for (const [s0, s1] of sectors) {
-        if (done >= fs.length) break
-        const limit = Math.max(0.4, s1 - s0 - 0.16)
-        let fit = 0
-        for (let c = 1; done + c <= fs.length; c++) {
-          const offs = walk(done, c)
-          if (offs[offs.length - 1] <= limit) fit = c
-          else break
-        }
-        if (!fit) continue
-        put(done, fit, s0, s1)
-        done += fit
-      }
-      // 兜底：所有扇区都放不下时，把剩余的塞进最大扇区（允许略微越过扇区边界）
-      if (done < fs.length) put(done, fs.length - done, sectors[0][0], sectors[0][1])
+        spots.push({ f, x: best.x, y: best.y, rx: rx[i] })
+      })
       attrOf.set(ent.id, spots)
     })
 
@@ -1421,10 +1490,13 @@ function erSvgAttribute(nodes: DNode[], edges: Edge[]): string {
   // 这一步很关键：迭代中途的每一轮，寻线用的都是"上一轮"的字段障碍，
   // 于是最后呈现的连线可能并没有绕开最后呈现的字段（实测残留 26 个"连线压椭圆"采样点）。
   const pathKey = (rs: Routed) => rs.map((r) => r.points.map((q) => q.join(',')).join(';')).join('|')
-  let routed = routeRelations(boxesOf(), relations)
+  // 与表格型对齐：出口锚点沿边错开、跨实体对连线互相分道。
+  // 否则多条联系的基数标注会落在同一个像素上（默认示例实测 4 个「1」重叠、7 组同坐标）。
+  const routeOpts = { spreadAnchors: true, separateOverlaps: true }
+  let routed = routeRelations(boxesOf(), relations, routeOpts)
   let fans = placeFans(routed)
   for (let it = 0; it < 6; it++) {
-    const next = routeRelations(boxesOf(), relations, { extraObstacles: fans.obstacles })
+    const next = routeRelations(boxesOf(), relations, { ...routeOpts, extraObstacles: fans.obstacles })
     const stable = pathKey(next) === pathKey(routed)
     routed = next
     // 关键：字段摆位永远针对"当前这一版连线"来算 —— 这样"呈现的字段"一定不与
@@ -1505,14 +1577,43 @@ function erSvgAttribute(nodes: DNode[], edges: Edge[]): string {
   const cardStyle =
     'stroke-linejoin="round" stroke-linecap="round" stroke-width="4" stroke="#fff" paint-order="stroke fill" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#000"'
 
+  /**
+   * 基数标注放置器：寻线引擎只保证标注之间不重叠，不知道实体名文字与联系菱形的位置，
+   * 于是标注会压住实体名（实测「N」「1」压住「会议记录表」「员工主表（yuangong）」）。
+   * 这里把实体框、实体名、联系名一起登记为障碍，标注只在必要时做小幅平移。
+   */
+  const cardPlacer = makeLabelPlacer(
+    entities.map((ent) => {
+      const q = pos.get(ent.id)!
+      return { x: q.x, y: q.y, w: q.w, h: ENT_H }
+    }),
+    'middle',
+  )
+  entities.forEach((ent) => {
+    const q = pos.get(ent.id)!
+    cardPlacer.reserve(q.cx, q.cy + 5, String(ent.data.label || ''), ER_ENTITY_FONT)
+  })
+  for (const rel of relations) {
+    const rd = routedById.get(rel.id)
+    const dia = diaById.get(rel.id)
+    if (!rd || !dia) continue
+    cardPlacer.reserve(rd.diamond.x, rd.diamond.y, safeLabel(dia.data), 13)
+  }
+
   // 联系连线 + 两端基数
   for (const rel of relations) {
     const rd = routedById.get(rel.id)
     if (!rd) continue
     svgLines += `<path d="${erPathD(rd.points)}" stroke="#000" stroke-width="1.5" fill="none" stroke-linecap="square"/>`
     for (const pt of rd.points) acc(pt[0], pt[1])
-    if (rel.srcCard && rd.srcCardAt) svgLabels += `<text x="${rd.srcCardAt.x}" y="${rd.srcCardAt.y}" dominant-baseline="middle" ${cardStyle}>${esc(rel.srcCard)}</text>`
-    if (rel.tgtCard && rd.tgtCardAt) svgLabels += `<text x="${rd.tgtCardAt.x}" y="${rd.tgtCardAt.y}" dominant-baseline="middle" ${cardStyle}>${esc(rel.tgtCard)}</text>`
+    if (rel.srcCard && rd.srcCardAt) {
+      const at = cardPlacer.place(rd.srcCardAt.x, rd.srcCardAt.y, rel.srcCard, 14)
+      svgLabels += `<text x="${at.x}" y="${at.y}" dominant-baseline="middle" ${cardStyle}>${esc(rel.srcCard)}</text>`
+    }
+    if (rel.tgtCard && rd.tgtCardAt) {
+      const at = cardPlacer.place(rd.tgtCardAt.x, rd.tgtCardAt.y, rel.tgtCard, 14)
+      svgLabels += `<text x="${at.x}" y="${at.y}" dominant-baseline="middle" ${cardStyle}>${esc(rel.tgtCard)}</text>`
+    }
   }
 
   // 菱形（联系）
@@ -1655,12 +1756,27 @@ function erSvgTable(nodes: DNode[], edges: Edge[]): string {
   // 列宽取该列最宽的表、行高取该行最高的表，保证表格大小不一时也不互相压住。
   const H_GAP = 100
   const V_GAP = 90
+
+  /**
+   * 实体在配置里的绝对坐标（x、y 同时为数字才认）。
+   *
+   * 表格型此前完全无视 x/y，永远按自己的网格排出 100/415/734/1049 @y=60 —— 用户在
+   * 编辑器里排好的位置（AI 布局 / SQL 导入的 layoutErEntities 结果）被丢掉。
+   * 规则：**有 x/y 就用 x/y 当表框左上角；缺失才落到网格**；网格位若与已有表框相撞再向下让位。
+   */
+  const absOf = (ent: DNode): { x: number; y: number } | null => {
+    const x = ent.data.x
+    const y = ent.data.y
+    return typeof x === 'number' && typeof y === 'number' ? { x, y } : null
+  }
+  const allAbs = entities.length > 0 && entities.every((ent) => absOf(ent) !== null)
+
   const layoutOf = (assign: Map<string, { r: number; c: number }>) => {
     const colW = new Array(cols).fill(180)
     const rowH = new Array(rows).fill(120)
     entities.forEach((ent) => {
       const cell = assign.get(ent.id)
-      if (!cell) return
+      if (!cell || absOf(ent)) return
       colW[cell.c] = Math.max(colW[cell.c], widthOf(ent))
       rowH[cell.r] = Math.max(rowH[cell.r], heightOf(ent))
     })
@@ -1677,14 +1793,42 @@ function erSvgTable(nodes: DNode[], edges: Edge[]): string {
       accY += rowH[r] + V_GAP
     }
     const placed = new Map<string, ErPlaced>()
-    entities.forEach((ent) => {
-      const cell = assign.get(ent.id)
-      if (!cell) return
+    const taken: { x: number; y: number; w: number; h: number }[] = []
+    const GAP = 6
+    /**
+     * 与已落位表框相交时**保持 x 不变、向下让到"相交框底部 + GAP"**（最小让位）。
+     * 配置坐标是给陈氏小框（高 40）排的，表格型表高 124~190，直接照搬会互相压住：
+     * 默认示例 admin/meeting、salary/todo/message 等 3 组表框相交。让位后 0 相交、0 文字重叠，
+     * 且绝大多数表 rect.x/y 仍精确等于配置坐标（单表/无冲突配置 100% 精确）。
+     */
+    const settleY = (x: number, y0: number, w: number, h: number) => {
+      let y = y0
+      for (let k = 0; k < 40; k++) {
+        const hit = taken.filter(
+          (b) => !(x + w + GAP <= b.x || b.x + b.w + GAP <= x || y + h + GAP <= b.y || b.y + b.h + GAP <= y),
+        )
+        if (!hit.length) break
+        y = Math.max(...hit.map((b) => b.y + b.h)) + GAP
+      }
+      return y
+    }
+    const put = (ent: DNode, x: number, y: number) => {
       const w = widthOf(ent)
       const h = heightOf(ent)
-      const x = colX[cell.c]
-      const y = rowY[cell.r]
       placed.set(ent.id, { x, y, w, h, cx: x + w / 2, cy: y + h / 2 })
+      taken.push({ x, y, w, h })
+    }
+    // 1) 有 x/y 的实体：按配置坐标摆放（x 精确保留），只在相撞时向下最小让位
+    entities.forEach((ent) => {
+      const ab = absOf(ent)
+      if (!ab) return
+      put(ent, ab.x, settleY(ab.x, ab.y, widthOf(ent), heightOf(ent)))
+    })
+    // 2) 缺坐标的走网格；同样只在与已落位表框相撞时向下让位
+    entities.forEach((ent) => {
+      const cell = assign.get(ent.id)
+      if (!cell || absOf(ent)) return
+      put(ent, colX[cell.c], settleY(colX[cell.c], rowY[cell.r], widthOf(ent), heightOf(ent)))
     })
     return placed
   }
@@ -1695,7 +1839,8 @@ function erSvgTable(nodes: DNode[], edges: Edge[]): string {
     })
 
   let pos = layoutOf(ringAssign)
-  if (relations.length > 0 && entities.length <= 60) {
+  // 全部实体都有绝对坐标时，两种网格候选结果完全一样，不必再跑寻线评分
+  if (relations.length > 0 && entities.length <= 60 && !allAbs) {
     let bestCost = Infinity
     for (const assign of [ringAssign, declAssign]) {
       const trial = layoutOf(assign)
@@ -1717,22 +1862,25 @@ function erSvgTable(nodes: DNode[], edges: Edge[]): string {
       return { x: p.x, y: p.y, w: p.w, h: p.h }
     }),
   )
-  for (const rd of routed) {
-    const rel = relations.find((r) => r.id === rd.id)
-    if (rel?.srcCard && rd.srcCardAt) placer.reserve(rd.srcCardAt.x, rd.srcCardAt.y, rel.srcCard, 13)
-    if (rel?.tgtCard && rd.tgtCardAt) placer.reserve(rd.tgtCardAt.x, rd.tgtCardAt.y, rel.tgtCard, 13)
-  }
 
   let paths = ''
   let labels = ''
   for (const rd of routed) {
     const rel = relations.find((r) => r.id === rd.id)
     paths += `<path d="${erPathD(rd.points)}" fill="none" stroke="#000" stroke-width="1.4"/>`
-    if (rel?.srcCard && rd.srcCardAt) labels += erText(rd.srcCardAt.x, rd.srcCardAt.y, rel.srcCard, 13)
-    if (rel?.tgtCard && rd.tgtCardAt) labels += erText(rd.tgtCardAt.x, rd.tgtCardAt.y, rel.tgtCard, 13)
+    // 基数标注也走放置器：寻线引擎在"候选点全被表框挡住"时会兜底把标注落回表内
+    // （实测「1」压住 admin_id/username 两行文字），这里用同一条折线上的锚点把它挪出去。
+    if (rel?.srcCard && rd.srcCardAt) {
+      const at = placer.place(rd.srcCardAt.x, rd.srcCardAt.y, rel.srcCard, 13, labelAltPoints(rd.points))
+      labels += erText(at.x, at.y, rel.srcCard, 13)
+    }
+    if (rel?.tgtCard && rd.tgtCardAt) {
+      const at = placer.place(rd.tgtCardAt.x, rd.tgtCardAt.y, rel.tgtCard, 13, labelAltPoints(rd.points))
+      labels += erText(at.x, at.y, rel.tgtCard, 13)
+    }
     if (rel?.label) {
       const mid = midOfPolyline(rd.points)
-      const at = placer.place(mid[0], mid[1] - 10, rel.label, 12)
+      const at = placer.place(mid[0], mid[1] - 10, rel.label, 12, labelAltPoints(rd.points))
       labels += erText(at.x, at.y, rel.label, 12)
     }
   }

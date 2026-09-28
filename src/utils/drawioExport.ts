@@ -411,9 +411,10 @@ export function classDrawio(nodes: DNode[], edges: Edge[]): string {
 
     let text = g.node.data.label || ''
     if (stereotype) text = `\u00ab${stereotype}\u00bb\\n${text}`
-    // 抽象类名用斜体：draw.io 的标签是 HTML（html=1），所以 <i> 必须保持原样，
-    // 只转义里面的文字 —— 之前整体 esc() 会把 <i> 变成 &lt;i&gt;，图上直接显示成 "<i>Name</i>"
-    const labelValue = isAbstract ? `<i>${esc(text)}</i>` : esc(text)
+    // 抽象类名用斜体。draw.io 的标签虽然是 HTML（html=1），但 value 本身是 XML 属性值：
+    // 直接写 <i> 会让文件不是 well-formed XML（ElementTree 解析失败、draw.io 打不开），
+    // 必须写成 XML 实体 &lt;i&gt;；draw.io 解析后会还原成 <i> 再按 HTML 渲染出斜体。
+    const labelValue = isAbstract ? `&lt;i&gt;${esc(text)}&lt;/i&gt;` : esc(text)
 
     const CLASS_STYLE = 'swimlane;fontStyle=0;align=center;startSize=26;html=1;fillColor=#ffffff;strokeColor=#000000;'
     cells.push(`<mxCell id="${cid}" value="${labelValue}" style="${CLASS_STYLE}" vertex="1" parent="1">

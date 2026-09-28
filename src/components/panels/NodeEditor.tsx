@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useVercount } from '@vercount/react'
+import type { Edge } from '@xyflow/react'
 import { layoutErEntities, suggestCenter } from '../../utils/erLayout'
 import type { ERField } from '../../types/diagram'
 import { parseFieldsText, fieldsToText, fieldsFromTable } from '../../utils/erFields'
@@ -35,6 +36,12 @@ export interface EntityState {
     label: string
     attributes: { id: string; label: string }[]
   }[]
+  /**
+   * 未被任何实体引用的椭圆节点（例如历史数据里被孤立、或手工删除实体后残留的属性）。
+   * 由 App 从配置里挑出来注入，编辑器里可查看 / 删除；应用时原样写回为无连线节点，
+   * 避免「看不见 → 编辑一次就被静默删除」。
+   */
+  unlinkedAttributes?: { id: string; label: string }[]
 }
 
 // ====== 新增图表状态接口 ======
@@ -52,6 +59,13 @@ export interface SequenceState {
     label: string
     messageType: 'sync' | 'async' | 'return'
   }[]
+  /**
+   * participant 之外的节点（典型是 Mermaid 的 activation 激活条），由 App 注入。
+   * 编辑器不认识这些节点，但应用时必须原样补回，否则会被吞掉。
+   */
+  extraNodes?: { id: string; type: string; data: Record<string, unknown> }[]
+  /** 与 extraNodes 相关、或两端不全是 participant 的边，同样原样补回 */
+  extraEdges?: Edge[]
 }
 
 export interface ClassState {
@@ -62,6 +76,8 @@ export interface ClassState {
     methods: string[]
     isAbstract?: boolean
     stereotype?: string
+    /** 类 / 接口 / 枚举（缺省视为 class），决定节点 type 与渲染形状 */
+    type?: 'class' | 'interface' | 'enum'
   }[]
   relations?: {
     id: string
@@ -133,7 +149,8 @@ export type DiagramType = 'usecase' | 'structure' | 'entity' | 'er' | 'sequence'
 interface Props {
   type: DiagramType
   useCase?: UseCaseState
-  tree?: TreeNode
+  /** 功能结构图现在是「森林」：允许多个根并存（原单根假设会把额外根/环丢成白屏） */
+  tree?: { roots: TreeNode[] }
   entity?: EntityState
   er?: ERState
   sequence?: SequenceState
@@ -149,6 +166,14 @@ function uid(): string {
     return 'n' + crypto.randomUUID().replace(/-/g, '').slice(0, 12)
   }
   return 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+}
+
+/** 卡片级 Delete/Backspace 快捷键必须避开正在输入的控件（否则在输入框里退格会删掉整张卡片） */
+function isEditableTarget(e: React.KeyboardEvent): boolean {
+  const el = e.target as HTMLElement | null
+  if (!el) return false
+  const tag = el.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
 }
 
 const DEFAULT_FONT_FAMILY = 'SimSun'
@@ -228,19 +253,32 @@ function useCaseToJson(state: UseCaseState): string {
   return JSON.stringify({ nodes, edges }, null, 2)
 }
 
-function treeToJson(root: TreeNode, fontSize = DEFAULT_FONT_SIZE, spacing = 26, fontFamily = DEFAULT_FONT_FAMILY): string {
+/**
+ * 森林 → JSON：遍历全部根，输出所有节点与边。
+ * 与原单根实现保持一致：只有根节点带 fontSize / fontFamily / spacing。
+ */
+function treeToJson(roots: TreeNode[], fontSize = DEFAULT_FONT_SIZE, spacing = 26, fontFamily = DEFAULT_FONT_FAMILY): string {
   const nodes: any[] = []
   const edges: any[] = []
+  const seenNodes = new Set<string>()
+  const seenEdges = new Set<string>()
   function walk(node: TreeNode, isRoot = false) {
-    const n: any = { id: node.id, type: 'rectangle', label: node.label, vertical: node.vertical }
-    if (isRoot) { n.fontSize = fontSize; n.fontFamily = fontFamily; n.spacing = spacing }
-    nodes.push(n)
+    if (!seenNodes.has(node.id)) {
+      seenNodes.add(node.id)
+      const n: any = { id: node.id, type: 'rectangle', label: node.label, vertical: node.vertical }
+      if (isRoot) { n.fontSize = node.fontSize || fontSize; n.fontFamily = node.fontFamily || fontFamily; n.spacing = node.spacing || spacing }
+      nodes.push(n)
+    }
     node.children.forEach((child) => {
-      edges.push({ id: `e_${node.id}_${child.id}`, source: node.id, target: child.id })
+      const eid = `e_${node.id}_${child.id}`
+      if (!seenEdges.has(eid)) {
+        seenEdges.add(eid)
+        edges.push({ id: eid, source: node.id, target: child.id })
+      }
       walk(child)
     })
   }
-  walk(root, true)
+  roots.forEach((root) => walk(root, true))
   return JSON.stringify({ nodes, edges }, null, 2)
 }
 
@@ -249,12 +287,32 @@ function entityToJson(state: EntityState): string {
   const edges: any[] = []
   const fontFamily = state.fontFamily || DEFAULT_FONT_FAMILY
   const fontSize = state.fontSize || DEFAULT_FONT_SIZE
+  const emitted = new Set<string>()
   state.entities.forEach((ent) => {
-    nodes.push({ id: ent.id, type: 'rectangle', label: ent.label, fontFamily, fontSize })
+    if (!emitted.has(ent.id)) {
+      emitted.add(ent.id)
+      nodes.push({ id: ent.id, type: 'rectangle', label: ent.label, fontFamily, fontSize })
+    }
+    const seenAttr = new Set<string>()
     ent.attributes.forEach((a, i) => {
-      nodes.push({ id: a.id, type: 'ellipse', label: a.label, rx: 45, ry: 18, fontFamily, fontSize })
+      // 同一个属性 id 被多个实体引用（共享属性）时节点只输出一次，
+      // 否则每应用一次就多一份节点，连续应用会指数膨胀；
+      // 但每条 (实体 → 属性) 的连线仍要保留，否则共享属性会只剩一条边。
+      if (!seenAttr.has(a.id)) {
+        seenAttr.add(a.id)
+        if (!emitted.has(a.id)) {
+          emitted.add(a.id)
+          nodes.push({ id: a.id, type: 'ellipse', label: a.label, rx: 45, ry: 18, fontFamily, fontSize })
+        }
+      }
       edges.push({ id: `e_${ent.id}_${i}`, source: ent.id, target: a.id })
     })
+  })
+  // 未被任何实体引用的椭圆：原样输出为无连线节点（可见即可删）
+  ;(state.unlinkedAttributes || []).forEach((a) => {
+    if (emitted.has(a.id)) return
+    emitted.add(a.id)
+    nodes.push({ id: a.id, type: 'ellipse', label: a.label, rx: 45, ry: 18, fontFamily, fontSize })
   })
   return JSON.stringify({ nodes, edges }, null, 2)
 }
@@ -266,6 +324,8 @@ function sequenceToJson(state: SequenceState): string {
   state.participants.forEach((p) => {
     nodes.push({ id: p.id, type: 'participant', label: p.label, participantType: p.participantType })
   })
+  // participant 之外的节点（activation 等）原样补回，否则「应用一次就少一批」
+  ;(state.extraNodes || []).forEach((n) => nodes.push({ id: n.id, type: n.type, ...(n.data || {}) }))
   const edges: any[] = (state.messages || []).map((m) => ({
     id: m.id,
     source: m.source,
@@ -273,6 +333,15 @@ function sequenceToJson(state: SequenceState): string {
     label: m.label,
     data: { messageType: m.messageType || 'sync' },
   }))
+  const knownNodes = new Set(nodes.map((n) => n.id))
+  const knownEdges = new Set(edges.map((e) => e.id))
+  ;(state.extraEdges || []).forEach((e) => {
+    if (knownEdges.has(e.id)) return
+    knownEdges.add(e.id)
+    // 原样补回（只补节点仍在的边，避免产生悬空边）
+    if (!knownNodes.has(String(e.source)) || !knownNodes.has(String(e.target))) return
+    edges.push({ id: e.id, source: e.source, target: e.target, ...(e.data && { data: e.data }), ...(e.label && { label: e.label }) })
+  })
   return JSON.stringify({ nodes, edges }, null, 2)
 }
 
@@ -281,7 +350,8 @@ function classToJson(state: ClassState, relations?: { id: string; source: string
   state.classes.forEach((cls) => {
     nodes.push({
       id: cls.id,
-      type: 'class',
+      // 接口 / 枚举不能被降级成 class，否则应用一次类型就丢了
+      type: cls.type ?? 'class',
       label: cls.label,
       attributes: cls.attributes,
       methods: cls.methods,
@@ -397,17 +467,17 @@ function parseMermaid(code: string): SequenceState | null {
     // Skip block keywords (with optional labels like "alt 验证成功")
     if (/^(loop|alt|opt|par|else|end|break|critical|rect|box)\b/.test(line)) continue
 
-    // participant declaration: "participant 客户端" or "participant Alice as A"
-    const partRe = new RegExp(`^participant\\s+(${NAME_RE})(?:\\s+as\\s+(.+))?$`)
+    // participant / actor declaration: "participant 客户端" or "participant Alice as A"
+    const partRe = new RegExp(`^(participant|actor)\\s+(${NAME_RE})(?:\\s+as\\s+(.+))?$`)
     const partMatch = line.match(partRe)
     if (partMatch) {
-      const name = partMatch[1]
-      const alias = partMatch[2]?.trim() || name
+      const name = partMatch[2]
+      const alias = partMatch[3]?.trim() || name
       if (!nameToId.has(name)) {
         const id = uid()
         nameToId.set(name, id)
         if (alias !== name) nameToId.set(alias, id)
-        participants.push({ id, label: alias, participantType: 'system' })
+        participants.push({ id, label: alias, participantType: partMatch[1] === 'actor' ? 'actor' : 'system' })
       }
       continue
     }
@@ -421,8 +491,9 @@ function parseMermaid(code: string): SequenceState | null {
     // activate/deactivate: skip
     if (/^(activate|deactivate)\b/i.test(line)) continue
 
-    // Message line: "客户端->>服务器: 发送登录请求" or "数据库-->>服务器: 返回数据"
-    const msgRe = new RegExp(`^(${NAME_RE})\\s*(--?>>?|-{1,2}>|-x)\\s*(${NAME_RE})\\s*:\\s*(.+)$`)
+    // Message line: "客户端->>服务器: 发送登录请求" / "数据库-->>服务器: 返回数据" / "A-)B: 异步"
+    // 箭头取最长优先，避免 --> 被 -> 抢先匹配
+    const msgRe = new RegExp(`^(${NAME_RE})\\s*(--?>>|-->|->>|->|--\\)|-\\)|--x|-x)\\s*(${NAME_RE})\\s*:\\s*(.+)$`)
     const msgMatch = line.match(msgRe)
     if (msgMatch) {
       const src = msgMatch[1]
@@ -431,7 +502,8 @@ function parseMermaid(code: string): SequenceState | null {
       const label = msgMatch[4].trim()
 
       let messageType: 'sync' | 'async' | 'return' = 'sync'
-      if (arrow.startsWith('--')) messageType = 'return'
+      if (arrow.includes(')')) messageType = 'async'
+      else if (arrow.startsWith('--')) messageType = 'return'
 
       const srcId = getOrCreateParticipant(src)
       const tgtId = getOrCreateParticipant(tgt)
@@ -443,7 +515,10 @@ function parseMermaid(code: string): SequenceState | null {
   return { participants, messages }
 }
 
-function parseMermaidClass(code: string): { classes: { id: string; label: string; attributes: string[]; methods: string[]; isAbstract?: boolean; stereotype?: string }[]; relations: { id: string; source: string; target: string; relationType: string; label?: string }[] } | null {
+function parseMermaidClass(code: string): {
+  classes: { id: string; label: string; attributes: string[]; methods: string[]; isAbstract?: boolean; stereotype?: string; type?: 'class' | 'interface' | 'enum' }[]
+  relations: { id: string; source: string; target: string; relationType: string; label?: string }[]
+} | null {
   const lines = code.split('\n').map((l) => l.trim()).filter(Boolean)
   if (lines.length === 0) return null
 
@@ -451,7 +526,7 @@ function parseMermaidClass(code: string): { classes: { id: string; label: string
   if (startIdx === -1) return null
   startIdx += 1
 
-  const classes: { id: string; label: string; attributes: string[]; methods: string[]; isAbstract?: boolean; stereotype?: string }[] = []
+  const classes: { id: string; label: string; attributes: string[]; methods: string[]; isAbstract?: boolean; stereotype?: string; type?: 'class' | 'interface' | 'enum' }[] = []
   const relations: { id: string; source: string; target: string; relationType: string; label?: string }[] = []
   const nameToId = new Map<string, string>()
 
@@ -463,63 +538,110 @@ function parseMermaidClass(code: string): { classes: { id: string; label: string
     return id
   }
 
-  let currentClass: string | null = null
+  const applyStereotype = (clsId: string, kind: string) => {
+    const cls = classes.find((c) => c.id === clsId)
+    if (!cls) return
+    const k = kind.toLowerCase()
+    if (k === 'interface') { cls.type = 'interface'; cls.stereotype = 'interface' }
+    else if (k === 'abstract') { cls.isAbstract = true; cls.stereotype = 'abstract' }
+    else if (k === 'enum' || k === 'enumeration') { cls.type = 'enum'; cls.stereotype = 'enum' }
+  }
+
   let currentClassId: string | null = null
 
-  const relationPatterns: [RegExp, string][] = [
-    [/\s*<\|--\s*/, 'inheritance'],
-    [/\s*\*--\s*/, 'composition'],
-    [/\s*o--\s*/, 'aggregation'],
-    [/\s*-->\s*/, 'association'],
-    [/\s*\.\.>\s*/, 'dependency'],
-    [/\s*<\|\.\.\s*/, 'implementation'],
+  // 关系模式：第三个元素表示是否需要交换 source/target（保持「source=父/接口」的既有约定）
+  const relationPatterns: [RegExp, string, boolean][] = [
+    [/\s*<\|--\s*/, 'inheritance', false],
+    [/\s*--\|>\s*/, 'inheritance', true],
+    [/\s*\*--\s*/, 'composition', false],
+    [/\s*--\*\s*/, 'composition', true],
+    [/\s*o--\s*/, 'aggregation', false],
+    [/\s*--o\s*/, 'aggregation', true],
+    [/\s*<\|\.\.\s*/, 'implementation', false],
+    [/\s*\.\.\|>\s*/, 'implementation', true],
+    [/\s*\.\.>\s*/, 'dependency', false],
+    [/\s*<\.\.\s*/, 'dependency', true],
+    [/\s*-->\s*/, 'association', false],
+    [/\s*<--\s*/, 'association', true],
+    [/\s*--\s*/, 'association', false],
   ]
+
+  const nameOnlyRe = new RegExp(`^(${NAME_RE})$`)
 
   for (let i = startIdx; i < lines.length; i++) {
     const line = lines[i]
 
-    // Class block start: "class ClassName {"
-    const classStartMatch = line.match(/^class\s+(\w[\w]*)\s*\{?$/)
+    // "class Animal" / "class Animal {"
+    const classStartMatch = line.match(new RegExp(`^class\\s+(${NAME_RE})\\s*(\\{)?\\s*$`))
     if (classStartMatch) {
-      currentClass = classStartMatch[1]
-      currentClassId = getOrCreateClass(currentClass)
+      const cid = getOrCreateClass(classStartMatch[1])
+      // 只有带 { 才进入成员块；`class X` 只是声明
+      currentClassId = classStartMatch[2] ? cid : null
       continue
     }
 
-    // Class block end
-    if (line === '}') {
-      currentClass = null
+    // 类块结束
+    if (line === '}' || line.startsWith('}')) {
       currentClassId = null
       continue
     }
 
-    // Inside a class block: attribute or method
-    if (currentClassId && currentClass) {
+    // <<interface>> X / <<abstract>> X / 块内 <<interface>>
+    const stereoLine = line.match(/^<<\s*(interface|abstract|enum|enumeration)\s*>>\s*(.*)$/i)
+    if (stereoLine) {
+      const target = stereoLine[2].trim()
+      let cid: string | null = null
+      if (target) {
+        const t = target.match(nameOnlyRe)
+        cid = t ? getOrCreateClass(t[1]) : getOrCreateClass(target)
+      } else {
+        cid = currentClassId
+      }
+      if (cid) applyStereotype(cid, stereoLine[1])
+      continue
+    }
+
+    // 块内成员
+    if (currentClassId) {
       const cls = classes.find((c) => c.id === currentClassId)
       if (cls) {
-        // Method: contains parentheses like "+makeSound() void"
-        const methodMatch = line.match(/^[+#-]?\s*([\w]+)\s*\([^)]*\)\s*(.*)?$/)
-        if (methodMatch) {
+        // 方法：带括号（方法名允许中文）
+        if (/^[+#-]?\s*[^()]+\([^)]*\)\s*.*$/.test(line)) {
           cls.methods.push(line.replace(/^[+#-]\s*/, '').trim())
           continue
         }
-        // Attribute: "+String name", "-int age" or "String name"
-        const attrMatch = line.match(/^[+#-]?\s*(.+)$/)
-        if (attrMatch) {
-          cls.attributes.push(attrMatch[1].trim())
-          continue
-        }
+        cls.attributes.push(line.replace(/^[+#-]\s*/, '').trim())
+        continue
       }
     }
 
-    // Relation lines
+    // 独立声明行（不连线）：直接登记，避免关系行里同名节点重复
+    // 这些是 Mermaid 的非类声明关键字，不能当类名登记
+    if (/^(direction|note|style|classDef|cssClass|click|linkStyle)\b/i.test(line)) continue
+    const bare = line.match(nameOnlyRe)
+    if (bare) { getOrCreateClass(bare[1]); continue }
+
+    // "ClassName : member"（成员单独成行，Mermaid 另一种常见写法）
+    const memberLine = line.match(new RegExp(`^(${NAME_RE})\\s*:\\s*(.+)$`))
+    if (memberLine) {
+      const cid = getOrCreateClass(memberLine[1])
+      const cls = classes.find((c) => c.id === cid)
+      const member = memberLine[2].trim()
+      if (cls) {
+        if (/\([^)]*\)/.test(member)) cls.methods.push(member.replace(/^[+#-]\s*/, ''))
+        else cls.attributes.push(member.replace(/^[+#-]\s*/, ''))
+      }
+      continue
+    }
+
+    // 关系行：两侧都必须是类名（支持中文）
     let foundRelation = false
-    for (const [pattern, relType] of relationPatterns) {
-      const relRe = new RegExp(`^(\\w[\\w]*)${pattern.source}(\\w[\\w]*)(?:\\s*:\\s*(.+))?$`)
+    for (const [pattern, relType, swap] of relationPatterns) {
+      const relRe = new RegExp(`^(${NAME_RE})${pattern.source}(${NAME_RE})(?:\\s*:\\s*(.+))?$`)
       const relMatch = line.match(relRe)
       if (relMatch) {
-        const srcName = relMatch[1]
-        const tgtName = relMatch[2]
+        const srcName = swap ? relMatch[2] : relMatch[1]
+        const tgtName = swap ? relMatch[1] : relMatch[2]
         const relLabel = relMatch[3]?.trim() || undefined
         const srcId = getOrCreateClass(srcName)
         const tgtId = getOrCreateClass(tgtName)
@@ -535,11 +657,32 @@ function parseMermaidClass(code: string): { classes: { id: string; label: string
   return { classes, relations }
 }
 
+/**
+ * 拆一行 Mermaid 连线：返回各节点片段与每段箭头上的 |guard|
+ * 支持一行链式 `A -->|是| B --> C`，且不会把 `|HTTPS| server[服务器]` 当成节点。
+ */
+function splitMermaidEdgeLine(line: string): { parts: string[]; guards: (string | undefined)[] } | null {
+  const re = /\s*(?:--+>|==+>|-\.->|--x|-x)\s*(?:\|([^|]*)\|\s*)?/g
+  const parts: string[] = []
+  const guards: (string | undefined)[] = []
+  let idx = 0
+  let found = false
+  for (const m of line.matchAll(re)) {
+    found = true
+    parts.push(line.slice(idx, m.index).trim())
+    guards.push(m[1] !== undefined ? m[1].trim() : undefined)
+    idx = m.index + m[0].length
+  }
+  if (!found) return null
+  parts.push(line.slice(idx).trim())
+  return { parts, guards }
+}
+
 function parseMermaidActivity(code: string): ActivityState | null {
   const lines = code.split('\n').map((l) => l.trim()).filter(Boolean)
   if (lines.length === 0) return null
 
-  let startIdx = lines.findIndex((l) => /^(flowchart|graph)\s+TD/i.test(l))
+  let startIdx = lines.findIndex((l) => /^(flowchart|graph)\s+(TD|TB|BT|LR|RL)/i.test(l))
   if (startIdx === -1) return null
   startIdx += 1
 
@@ -548,12 +691,11 @@ function parseMermaidActivity(code: string): ActivityState | null {
   const nameToId = new Map<string, string>()
 
   // Parse a node reference like "Start([开始])", "Action1[用户输入]", "Decision{验证?}"
-  // Returns the node ID, creating the node if needed
   const parseNodeRef = (ref: string): string | null => {
     ref = ref.trim()
     if (!ref) return null
 
-    // ([text]) → start/end node
+    // ([text]) → start/end 药丸节点（后面统一只把首尾标成 start/end）
     let m = ref.match(/^(\w+)\(\[(.+?)\]\)$/)
     if (m) {
       const nodeId = m[1]
@@ -589,6 +731,18 @@ function parseMermaidActivity(code: string): ActivityState | null {
       return nameToId.get(nodeId)!
     }
 
+    // ((text)) → action（圆形节点在活动图里按动作处理）
+    m = ref.match(/^(\w+)\(\((.+?)\)\)$/)
+    if (m) {
+      const nodeId = m[1]
+      if (!nameToId.has(nodeId)) {
+        const id = uid()
+        nameToId.set(nodeId, id)
+        nodes.push({ id, label: m[2], nodeType: 'action' })
+      }
+      return nameToId.get(nodeId)!
+    }
+
     // Bare ID (no shape) → action node
     m = ref.match(/^(\w+)$/)
     if (m) {
@@ -607,39 +761,33 @@ function parseMermaidActivity(code: string): ActivityState | null {
   for (let i = startIdx; i < lines.length; i++) {
     const line = lines[i]
 
-    // Split by --> to get edge parts
-    const arrowParts = line.split(/\s*-->\s*/)
-    if (arrowParts.length < 2) continue
+    // 非节点关键字行
+    if (/^(subgraph|end|direction|style|classDef|class|cssClass|click|linkStyle|%%)\b/i.test(line)) continue
 
-    for (let p = 0; p < arrowParts.length - 1; p++) {
-      let leftPart = arrowParts[p]
-      let rightPart = arrowParts[p + 1]
+    const split = splitMermaidEdgeLine(line)
+    if (!split) {
+      // 只声明、不连线的节点也要保留
+      parseNodeRef(line)
+      continue
+    }
 
-      // Extract guard from rightPart: "|label| NodeRef"
-      let guard: string | undefined
-      const guardMatch = rightPart.match(/^\|([^|]+)\|\s*(.+)$/)
-      if (guardMatch) {
-        guard = guardMatch[1].trim()
-        rightPart = guardMatch[2]
-      }
-
-      // For the first part, the left side might have a guard from previous split - not typical
-      // Parse node references
-      const srcId = parseNodeRef(leftPart)
-      const tgtId = parseNodeRef(rightPart)
+    const { parts, guards } = split
+    for (let p = 0; p < parts.length - 1; p++) {
+      const srcId = parseNodeRef(parts[p])
+      const tgtId = parseNodeRef(parts[p + 1])
       if (srcId && tgtId) {
-        edges.push({ id: uid(), source: srcId, target: tgtId, guard })
+        edges.push({ id: uid(), source: srcId, target: tgtId, guard: guards[p] })
       }
     }
   }
 
-  // Refine start/end: first node with "start" type → start, last → end
+  // Refine start/end：≥1 个 ([...]) 时首个为 start、末个为 end，
+  // 中间的药丸节点一律降级为 action（原实现让中间节点都停留在 start，活动图会出现多个开始节点）
   const startEndNodes = nodes.filter((n) => n.nodeType === 'start')
   if (startEndNodes.length >= 1) {
     startEndNodes[0].nodeType = 'start'
-    if (startEndNodes.length >= 2) {
-      startEndNodes[startEndNodes.length - 1].nodeType = 'end'
-    }
+    for (let k = 1; k < startEndNodes.length - 1; k++) startEndNodes[k].nodeType = 'action'
+    if (startEndNodes.length >= 2) startEndNodes[startEndNodes.length - 1].nodeType = 'end'
   }
 
   if (nodes.length === 0) return null
@@ -650,7 +798,7 @@ function parseMermaidDeployment(code: string): DeploymentState | null {
   const lines = code.split('\n').map((l) => l.trim()).filter(Boolean)
   if (lines.length === 0) return null
 
-  let startIdx = lines.findIndex((l) => /^(flowchart|graph)\s+TD/i.test(l))
+  let startIdx = lines.findIndex((l) => /^(flowchart|graph)\s+(TD|TB|BT|LR|RL)/i.test(l))
   if (startIdx === -1) return null
   startIdx += 1
 
@@ -663,63 +811,64 @@ function parseMermaidDeployment(code: string): DeploymentState | null {
     ref = ref.trim()
     if (!ref) return null
 
-    // [(text)] → database node
-    let m = ref.match(/^(\w+)\[\((.+?)\)\]$/)
-    if (m) {
-      const nodeId = m[1]
+    const push = (nodeId: string, nodeType: DeploymentState['nodes'][number]['nodeType'], rawLabel: string) => {
       if (!nameToId.has(nodeId)) {
         const id = uid()
         nameToId.set(nodeId, id)
-        let label = m[2]
+        let label = rawLabel
         let technology: string | undefined
         const techMatch = label.match(/^(.+?):::(.+)$/)
         if (techMatch) { label = techMatch[1]; technology = techMatch[2] }
-        nodes.push({ id, label, nodeType: 'database', technology })
+        nodes.push({ id, label, nodeType, technology })
       }
       return nameToId.get(nodeId)!
     }
+
+    // [(text)] → database node
+    let m = ref.match(/^(\w+)\[\((.+?)\)\]$/)
+    if (m) return push(m[1], 'database', m[2])
 
     // [text] → server node
     m = ref.match(/^(\w+)\[(.+?)\]$/)
-    if (m) {
-      const nodeId = m[1]
-      if (!nameToId.has(nodeId)) {
-        const id = uid()
-        nameToId.set(nodeId, id)
-        let label = m[2]
-        let technology: string | undefined
-        const techMatch = label.match(/^(.+?):::(.+)$/)
-        if (techMatch) { label = techMatch[1]; technology = techMatch[2] }
-        nodes.push({ id, label, nodeType: 'server', technology })
-      }
-      return nameToId.get(nodeId)!
-    }
+    if (m) return push(m[1], 'server', m[2])
+
+    // ((text)) → component（圆形节点）
+    m = ref.match(/^(\w+)\(\((.+?)\)\)$/)
+    if (m) return push(m[1], 'component', m[2])
+
+    // (text) → node（圆角节点）
+    m = ref.match(/^(\w+)\((.+?)\)$/)
+    if (m) return push(m[1], 'node', m[2])
+
+    // {text} → artifact（菱形/六边形按制品处理）
+    m = ref.match(/^(\w+)\{(.+?)\}$/)
+    if (m) return push(m[1], 'artifact', m[2])
 
     // Bare ID → server node
     m = ref.match(/^(\w+)$/)
-    if (m) {
-      const nodeId = m[1]
-      if (!nameToId.has(nodeId)) {
-        const id = uid()
-        nameToId.set(nodeId, id)
-        nodes.push({ id, label: nodeId, nodeType: 'server' })
-      }
-      return nameToId.get(nodeId)!
-    }
+    if (m) return push(m[1], 'server', m[1])
 
     return null
   }
 
   for (let i = startIdx; i < lines.length; i++) {
     const line = lines[i]
-    const arrowParts = line.split(/\s*-->\s*/)
-    if (arrowParts.length < 2) continue
+    if (/^(subgraph|end|direction|style|classDef|class|cssClass|click|linkStyle|%%)\b/i.test(line)) continue
 
-    for (let p = 0; p < arrowParts.length - 1; p++) {
-      const srcId = parseNodeRef(arrowParts[p])
-      const tgtId = parseNodeRef(arrowParts[p + 1])
+    const split = splitMermaidEdgeLine(line)
+    if (!split) {
+      // 只声明不连线的节点
+      parseNodeRef(line)
+      continue
+    }
+    const { parts, guards } = split
+    for (let p = 0; p < parts.length - 1; p++) {
+      const srcId = parseNodeRef(parts[p])
+      const tgtId = parseNodeRef(parts[p + 1])
       if (srcId && tgtId) {
-        edges.push({ id: uid(), source: srcId, target: tgtId })
+        // `-->|HTTPS|`：标签剥离后写到 edge.label，节点片段里不会残留 `|HTTPS|`（原先会当成假节点/直接丢边）
+        const label = guards[p]
+        edges.push({ id: uid(), source: srcId, target: tgtId, ...(label ? { label } : {}) })
       }
     }
   }
@@ -752,7 +901,7 @@ export default function NodeEditor({ type, useCase, tree, entity, er, sequence, 
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {type === 'usecase' && useCase && <UseCaseEditor state={useCase} onApply={onApply} />}
-        {type === 'structure' && tree && <TreeEditor root={tree} onApply={onApply} />}
+        {type === 'structure' && tree && <TreeEditor roots={tree.roots} onApply={onApply} />}
         {type === 'entity' && entity && <EntityEditor state={entity} onApply={onApply} />}
         {type === 'er' && <EREditor state={er} onApply={onApply} />}
         {type === 'sequence' && <SequenceEditor state={sequence} onApply={onApply} />}
@@ -814,21 +963,23 @@ function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApp
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const addActor = () => {
-    setState((s) => ({ actors: [...s.actors, { id: uid(), label: t('editor.newActor'), useCases: [] }] }))
+    setState((s) => ({ ...s, actors: [...s.actors, { id: uid(), label: t('editor.newActor'), useCases: [] }] }))
   }
   const removeActor = (actorId: string) => {
-    setState((s) => ({ actors: s.actors.filter((a) => a.id !== actorId) }))
+    setState((s) => ({ ...s, actors: s.actors.filter((a) => a.id !== actorId) }))
   }
   const renameActor = (actorId: string, label: string) => {
-    setState((s) => ({ actors: s.actors.map((a) => a.id === actorId ? { ...a, label } : a) }))
+    setState((s) => ({ ...s, actors: s.actors.map((a) => a.id === actorId ? { ...a, label } : a) }))
   }
   const addUseCase = (actorId: string, id: string, label: string) => {
     setState((s) => ({
+      ...s,
       actors: s.actors.map((a) => a.id === actorId ? { ...a, useCases: [...a.useCases, { id, label }] } : a),
     }))
   }
   const moveUseCase = (actorId: string, from: number, to: number) => {
     setState((s) => ({
+      ...s,
       actors: s.actors.map((a) => {
         if (a.id !== actorId) return a
         const arr = [...a.useCases]; const [item] = arr.splice(from, 1); arr.splice(to, 0, item)
@@ -838,12 +989,14 @@ function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApp
   }
   const removeUseCase = (actorId: string, ucId: string) => {
     setState((s) => ({
+      ...s,
       actors: s.actors.map((a) => a.id === actorId ? { ...a, useCases: a.useCases.filter((uc) => uc.id !== ucId) } : a),
     }))
     if (editingId === ucId) setEditingId(null)
   }
   const renameUseCase = (actorId: string, ucId: string, label: string) => {
     setState((s) => ({
+      ...s,
       actors: s.actors.map((a) => a.id === actorId ? {
         ...a, useCases: a.useCases.map((uc) => uc.id === ucId ? { ...uc, label } : uc),
       } : a),
@@ -892,7 +1045,7 @@ function UseCaseEditor({ state: initial, onApply }: { state: UseCaseState; onApp
               if (words.length >= 1) {
                 const actorId = uid(); const actorLabel = words[0]
                 const useCases = words.slice(1).map((w) => ({ id: uid(), label: w }))
-                setState((s) => ({ actors: [...s.actors, { id: actorId, label: actorLabel, useCases }] }))
+                setState((s) => ({ ...s, actors: [...s.actors, { id: actorId, label: actorLabel, useCases }] }))
               }
             })
             setShowImport(false)
@@ -976,52 +1129,142 @@ function ActorSection({ actor, editingId, setEditingId, onRename, onRemove, onAd
 
 // ====== Tree Editor ======
 
-function updateTreeNode(node: TreeNode, targetId: string, fn: (n: TreeNode) => TreeNode): TreeNode {
-  if (node.id === targetId) return fn(node)
-  return { ...node, children: node.children.map((c) => updateTreeNode(c, targetId, fn)) }
-}
-function deleteTreeNode(node: TreeNode, targetId: string): TreeNode | null {
-  if (node.id === targetId) return null
-  return { ...node, children: node.children.map((c) => deleteTreeNode(c, targetId)).filter((c): c is TreeNode => c !== null) }
-}
-function getSiblingGroups(node: TreeNode, groups: Map<string, string[]>) {
-  if (node.children.length > 0) groups.set(node.id, node.children.map((c) => c.id))
-  node.children.forEach((c) => getSiblingGroups(c, groups))
+// 编辑态键统一带「父级维度」：同一个 id 在两处渲染时（共享子树 / 共享属性），
+// 若两行都进入 InlineEdit，mount 时的 ref.select() 会互抢焦点，被抢的一方
+// 触发 onBlur → commit → 编辑框立刻关闭。这里用「从根到节点的索引路径」做键，
+// 每一处出现都有唯一 key（比单纯的 parentId 更严格，同级重复 id 也不会撞）。
+
+type TreePath = number[]
+
+const treePathKey = (path: TreePath) => `t${path.join('/')}`
+
+/** 取某个父路径下的兄弟节点数组（父路径为空表示根层） */
+function nodesAtPath(roots: TreeNode[], parentPath: TreePath): TreeNode[] {
+  let list = roots
+  for (const idx of parentPath) {
+    const node = list[idx]
+    if (!node) return []
+    list = node.children
+  }
+  return list
 }
 
-function TreeEditor({ root: initialRoot, onApply }: { root: TreeNode; onApply: (json: string) => void }) {
+function updateNodeAtPath(roots: TreeNode[], path: TreePath, fn: (n: TreeNode) => TreeNode): TreeNode[] {
+  if (path.length === 0) return roots
+  const [idx, ...rest] = path
+  if (!roots[idx]) return roots
+  const next = [...roots]
+  if (rest.length === 0) {
+    next[idx] = fn(next[idx])
+  } else {
+    next[idx] = { ...next[idx], children: updateNodeAtPath(next[idx].children, rest, fn) }
+  }
+  return next
+}
+
+/** 按路径取出节点（越界返回 null） */
+function nodeAtPath(roots: TreeNode[], path: TreePath): TreeNode | null {
+  let list = roots
+  let node: TreeNode | null = null
+  for (const idx of path) {
+    node = list[idx] ?? null
+    if (!node) return null
+    list = node.children
+  }
+  return node
+}
+
+/**
+ * 同一个 id 等于同一个节点：它可能在森林里出现多次（共享子节点 / 回边被渲染成浅叶子）。
+ * 改名 / 删除必须作用到**所有副本**，否则 `treeToJson` 按 id 去重时第一处胜出，
+ * 第二处的修改会被静默丢弃（验证员 X2：改「父2」下的共享子节点改名后不落盘）。
+ */
+function renameNodesById(roots: TreeNode[], id: string, label: string): TreeNode[] {
+  const walk = (n: TreeNode): TreeNode => {
+    const next = n.id === id ? { ...n, label } : n
+    return { ...next, children: next.children.map(walk) }
+  }
+  return roots.map(walk)
+}
+
+function removeNodesById(roots: TreeNode[], id: string): TreeNode[] {
+  return roots
+    .filter((n) => n.id !== id)
+    .map((n) => ({ ...n, children: removeNodesById(n.children, id) }))
+}
+
+function insertNodeAtPath(roots: TreeNode[], parentPath: TreePath, node: TreeNode): TreeNode[] {
+  if (parentPath.length === 0) return [...roots, node]
+  return updateNodeAtPath(roots, parentPath, (n) => ({ ...n, children: [...n.children, node] }))
+}
+
+function TreeEditor({ roots: rootsProp, onApply }: { roots: TreeNode[]; onApply: (json: string) => void }) {
   const { t } = useTranslation()
-  const [root, setRoot] = useState<TreeNode>(initialRoot)
-  const [editingId, setEditingId] = useState<string | null>(null)
+  const initialRoots = useMemo(() => rootsProp || [], [rootsProp])
+  const [roots, setRoots] = useState<TreeNode[]>(initialRoots)
+  const [editingKey, setEditingKey] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
-  const [fontFamily, setFontFamily] = useState(initialRoot.fontFamily || DEFAULT_FONT_FAMILY)
-  const [fontSize, setFontSize] = useState(initialRoot.fontSize || DEFAULT_FONT_SIZE)
-  const [spacing, setSpacing] = useState(initialRoot.spacing || 26)
+  const [fontFamily, setFontFamily] = useState(initialRoots[0]?.fontFamily || DEFAULT_FONT_FAMILY)
+  const [fontSize, setFontSize] = useState(initialRoots[0]?.fontSize || DEFAULT_FONT_SIZE)
+  const [spacing, setSpacing] = useState(initialRoots[0]?.spacing || 26)
 
-  const handleAddChild = (parentId: string, label: string) => {
-    setRoot((prev) => updateTreeNode(prev, parentId, (node) => ({ ...node, children: [...node.children, { id: uid(), label, vertical: false, children: [] }] })))
+  // 外部配置变化（应用修改 / 撤销 / 导入）时同步本地状态；
+  // 本地编辑不会改 props，因此不会被这条 effect 冲掉。
+  useEffect(() => {
+    setRoots(initialRoots)
+    const styleRoot = initialRoots[0]
+    setFontFamily(styleRoot?.fontFamily || DEFAULT_FONT_FAMILY)
+    setFontSize(styleRoot?.fontSize || DEFAULT_FONT_SIZE)
+    setSpacing(styleRoot?.spacing || 26)
+  }, [initialRoots])
+
+  // 字体设置按原「全树生效」语义：写入每一个根，序列化时每个根都带上
+  const changeFontFamily = (value: string) => {
+    setFontFamily(value)
+    setRoots((rs) => rs.map((r) => ({ ...r, fontFamily: value })))
   }
-  const handleDelete = (nodeId: string) => {
-    setRoot((prev) => deleteTreeNode(prev, nodeId) ?? prev)
-    if (editingId === nodeId) setEditingId(null)
+  const changeFontSize = (value: number) => {
+    setFontSize(value)
+    setRoots((rs) => rs.map((r) => ({ ...r, fontSize: value })))
   }
-  const handleRename = (nodeId: string, label: string) => {
-    setRoot((prev) => updateTreeNode(prev, nodeId, (node) => ({ ...node, label })))
+  const changeSpacing = (value: number) => {
+    setSpacing(value)
+    setRoots((rs) => rs.map((r) => ({ ...r, spacing: value })))
   }
 
-  const siblingGroups = new Map<string, string[]>()
-  getSiblingGroups(root, siblingGroups)
+  const handleAddRoot = () => {
+    const id = uid()
+    setRoots((prev) => [...prev, { id, label: '', vertical: false, children: [], fontFamily, fontSize, spacing }])
+    setEditingKey(treePathKey([roots.length]))
+  }
 
-  const handleTabFrom = (nodeId: string) => {
-    for (const [parentId, siblings] of siblingGroups) {
-      const idx = siblings.indexOf(nodeId)
-      if (idx !== -1) {
-        if (idx + 1 < siblings.length) { setEditingId(siblings[idx + 1]) }
-        else { const id = uid(); setRoot((prev) => updateTreeNode(prev, parentId, (n) => ({ ...n, children: [...n.children, { id, label: '', vertical: false, children: [] }] }))); setTimeout(() => setEditingId(id), 0) }
-        return
-      }
+  const handleAddChild = (parentPath: TreePath, label: string) => {
+    setRoots((prev) => insertNodeAtPath(prev, parentPath, { id: uid(), label, vertical: false, children: [] }))
+  }
+  const handleDelete = (path: TreePath) => {
+    const target = nodeAtPath(roots, path)
+    // 同 id 的副本一起删（与改名一致，避免「删了还留一条边」）
+    setRoots((prev) => (target ? removeNodesById(prev, target.id) : prev))
+    setEditingKey((k) => (k === treePathKey(path) ? null : k))
+  }
+  const handleRename = (path: TreePath, label: string) => {
+    const target = nodeAtPath(roots, path)
+    if (!target) return
+    // 改名传播到所有同 id 副本：treeToJson 按 id 去重只写一个节点，只改一处会被丢弃
+    setRoots((prev) => renameNodesById(prev, target.id, label))
+  }
+
+  const handleTabFrom = (path: TreePath) => {
+    const parentPath = path.slice(0, -1)
+    const siblings = nodesAtPath(roots, parentPath)
+    const idx = path[path.length - 1]
+    if (idx + 1 < siblings.length) {
+      setEditingKey(treePathKey([...parentPath, idx + 1]))
+      return
     }
-    setEditingId(null)
+    const newIndex = siblings.length
+    setRoots((prev) => insertNodeAtPath(prev, parentPath, { id: uid(), label: '', vertical: false, children: [] }))
+    setEditingKey(treePathKey([...parentPath, newIndex]))
   }
 
   return (
@@ -1034,21 +1277,34 @@ function TreeEditor({ root: initialRoot, onApply }: { root: TreeNode; onApply: (
       <FontSettings
         fontFamily={fontFamily}
         fontSize={fontSize}
-        onFontFamilyChange={setFontFamily}
-        onFontSizeChange={setFontSize}
+        onFontFamilyChange={changeFontFamily}
+        onFontSizeChange={changeFontSize}
         extra={(
           <label className="flex items-center gap-1">
             {t('editor.spacing')}
             <input type="number" min={16} max={50} value={spacing}
             className="w-12 px-1 py-0.5 border border-gray-300 rounded text-center text-xs"
-            onChange={(e) => setSpacing(Number(e.target.value) || 26)} />
+            onChange={(e) => changeSpacing(Number(e.target.value) || 26)} />
           </label>
         )}
       />
 
-      <TreeNodeRow node={root} depth={0} editingId={editingId} onStartEdit={setEditingId}
-        onAddChild={handleAddChild} onDelete={handleDelete} onRename={handleRename} onTab={handleTabFrom} />
-      <button onClick={() => onApply(treeToJson(root, fontSize, spacing, fontFamily))}
+      {roots.map((root, i) => (
+        <TreeNodeRow key={`${root.id}:${i}`} node={root} path={[i]} depth={0} editingKey={editingKey}
+          onStartEdit={setEditingKey} onAddChild={handleAddChild} onDelete={handleDelete} onRename={handleRename} onTab={handleTabFrom} />
+      ))}
+
+      {roots.length === 0 && (
+        <div className="text-center py-6 border border-dashed border-gray-300 rounded">
+          <div className="text-xs text-gray-400 mb-2">{t('editor.addRoot')}</div>
+          <button onClick={handleAddRoot}
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-100 text-gray-500">
+            + {t('tree.root')}
+          </button>
+        </div>
+      )}
+
+      <button onClick={() => onApply(treeToJson(roots, fontSize, spacing, fontFamily))}
         className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800 mt-4">
         {t('editor.apply')}
       </button>
@@ -1070,7 +1326,8 @@ function TreeEditor({ root: initialRoot, onApply }: { root: TreeNode; onApply: (
                 children: words.slice(1).map((w) => ({ id: uid(), label: w, vertical: true, children: [] })),
               })
             })
-            setRoot({ id: uid(), label: rootLabel, vertical: false, children })
+            // 快速导入替换整片森林（与原来替换单根的行为一致）
+            setRoots([{ id: uid(), label: rootLabel, vertical: false, children, fontFamily, fontSize, spacing }])
             setShowImport(false)
           }} />
       )}
@@ -1083,15 +1340,16 @@ const typeColors: Record<number, string> = {
   1: 'text-emerald-700 bg-emerald-50 border-emerald-200',
 }
 
-function TreeNodeRow({ node, depth, editingId, onStartEdit, onAddChild, onDelete, onRename, onTab }: {
-  node: TreeNode; depth: number; editingId: string | null
-  onStartEdit: (id: string) => void; onAddChild: (pid: string, label: string) => void
-  onDelete: (id: string) => void; onRename: (id: string, label: string) => void; onTab: (id: string) => void
+function TreeNodeRow({ node, path, depth, editingKey, onStartEdit, onAddChild, onDelete, onRename, onTab }: {
+  node: TreeNode; path: TreePath; depth: number; editingKey: string | null
+  onStartEdit: (key: string | null) => void; onAddChild: (path: TreePath, label: string) => void
+  onDelete: (path: TreePath) => void; onRename: (path: TreePath, label: string) => void; onTab: (path: TreePath) => void
 }) {
   const { t } = useTranslation()
   const [adding, setAdding] = useState(false)
   const [childLabel, setChildLabel] = useState('')
-  const isEditing = editingId === node.id
+  const selfKey = treePathKey(path)
+  const isEditing = editingKey === selfKey
   const wrap = depth === 1
   const tc = typeColors[depth] || 'text-gray-500 bg-gray-100 border-gray-200'
   const lbl = depth === 0 ? t('tree.root') : depth === 1 ? t('tree.module') : t('tree.func')
@@ -1099,28 +1357,34 @@ function TreeNodeRow({ node, depth, editingId, onStartEdit, onAddChild, onDelete
   const confirmAdd = () => {
     const label = childLabel.trim()
     if (!label) return
-    onAddChild(node.id, label)
+    onAddChild(path, label)
     setChildLabel(''); setAdding(false)
   }
 
   const row = (
     <>
-      <div className="flex items-center gap-1.5 py-1 px-2 rounded hover:bg-gray-100/70 group" style={{ marginLeft: depth >= 2 ? 0 : depth * 16 }}>
+      <div className="flex items-center gap-1.5 py-1 px-2 rounded hover:bg-gray-100/70 group" style={{ marginLeft: depth >= 2 ? 0 : depth * 16 }}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (isEditing) return
+          if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); onDelete(path) }
+          if (e.key === 'Enter') { e.preventDefault(); onStartEdit(selfKey) }
+        }}>
         <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${tc}`}>
           {lbl}
         </span>
         {isEditing ? (
           <InlineEdit value={node.label} className="flex-1"
-            onSave={(v) => { onRename(node.id, v); onStartEdit('') }}
-            onDelete={() => { onDelete(node.id); onStartEdit('') }}
-            onTab={() => onTab(node.id)} />
+            onSave={(v) => { onRename(path, v); onStartEdit(null) }}
+            onDelete={() => { onDelete(path); onStartEdit(null) }}
+            onTab={() => onTab(path)} />
         ) : (
           <span className={`flex-1 text-sm truncate cursor-default ${depth === 0 ? 'font-semibold' : ''}`}
-            onDoubleClick={() => onStartEdit(node.id)}>{node.label}</span>
+            onDoubleClick={() => onStartEdit(selfKey)}>{node.label}</span>
         )}
         {depth < 2 && <button onClick={() => setAdding(!adding)} className="text-gray-400 hover:text-black text-sm px-1 opacity-0 group-hover:opacity-100 transition-opacity" title={t('tree.addChild')}>+</button>}
         {depth > 0 && (
-          <button onClick={() => onDelete(node.id)} className="text-gray-400 hover:text-red-500 text-sm px-1 opacity-0 group-hover:opacity-100 transition-opacity" title={t('editor.delete')}>×</button>
+          <button onClick={() => onDelete(path)} className="text-gray-400 hover:text-red-500 text-sm px-1 opacity-0 group-hover:opacity-100 transition-opacity" title={t('editor.delete')}>×</button>
         )}
       </div>
       {adding && (
@@ -1134,8 +1398,8 @@ function TreeNodeRow({ node, depth, editingId, onStartEdit, onAddChild, onDelete
       )}
       {node.children.length > 0 && (
         <div className={wrap ? 'ml-6 mt-1 border border-gray-200 rounded-lg p-2 pb-0.5' : ''}>
-          {node.children.map((child) => (
-            <TreeNodeRow key={child.id} node={child} depth={depth + 1} editingId={editingId}
+          {node.children.map((child, i) => (
+            <TreeNodeRow key={`${child.id}:${i}`} node={child} path={[...path, i]} depth={depth + 1} editingKey={editingKey}
               onStartEdit={onStartEdit} onAddChild={onAddChild} onDelete={onDelete} onRename={onRename} onTab={onTab} />
           ))}
         </div>
@@ -1155,31 +1419,49 @@ function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply
     fontFamily: initial.fontFamily || DEFAULT_FONT_FAMILY,
     fontSize: initial.fontSize || DEFAULT_FONT_SIZE,
   })
-  const [editingId, setEditingId] = useState<string | null>(null)
+  // 编辑态键带父级维度：同一个属性 id 被两个实体引用时，两行不会互抢焦点
+  const [editingKey, setEditingKey] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
 
+  // 外部配置变化（应用 / 撤销 / 导入）时同步
+  const initialRef = useRef(initial)
+  useEffect(() => {
+    if (initialRef.current === initial) return
+    initialRef.current = initial
+    setState({
+      ...initial,
+      fontFamily: initial.fontFamily || DEFAULT_FONT_FAMILY,
+      fontSize: initial.fontSize || DEFAULT_FONT_SIZE,
+    })
+    setEditingKey(null)
+  }, [initial])
+
   const addEntity = () => {
-    setState((s) => ({ entities: [...s.entities, { id: uid(), label: t('editor.newEntity'), attributes: [] }] }))
+    setState((s) => ({ ...s, entities: [...s.entities, { id: uid(), label: t('editor.newEntity'), attributes: [] }] }))
   }
   const removeEntity = (entId: string) => {
-    setState((s) => ({ entities: s.entities.filter((e) => e.id !== entId) }))
+    setState((s) => ({ ...s, entities: s.entities.filter((e) => e.id !== entId) }))
+    setEditingKey(null)
   }
   const renameEntity = (entId: string, label: string) => {
-    setState((s) => ({ entities: s.entities.map((e) => e.id === entId ? { ...e, label } : e) }))
+    setState((s) => ({ ...s, entities: s.entities.map((e) => e.id === entId ? { ...e, label } : e) }))
   }
   const addAttr = (entId: string, id: string, label: string) => {
     setState((s) => ({
+      ...s,
       entities: s.entities.map((e) => e.id === entId ? { ...e, attributes: [...e.attributes, { id, label }] } : e),
     }))
   }
   const removeAttr = (entId: string, attrId: string) => {
     setState((s) => ({
+      ...s,
       entities: s.entities.map((e) => e.id === entId ? { ...e, attributes: e.attributes.filter((a) => a.id !== attrId) } : e),
     }))
-    if (editingId === attrId) setEditingId(null)
+    setEditingKey((k) => (k === `${entId}:${attrId}` ? null : k))
   }
   const renameAttr = (entId: string, attrId: string, label: string) => {
     setState((s) => ({
+      ...s,
       entities: s.entities.map((e) => e.id === entId ? {
         ...e, attributes: e.attributes.map((a) => a.id === attrId ? { ...a, label } : a),
       } : e),
@@ -1187,6 +1469,7 @@ function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply
   }
   const moveAttr = (entId: string, from: number, to: number) => {
     setState((s) => ({
+      ...s,
       entities: s.entities.map((e) => {
         if (e.id !== entId) return e
         const arr = [...e.attributes]; const [item] = arr.splice(from, 1); arr.splice(to, 0, item)
@@ -1194,6 +1477,18 @@ function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply
       }),
     }))
   }
+  const removeUnlinked = (attrId: string) => {
+    setState((s) => ({ ...s, unlinkedAttributes: (s.unlinkedAttributes || []).filter((a) => a.id !== attrId) }))
+    setEditingKey((k) => (k === `unlinked:${attrId}` ? null : k))
+  }
+  const renameUnlinked = (attrId: string, label: string) => {
+    setState((s) => ({
+      ...s,
+      unlinkedAttributes: (s.unlinkedAttributes || []).map((a) => a.id === attrId ? { ...a, label } : a),
+    }))
+  }
+
+  const unlinked = state.unlinkedAttributes || []
 
   return (
     <div className="space-y-4">
@@ -1223,12 +1518,41 @@ function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply
             <button onClick={() => removeEntity(ent.id)} className="text-gray-400 hover:text-red-500 text-sm ml-1" title={t('editor.deleteEntity')}>×</button>
           </div>
           <div className="px-3 py-2">
-            <AttrList attributes={ent.attributes} editingId={editingId} setEditingId={setEditingId}
+            <AttrList scope={ent.id} attributes={ent.attributes} editingKey={editingKey} setEditingKey={setEditingKey}
               onAdd={(id, l) => addAttr(ent.id, id, l)} onRemove={(id) => removeAttr(ent.id, id)}
               onRename={(id, l) => renameAttr(ent.id, id, l)} onMove={(f, t) => moveAttr(ent.id, f, t)} />
           </div>
         </div>
       ))}
+
+      {unlinked.length > 0 && (
+        <div className="border border-dashed border-amber-300 rounded-lg bg-amber-50/40">
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-amber-200">
+            <span className="text-xs font-medium text-amber-700">{t('editor.unlinkedAttributes')}</span>
+            <span className="text-xs text-amber-600">({unlinked.length})</span>
+          </div>
+          <div className="px-3 py-2 space-y-1">
+            {unlinked.map((a) => (
+              <div key={a.id} tabIndex={0}
+                className="flex items-center justify-between px-2 py-1 bg-white border border-gray-200 rounded text-sm"
+                onDoubleClick={() => setEditingKey(`unlinked:${a.id}`)}
+                onKeyDown={(e) => {
+                  if (editingKey !== `unlinked:${a.id}` && (e.key === 'Delete' || e.key === 'Backspace')) removeUnlinked(a.id)
+                  if (editingKey !== `unlinked:${a.id}` && e.key === 'Enter') setEditingKey(`unlinked:${a.id}`)
+                }}>
+                {editingKey === `unlinked:${a.id}` ? (
+                  <InlineEdit value={a.label} className="flex-1"
+                    onSave={(v) => { renameUnlinked(a.id, v); setEditingKey(null) }}
+                    onDelete={() => { removeUnlinked(a.id); setEditingKey(null) }} />
+                ) : (
+                  <span className="flex-1">{a.label}</span>
+                )}
+                <button onClick={() => removeUnlinked(a.id)} className="text-gray-400 hover:text-red-500 text-sm ml-1 shrink-0" title={t('editor.delete')}>×</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <button onClick={() => onApply(entityToJson(state))}
         className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
@@ -1244,7 +1568,7 @@ function EntityEditor({ state: initial, onApply }: { state: EntityState; onApply
               if (words.length >= 1) {
                 const entId = uid(); const entLabel = words[0]
                 const attrs = words.slice(1).map((w) => ({ id: uid(), label: w }))
-                setState((s) => ({ entities: [...s.entities, { id: entId, label: entLabel, attributes: attrs }] }))
+                setState((s) => ({ ...s, entities: [...s.entities, { id: entId, label: entLabel, attributes: attrs }] }))
               }
             })
             setShowImport(false)
@@ -1291,9 +1615,10 @@ function QuickImport({ title, example, onClose, onImport }: {
   )
 }
 
-function AttrList({ attributes, editingId, setEditingId, onAdd, onRemove, onRename, onMove }: {
+function AttrList({ scope, attributes, editingKey, setEditingKey, onAdd, onRemove, onRename, onMove }: {
+  scope: string
   attributes: { id: string; label: string }[]
-  editingId: string | null; setEditingId: (id: string | null) => void
+  editingKey: string | null; setEditingKey: (key: string | null) => void
   onAdd: (id: string, label: string) => void; onRemove: (id: string) => void
   onRename: (id: string, label: string) => void; onMove: (from: number, to: number) => void
 }) {
@@ -1301,6 +1626,8 @@ function AttrList({ attributes, editingId, setEditingId, onAdd, onRemove, onRena
   const [newLabel, setNewLabel] = useState('')
   const [focusedIdx, setFocusedIdx] = useState<number | null>(null)
   const [dragIdx, setDragIdx] = useState<number | null>(null)
+  // 父级（实体）维度：共享属性 id 出现在两个实体下时，两行的编辑态互不影响
+  const keyOf = (id: string) => `${scope}:${id}`
 
   const add = () => {
     const label = newLabel.trim()
@@ -1319,26 +1646,26 @@ function AttrList({ attributes, editingId, setEditingId, onAdd, onRemove, onRena
       </div>
       <div className="space-y-1">
         {attributes.map((a, i) => (
-          <div key={a.id} draggable={editingId !== a.id} tabIndex={0}
+          <div key={`${a.id}:${i}`} draggable={editingKey !== keyOf(a.id)} tabIndex={0}
             className={`flex items-center justify-between px-2 py-1 bg-gray-50 border rounded text-sm cursor-default transition-colors ${focusedIdx === i ? 'border-black ring-1 ring-black' : 'border-gray-200'} ${dragIdx === i ? 'opacity-40' : ''}`}
-            onDoubleClick={() => setEditingId(a.id)}
+            onDoubleClick={() => setEditingKey(keyOf(a.id))}
             onFocus={() => setFocusedIdx(i)} onBlur={() => setFocusedIdx(null)}
             onKeyDown={(e) => {
-              if ((e.key === 'Delete' || e.key === 'Backspace') && editingId !== a.id) onRemove(a.id)
+              if ((e.key === 'Delete' || e.key === 'Backspace') && editingKey !== keyOf(a.id)) onRemove(a.id)
               // 同上：编辑框里的 Enter 不应重新打开编辑态
-              if (e.key === 'Enter' && editingId !== a.id) setEditingId(a.id)
+              if (e.key === 'Enter' && editingKey !== keyOf(a.id)) setEditingKey(keyOf(a.id))
             }}
-            onDragStart={() => { if (editingId === a.id) return; setDragIdx(i) }} onDragOver={(e) => e.preventDefault()}
+            onDragStart={() => { if (editingKey === keyOf(a.id)) return; setDragIdx(i) }} onDragOver={(e) => e.preventDefault()}
             onDrop={() => { if (dragIdx !== null && dragIdx !== i) onMove(dragIdx, i); setDragIdx(null) }}
             onDragEnd={() => setDragIdx(null)}>
             <span className="text-xs text-gray-300 mr-1 cursor-grab select-none">⋮⋮</span>
-            {editingId === a.id ? (
+            {editingKey === keyOf(a.id) ? (
               <InlineEdit value={a.label} className="flex-1"
-                onSave={(v) => { onRename(a.id, v); setEditingId(null) }}
-                onDelete={() => { onRemove(a.id); setEditingId(null) }}
+                onSave={(v) => { onRename(a.id, v); setEditingKey(null) }}
+                onDelete={() => { onRemove(a.id); setEditingKey(null) }}
                 onTab={() => {
-                  if (i + 1 < attributes.length) { setEditingId(attributes[i + 1].id) }
-                  else { const id = uid(); onAdd(id, ''); setTimeout(() => setEditingId(id), 0) }
+                  if (i + 1 < attributes.length) { setEditingKey(keyOf(attributes[i + 1].id)) }
+                  else { const id = uid(); onAdd(id, ''); setEditingKey(keyOf(id)) }
                 }} />
             ) : (<span className="flex-1">{a.label}</span>)}
             <button onClick={() => onRemove(a.id)} className="text-gray-400 hover:text-red-500 text-sm ml-1 shrink-0" title={t('editor.delete')}>×</button>
@@ -1358,13 +1685,29 @@ function SequenceEditor({ state: initial, onApply }: { state?: SequenceState; on
   const { t } = useTranslation()
   const [participants, setParticipants] = useState<{ id: string; label: string; participantType: 'actor' | 'system' | 'database' }[]>(initial?.participants || [])
   const [messages, setMessages] = useState<{ id: string; source: string; target: string; label: string; messageType: 'sync' | 'async' | 'return' }[]>(initial?.messages || [])
-  const [editingId, setEditingId] = useState<string | null>(null)
+  // participant 之外的节点/边（activation 等）原样保留，应用时补回
+  const [extraNodes, setExtraNodes] = useState<{ id: string; type: string; data: Record<string, unknown> }[]>(initial?.extraNodes || [])
+  const [extraEdges, setExtraEdges] = useState<Edge[]>(initial?.extraEdges || [])
+  // 编辑态键带父级维度（p:/m: 前缀 + 序号），参与者与消息、以及重复 id 都不会互抢焦点
+  const [editingKey, setEditingKey] = useState<string | null>(null)
   const [msgSource, setMsgSource] = useState('')
   const [msgTarget, setMsgTarget] = useState('')
   const [msgLabel, setMsgLabel] = useState('')
   const [dragMsgIdx, setDragMsgIdx] = useState<number | null>(null)
+  const [dragPartIdx, setDragPartIdx] = useState<number | null>(null)
   const [showMermaid, setShowMermaid] = useState(false)
   const [mermaidText, setMermaidText] = useState('')
+
+  const initialRef = useRef(initial)
+  useEffect(() => {
+    if (initialRef.current === initial) return
+    initialRef.current = initial
+    setParticipants(initial?.participants || [])
+    setMessages(initial?.messages || [])
+    setExtraNodes(initial?.extraNodes || [])
+    setExtraEdges(initial?.extraEdges || [])
+    setEditingKey(null)
+  }, [initial])
 
   const addParticipant = () => {
     const id = uid()
@@ -1375,7 +1718,9 @@ function SequenceEditor({ state: initial, onApply }: { state?: SequenceState; on
   const removeParticipant = (id: string) => {
     setParticipants((p) => p.filter((item) => item.id !== id))
     setMessages((m) => m.filter((msg) => msg.source !== id && msg.target !== id))
-    if (editingId === id) setEditingId(null)
+    // 与被删参与者相连的额外边也要去掉，避免悬空边
+    setExtraEdges((e) => e.filter((edge) => edge.source !== id && edge.target !== id))
+    setEditingKey(null)
   }
 
   const renameParticipant = (id: string, label: string) => {
@@ -1410,8 +1755,14 @@ function SequenceEditor({ state: initial, onApply }: { state?: SequenceState; on
     })
   }
 
+  const moveParticipant = (from: number, to: number) => {
+    setParticipants((p) => {
+      const arr = [...p]; const [item] = arr.splice(from, 1); arr.splice(to, 0, item); return arr
+    })
+  }
+
   const handleApply = () => {
-    onApply(sequenceToJson({ participants, messages }))
+    onApply(sequenceToJson({ participants, messages, extraNodes, extraEdges }))
   }
 
   const handleMermaidImport = () => {
@@ -1419,6 +1770,8 @@ function SequenceEditor({ state: initial, onApply }: { state?: SequenceState; on
     if (result) {
       setParticipants(result.participants)
       setMessages(result.messages)
+      setExtraNodes([])
+      setExtraEdges([])
       setShowMermaid(false)
       setMermaidText('')
     } else {
@@ -1443,21 +1796,33 @@ function SequenceEditor({ state: initial, onApply }: { state?: SequenceState; on
 
       <div className="space-y-2">
         {participants.map((p, i) => (
-          <div key={p.id} className="bg-white border border-gray-200 rounded p-2">
+          <div key={`${p.id}:${i}`} draggable={editingKey !== `p:${i}:${p.id}`} tabIndex={0}
+            className={`bg-white border border-gray-200 rounded p-2 transition-opacity ${dragPartIdx === i ? 'opacity-40' : ''}`}
+            onDragStart={() => { if (editingKey === `p:${i}:${p.id}`) return; setDragPartIdx(i) }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => { if (dragPartIdx !== null && dragPartIdx !== i) moveParticipant(dragPartIdx, i); setDragPartIdx(null) }}
+            onDragEnd={() => setDragPartIdx(null)}
+            onKeyDown={(e) => {
+              if (isEditableTarget(e)) return
+              if ((e.key === 'Delete' || e.key === 'Backspace') && editingKey !== `p:${i}:${p.id}`) {
+                e.preventDefault()
+                removeParticipant(p.id)
+              }
+            }}>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-gray-400">{t('editor.participantLabel')}</span>
+              <span className="text-xs text-gray-400 cursor-grab select-none">⋮⋮ {t('editor.participantLabel')}</span>
               <button onClick={() => removeParticipant(p.id)} className="text-gray-400 hover:text-red-500 text-sm" title={t('editor.deleteParticipant')}>×</button>
             </div>
-            {editingId === p.id ? (
+            {editingKey === `p:${i}:${p.id}` ? (
               <InlineEdit value={p.label}
-                onSave={(v) => { renameParticipant(p.id, v); setEditingId(null) }}
-                onDelete={() => { removeParticipant(p.id); setEditingId(null) }}
+                onSave={(v) => { renameParticipant(p.id, v); setEditingKey(null) }}
+                onDelete={() => { removeParticipant(p.id); setEditingKey(null) }}
                 onTab={() => {
-                  if (i + 1 < participants.length) setEditingId(participants[i + 1].id)
-                  else { const newId = addParticipant(); setTimeout(() => setEditingId(newId), 0) }
+                  if (i + 1 < participants.length) setEditingKey(`p:${i + 1}:${participants[i + 1].id}`)
+                  else { const newId = addParticipant(); setEditingKey(`p:${participants.length}:${newId}`) }
                 }} />
             ) : (
-              <div className="text-sm cursor-pointer" onDoubleClick={() => setEditingId(p.id)}>{p.label}</div>
+              <div className="text-sm cursor-pointer" onDoubleClick={() => setEditingKey(`p:${i}:${p.id}`)}>{p.label}</div>
             )}
             <div className="flex gap-1 mt-2">
               {(['actor', 'system', 'database'] as const).map((type) => (
@@ -1471,9 +1836,8 @@ function SequenceEditor({ state: initial, onApply }: { state?: SequenceState; on
         ))}
       </div>
 
-      {/* Messages section */}
-      {participants.length >= 2 && (
-        <div className="border-t border-gray-200 pt-3">
+      {/* Messages section：不再要求 participants >= 2，否则自调用消息看不见也删不掉 */}
+      <div className="border-t border-gray-200 pt-3">
           <div className="text-xs font-medium text-gray-500 mb-2">{t('editor.messageSection')}</div>
 
           {/* Add message form */}
@@ -1500,22 +1864,33 @@ function SequenceEditor({ state: initial, onApply }: { state?: SequenceState; on
           {/* Message list */}
           <div className="space-y-1">
             {messages.map((msg, i) => (
-              <div key={msg.id} draggable={editingId !== msg.id}
+              <div key={`${msg.id}:${i}`} draggable={editingKey !== `m:${i}:${msg.id}`} tabIndex={0}
                 className={`flex items-center gap-1 px-2 py-1 bg-gray-50 border border-gray-200 rounded text-xs ${dragMsgIdx === i ? 'opacity-40' : ''}`}
-                onDragStart={() => { if (editingId === msg.id) return; setDragMsgIdx(i) }}
+                onDragStart={() => { if (editingKey === `m:${i}:${msg.id}`) return; setDragMsgIdx(i) }}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => { if (dragMsgIdx !== null && dragMsgIdx !== i) moveMessage(dragMsgIdx, i); setDragMsgIdx(null) }}
-                onDragEnd={() => setDragMsgIdx(null)}>
+                onDragEnd={() => setDragMsgIdx(null)}
+                onKeyDown={(e) => {
+                  if (isEditableTarget(e)) return
+                  if ((e.key === 'Delete' || e.key === 'Backspace') && editingKey !== `m:${i}:${msg.id}`) {
+                    e.preventDefault()
+                    removeMessage(msg.id)
+                  }
+                }}>
                 <span className="text-xs text-gray-300 mr-1 cursor-grab select-none">⋮⋮</span>
                 <span className="text-gray-500 truncate">{getLabel(msg.source)}</span>
                 <span className="text-gray-400">→</span>
                 <span className="text-gray-500 truncate">{getLabel(msg.target)}</span>
-                {editingId === msg.id ? (
+                {editingKey === `m:${i}:${msg.id}` ? (
                   <InlineEdit value={msg.label} className="flex-1 min-w-0"
-                    onSave={(v) => { renameMessage(msg.id, v); setEditingId(null) }}
-                    onDelete={() => { removeMessage(msg.id); setEditingId(null) }} />
+                    onSave={(v) => { renameMessage(msg.id, v); setEditingKey(null) }}
+                    onDelete={() => { removeMessage(msg.id); setEditingKey(null) }}
+                    onTab={() => {
+                      if (i + 1 < messages.length) setEditingKey(`m:${i + 1}:${messages[i + 1].id}`)
+                      else { const id = uid(); setMessages((m) => [...m, { id, source: msg.source, target: msg.target, label: '', messageType: 'sync' }]); setEditingKey(`m:${messages.length}:${id}`) }
+                    }} />
                 ) : (
-                  <span className="flex-1 min-w-0 truncate cursor-pointer" onDoubleClick={() => setEditingId(msg.id)}>: {msg.label}</span>
+                  <span className="flex-1 min-w-0 truncate cursor-pointer" onDoubleClick={() => setEditingKey(`m:${i}:${msg.id}`)}>: {msg.label}</span>
                 )}
                 <div className="flex gap-0.5 shrink-0">
                   {(['sync', 'async', 'return'] as const).map((type) => (
@@ -1533,7 +1908,6 @@ function SequenceEditor({ state: initial, onApply }: { state?: SequenceState; on
             )}
           </div>
         </div>
-      )}
 
       <button onClick={handleApply}
         className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
@@ -1576,14 +1950,29 @@ function SequenceEditor({ state: initial, onApply }: { state?: SequenceState; on
 
 function ClassEditor({ state: initial, onApply }: { state?: ClassState; onApply: (json: string) => void }) {
   const { t } = useTranslation()
-  const [classes, setClasses] = useState<{ id: string; label: string; attributes: string[]; methods: string[]; isAbstract?: boolean; stereotype?: string }[]>(initial?.classes || [])
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editingField, setEditingField] = useState<'label' | 'attr' | 'method' | null>(null)
-  const [newAttr, setNewAttr] = useState('')
-  const [newMethod, setNewMethod] = useState('')
+  type ClassItem = ClassState['classes'][number]
+  const [classes, setClasses] = useState<ClassItem[]>(initial?.classes || [])
+  // 编辑态键带父级维度：重复 id 时两行的 InlineEdit 不会互抢焦点
+  const [editingKey, setEditingKey] = useState<string | null>(null)
+  // 草稿按 classId 分开存，避免「A 类里输入的属性写进 B 类」
+  const [newAttr, setNewAttr] = useState<Record<string, string>>({})
+  const [newMethod, setNewMethod] = useState<Record<string, string>>({})
   const [showMermaid, setShowMermaid] = useState(false)
   const [mermaidText, setMermaidText] = useState('')
+  const [dragClassIdx, setDragClassIdx] = useState<number | null>(null)
   const [relations, setRelations] = useState<{ id: string; source: string; target: string; relationType: string; label?: string }[]>(initial?.relations || [])
+
+  // 外部配置变化（应用 / 撤销 / 导入）时同步
+  const initialRef = useRef(initial)
+  useEffect(() => {
+    if (initialRef.current === initial) return
+    initialRef.current = initial
+    setClasses(initial?.classes || [])
+    setRelations(initial?.relations || [])
+    setEditingKey(null)
+    setNewAttr({})
+    setNewMethod({})
+  }, [initial])
 
   // AI states
   const [classAiText, setClassAiText] = useState('')
@@ -1607,7 +1996,9 @@ function ClassEditor({ state: initial, onApply }: { state?: ClassState; onApply:
         setRelations(aiState.relations)
         setClassParsePreview({ classes: aiState.classes.length, relations: aiState.relations.length, source: 'AI' })
       } else {
-        setClassParseError(t('editor.sqlAiFallback'))
+        // 之前这里复用 ER 的「将使用本地基础解析」文案，但类图并没有本地解析器，
+        // 点了按钮配置节点数不变 —— 文案与行为不符，改为明确提示去配置 Key。
+        setClassParseError(t('editor.classAiNoKey'))
       }
     } catch (err: any) {
       setClassParseError(err.message || 'Parsing failed')
@@ -1617,12 +2008,20 @@ function ClassEditor({ state: initial, onApply }: { state?: ClassState; onApply:
   }
 
   const addClass = () => {
-    setClasses((c) => [...c, { id: uid(), label: t('editor.newClass'), attributes: [], methods: [] }])
+    setClasses((c) => [...c, { id: uid(), label: t('editor.newClass'), attributes: [], methods: [], type: 'class' }])
   }
 
   const removeClass = (id: string) => {
     setClasses((c) => c.filter((item) => item.id !== id))
-    if (editingId === id) { setEditingId(null); setEditingField(null) }
+    // 同时删掉挂在这个类上的关系，否则会留下 source/target 指向不存在节点的悬空边
+    setRelations((r) => r.filter((rel) => rel.source !== id && rel.target !== id))
+    setEditingKey(null)
+  }
+
+  const setClassType = (id: string, type: 'class' | 'interface' | 'enum') => {
+    setClasses((c) => c.map((item) => item.id === id
+      ? { ...item, type, stereotype: type === 'class' ? undefined : type }
+      : item))
   }
 
   const renameClass = (id: string, label: string) => {
@@ -1630,10 +2029,10 @@ function ClassEditor({ state: initial, onApply }: { state?: ClassState; onApply:
   }
 
   const addAttribute = (classId: string) => {
-    const label = newAttr.trim()
+    const label = (newAttr[classId] || '').trim()
     if (!label) return
     setClasses((c) => c.map((item) => item.id === classId ? { ...item, attributes: [...item.attributes, label] } : item))
-    setNewAttr('')
+    setNewAttr((m) => ({ ...m, [classId]: '' }))
   }
 
   const removeAttribute = (classId: string, index: number) => {
@@ -1641,14 +2040,23 @@ function ClassEditor({ state: initial, onApply }: { state?: ClassState; onApply:
   }
 
   const addMethod = (classId: string) => {
-    const label = newMethod.trim()
+    const label = (newMethod[classId] || '').trim()
     if (!label) return
     setClasses((c) => c.map((item) => item.id === classId ? { ...item, methods: [...item.methods, label] } : item))
-    setNewMethod('')
+    setNewMethod((m) => ({ ...m, [classId]: '' }))
   }
 
   const removeMethod = (classId: string, index: number) => {
     setClasses((c) => c.map((item) => item.id === classId ? { ...item, methods: item.methods.filter((_, i) => i !== index) } : item))
+  }
+
+  const moveClass = (from: number, to: number) => {
+    setClasses((c) => {
+      const arr = [...c]
+      const [item] = arr.splice(from, 1)
+      arr.splice(to, 0, item)
+      return arr
+    })
   }
 
   const handleApply = () => {
@@ -1707,18 +2115,43 @@ function ClassEditor({ state: initial, onApply }: { state?: ClassState; onApply:
       </div>
 
       <div className="space-y-2">
-        {classes.map((cls) => (
-          <div key={cls.id} className="bg-white border border-gray-200 rounded p-2">
+        {classes.map((cls, ci) => (
+          <div key={`${cls.id}:${ci}`} draggable={editingKey !== `class:${ci}:${cls.id}`} tabIndex={0}
+            className={`bg-white border border-gray-200 rounded p-2 transition-opacity ${dragClassIdx === ci ? 'opacity-40' : ''}`}
+            onDragStart={() => { if (editingKey === `class:${ci}:${cls.id}`) return; setDragClassIdx(ci) }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => { if (dragClassIdx !== null && dragClassIdx !== ci) moveClass(dragClassIdx, ci); setDragClassIdx(null) }}
+            onDragEnd={() => setDragClassIdx(null)}
+            onKeyDown={(e) => {
+              if (isEditableTarget(e)) return
+              if ((e.key === 'Delete' || e.key === 'Backspace') && editingKey !== `class:${ci}:${cls.id}`) {
+                e.preventDefault()
+                removeClass(cls.id)
+              }
+            }}>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-gray-400">{t('editor.classLabel')}</span>
+              <span className="text-xs text-gray-400 cursor-grab select-none">⋮⋮ {t('editor.classLabel')}</span>
               <button onClick={() => removeClass(cls.id)} className="text-gray-400 hover:text-red-500 text-sm" title={t('editor.deleteClass')}>×</button>
             </div>
-            {editingId === cls.id && editingField === 'label' ? (
+            {/* 类型切换：类 / 接口 / 枚举 */}
+            <div className="flex gap-1 mb-1">
+              {(['class', 'interface', 'enum'] as const).map((tp) => (
+                <button key={tp} onClick={() => setClassType(cls.id, tp)}
+                  className={`px-2 py-0.5 text-[10px] rounded ${(cls.type ?? 'class') === tp ? 'bg-black text-white' : 'bg-gray-100 hover:bg-gray-200'}`}>
+                  {t(`editor.classType${tp.charAt(0).toUpperCase()}${tp.slice(1)}`)}
+                </button>
+              ))}
+            </div>
+            {editingKey === `class:${ci}:${cls.id}` ? (
               <InlineEdit value={cls.label}
-                onSave={(v) => { renameClass(cls.id, v); setEditingId(null); setEditingField(null) }}
-                onDelete={() => { removeClass(cls.id) }} />
+                onSave={(v) => { renameClass(cls.id, v); setEditingKey(null) }}
+                onDelete={() => { removeClass(cls.id) }}
+                onTab={() => {
+                  if (ci + 1 < classes.length) setEditingKey(`class:${ci + 1}:${classes[ci + 1].id}`)
+                  else { const id = uid(); setClasses((c) => [...c, { id, label: '', attributes: [], methods: [], type: 'class' }]); setEditingKey(`class:${classes.length}:${id}`) }
+                }} />
             ) : (
-              <div className="text-sm font-medium cursor-pointer" onDoubleClick={() => { setEditingId(cls.id); setEditingField('label') }}>{cls.label}</div>
+              <div className="text-sm font-medium cursor-pointer" onDoubleClick={() => setEditingKey(`class:${ci}:${cls.id}`)}>{cls.label}</div>
             )}
 
             {/* 属性 */}
@@ -1732,10 +2165,10 @@ function ClassEditor({ state: initial, onApply }: { state?: ClassState; onApply:
               ))}
               <div className="flex gap-1 mt-1">
                 <input className="flex-1 px-1 py-0.5 text-xs border border-gray-300 rounded"
-                  placeholder={t('editor.addAttribute')} value={editingId === cls.id ? newAttr : ''}
-                  onChange={(e) => { setEditingId(cls.id); setNewAttr(e.target.value) }}
+                  placeholder={t('editor.addAttribute')} value={newAttr[cls.id] || ''}
+                  onChange={(e) => setNewAttr((m) => ({ ...m, [cls.id]: e.target.value }))}
                   onKeyDown={(e) => { if (e.key === 'Enter') addAttribute(cls.id) }} />
-                <button onClick={() => { setEditingId(cls.id); addAttribute(cls.id) }} className="px-1 py-0.5 text-xs bg-black text-white rounded">{t('editor.add')}</button>
+                <button onClick={() => addAttribute(cls.id)} className="px-1 py-0.5 text-xs bg-black text-white rounded">{t('editor.add')}</button>
               </div>
             </div>
 
@@ -1750,10 +2183,10 @@ function ClassEditor({ state: initial, onApply }: { state?: ClassState; onApply:
               ))}
               <div className="flex gap-1 mt-1">
                 <input className="flex-1 px-1 py-0.5 text-xs border border-gray-300 rounded"
-                  placeholder={t('editor.addMethod')} value={editingId === cls.id ? newMethod : ''}
-                  onChange={(e) => { setEditingId(cls.id); setNewMethod(e.target.value) }}
+                  placeholder={t('editor.addMethod')} value={newMethod[cls.id] || ''}
+                  onChange={(e) => setNewMethod((m) => ({ ...m, [cls.id]: e.target.value }))}
                   onKeyDown={(e) => { if (e.key === 'Enter') addMethod(cls.id) }} />
-                <button onClick={() => { setEditingId(cls.id); addMethod(cls.id) }} className="px-1 py-0.5 text-xs bg-black text-white rounded">{t('editor.add')}</button>
+                <button onClick={() => addMethod(cls.id)} className="px-1 py-0.5 text-xs bg-black text-white rounded">{t('editor.add')}</button>
               </div>
             </div>
           </div>
@@ -1803,12 +2236,27 @@ function ActivityEditor({ state: initial, onApply }: { state?: ActivityState; on
   const { t } = useTranslation()
   const [nodes, setNodes] = useState<{ id: string; label: string; nodeType: 'start' | 'end' | 'action' | 'decision' }[]>(initial?.nodes || [])
   const [edges, setEdges] = useState<{ id: string; source: string; target: string; guard?: string }[]>(initial?.edges || [])
-  const [editingId, setEditingId] = useState<string | null>(null)
+  // 编辑态键带父级维度（序号 + id），重复 id 也不会两行互抢焦点
+  const [editingKey, setEditingKey] = useState<string | null>(null)
+  const [dragNodeIdx, setDragNodeIdx] = useState<number | null>(null)
   const [showMermaid, setShowMermaid] = useState(false)
   const [mermaidText, setMermaidText] = useState('')
 
+  const initialRef = useRef(initial)
+  useEffect(() => {
+    if (initialRef.current === initial) return
+    initialRef.current = initial
+    setNodes(initial?.nodes || [])
+    setEdges(initial?.edges || [])
+    setEditingKey(null)
+  }, [initial])
+
   const addNode = (nodeType: 'action' | 'decision') => {
     setNodes((n) => [...n, { id: uid(), label: nodeType === 'action' ? t('editor.newAction') : t('editor.decisionNode'), nodeType }])
+  }
+
+  const moveNode = (from: number, to: number) => {
+    setNodes((n) => { const arr = [...n]; const [item] = arr.splice(from, 1); arr.splice(to, 0, item); return arr })
   }
 
   const addStartEnd = (nodeType: 'start' | 'end') => {
@@ -1818,12 +2266,32 @@ function ActivityEditor({ state: initial, onApply }: { state?: ActivityState; on
   const removeNode = (id: string) => {
     setNodes((n) => n.filter((item) => item.id !== id))
     setEdges((e) => e.filter((edge) => edge.source !== id && edge.target !== id))
-    if (editingId === id) setEditingId(null)
+    setEditingKey(null)
+  }
+
+  /** 开始/结束节点是流程锚点，删除前确认一次，避免误删 */
+  const requestRemoveNode = (id: string, nodeType: string) => {
+    if ((nodeType === 'start' || nodeType === 'end') &&
+      !window.confirm(t('editor.deleteNodeConfirm'))) return
+    removeNode(id)
   }
 
   const renameNode = (id: string, label: string) => {
     setNodes((n) => n.map((item) => item.id === id ? { ...item, label } : item))
   }
+
+  // ===== P2：最小连线编辑 =====
+  const addEdge = () => {
+    const src = nodes[0]?.id
+    const tgt = nodes[1]?.id || nodes[0]?.id
+    if (!src || !tgt) return
+    setEdges((e) => [...e, { id: uid(), source: src, target: tgt }])
+  }
+  const removeEdge = (id: string) => setEdges((e) => e.filter((edge) => edge.id !== id))
+  const updateEdge = (id: string, updates: Partial<{ source: string; target: string; guard: string }>) => {
+    setEdges((e) => e.map((edge) => edge.id === id ? { ...edge, ...updates } : edge))
+  }
+  const nodeLabel = (id: string) => nodes.find((n) => n.id === id)?.label || id
 
   const handleApply = () => {
     onApply(activityToJson({ nodes, edges }))
@@ -1870,10 +2338,22 @@ function ActivityEditor({ state: initial, onApply }: { state?: ActivityState; on
 
       <div className="space-y-2">
         {nodes.map((node, i) => (
-          <div key={node.id} className="bg-white border border-gray-200 rounded p-2">
+          <div key={`${node.id}:${i}`} draggable={editingKey !== `a:${i}:${node.id}`} tabIndex={0}
+            className={`bg-white border border-gray-200 rounded p-2 transition-opacity ${dragNodeIdx === i ? 'opacity-40' : ''}`}
+            onDragStart={() => { if (editingKey === `a:${i}:${node.id}`) return; setDragNodeIdx(i) }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => { if (dragNodeIdx !== null && dragNodeIdx !== i) moveNode(dragNodeIdx, i); setDragNodeIdx(null) }}
+            onDragEnd={() => setDragNodeIdx(null)}
+            onKeyDown={(e) => {
+              if (isEditableTarget(e)) return
+              if ((e.key === 'Delete' || e.key === 'Backspace') && editingKey !== `a:${i}:${node.id}`) {
+                e.preventDefault()
+                requestRemoveNode(node.id, node.nodeType)
+              }
+            }}>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-gray-400">
-                {node.nodeType === 'start'
+              <span className="text-xs text-gray-400 cursor-grab select-none">
+                ⋮⋮ {node.nodeType === 'start'
                   ? t('editor.startNode')
                   : node.nodeType === 'end'
                     ? t('editor.endNode')
@@ -1881,24 +2361,55 @@ function ActivityEditor({ state: initial, onApply }: { state?: ActivityState; on
                       ? t('editor.decisionNode')
                       : t('editor.actionNode')}
               </span>
-              <button onClick={() => removeNode(node.id)} className="text-gray-400 hover:text-red-500 text-sm" title={t('editor.deleteAction')}>×</button>
+              <button onClick={() => requestRemoveNode(node.id, node.nodeType)} className="text-gray-400 hover:text-red-500 text-sm" title={t('editor.deleteAction')}>×</button>
             </div>
             {node.nodeType === 'start' || node.nodeType === 'end' ? (
               <div className="text-sm text-gray-500">{node.nodeType === 'start' ? t('editor.startNode') : t('editor.endNode')}</div>
             ) : (
-              editingId === node.id ? (
+              editingKey === `a:${i}:${node.id}` ? (
                 <InlineEdit value={node.label}
-                  onSave={(v) => { renameNode(node.id, v); setEditingId(null) }}
+                  onSave={(v) => { renameNode(node.id, v); setEditingKey(null) }}
                   onDelete={() => { removeNode(node.id) }}
                   onTab={() => {
-                    if (i + 1 < nodes.length) setEditingId(nodes[i + 1].id)
+                    if (i + 1 < nodes.length) setEditingKey(`a:${i + 1}:${nodes[i + 1].id}`)
+                    else { const id = uid(); setNodes((n) => [...n, { id, label: '', nodeType: 'action' }]); setEditingKey(`a:${nodes.length}:${id}`) }
                   }} />
               ) : (
-                <div className="text-sm cursor-pointer" onDoubleClick={() => setEditingId(node.id)}>{node.label}</div>
+                <div className="text-sm cursor-pointer" onDoubleClick={() => setEditingKey(`a:${i}:${node.id}`)}>{node.label}</div>
               )
             )}
           </div>
         ))}
+      </div>
+
+      {/* 连线（P2：最小连线编辑） */}
+      <div className="border-t border-gray-200 pt-3">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-gray-500">{t('editor.addEdge')}</span>
+          <button onClick={addEdge} disabled={nodes.length < 1}
+            className="px-2 py-0.5 text-xs bg-black text-white rounded hover:bg-gray-800 disabled:opacity-30">
+            + {t('editor.addEdge')}
+          </button>
+        </div>
+        <div className="space-y-1">
+          {edges.map((edge) => (
+            <div key={edge.id} className="flex items-center gap-1 text-xs bg-gray-50 border border-gray-200 rounded px-1 py-1">
+              <select className="flex-1 min-w-0 px-1 py-0.5 border border-gray-300 rounded bg-white"
+                value={edge.source} onChange={(e) => updateEdge(edge.id, { source: e.target.value })}>
+                {nodes.map((n) => <option key={n.id} value={n.id}>{nodeLabel(n.id)}</option>)}
+              </select>
+              <span className="text-gray-400">→</span>
+              <select className="flex-1 min-w-0 px-1 py-0.5 border border-gray-300 rounded bg-white"
+                value={edge.target} onChange={(e) => updateEdge(edge.id, { target: e.target.value })}>
+                {nodes.map((n) => <option key={n.id} value={n.id}>{nodeLabel(n.id)}</option>)}
+              </select>
+              <input className="w-16 px-1 py-0.5 border border-gray-300 rounded" placeholder={t('editor.guard')}
+                value={edge.guard || ''} onChange={(e) => updateEdge(edge.id, { guard: e.target.value })} />
+              <button onClick={() => removeEdge(edge.id)} className="text-gray-400 hover:text-red-500 px-0.5" title={t('editor.removeEdge')}>×</button>
+            </div>
+          ))}
+          {edges.length === 0 && <div className="text-xs text-gray-400 text-center py-1">{t('editor.addEdge')}</div>}
+        </div>
       </div>
 
       <button onClick={handleApply}
@@ -1948,18 +2459,33 @@ function DeploymentEditor({ state: initial, onApply }: { state?: DeploymentState
     t('editor.depNode' + (tp === 'node' ? 'Device' : tp.charAt(0).toUpperCase() + tp.slice(1)))
   const [nodes, setNodes] = useState<{ id: string; label: string; nodeType: DepNodeType; technology?: string }[]>(initial?.nodes || [])
   const [edges, setEdges] = useState<{ id: string; source: string; target: string; label?: string }[]>(initial?.edges || [])
-  const [editingId, setEditingId] = useState<string | null>(null)
+  // 编辑态键带父级维度（序号 + id），重复 id 也不会两行互抢焦点
+  const [editingKey, setEditingKey] = useState<string | null>(null)
+  const [dragNodeIdx, setDragNodeIdx] = useState<number | null>(null)
   const [showMermaid, setShowMermaid] = useState(false)
   const [mermaidText, setMermaidText] = useState('')
+
+  const initialRef = useRef(initial)
+  useEffect(() => {
+    if (initialRef.current === initial) return
+    initialRef.current = initial
+    setNodes(initial?.nodes || [])
+    setEdges(initial?.edges || [])
+    setEditingKey(null)
+  }, [initial])
 
   const addNode = (nodeType: DepNodeType) => {
     setNodes((n) => [...n, { id: uid(), label: depLabel(nodeType), nodeType, technology: '' }])
   }
 
+  const moveNode = (from: number, to: number) => {
+    setNodes((n) => { const arr = [...n]; const [item] = arr.splice(from, 1); arr.splice(to, 0, item); return arr })
+  }
+
   const removeNode = (id: string) => {
     setNodes((n) => n.filter((item) => item.id !== id))
     setEdges((e) => e.filter((edge) => edge.source !== id && edge.target !== id))
-    if (editingId === id) setEditingId(null)
+    setEditingKey(null)
   }
 
   const renameNode = (id: string, label: string) => {
@@ -1968,6 +2494,18 @@ function DeploymentEditor({ state: initial, onApply }: { state?: DeploymentState
 
   const setTechnology = (id: string, technology: string) => {
     setNodes((n) => n.map((item) => item.id === id ? { ...item, technology } : item))
+  }
+
+  // ===== P2：最小连线编辑 =====
+  const addEdge = () => {
+    const src = nodes[0]?.id
+    const tgt = nodes[1]?.id || nodes[0]?.id
+    if (!src || !tgt) return
+    setEdges((e) => [...e, { id: uid(), source: src, target: tgt }])
+  }
+  const removeEdge = (id: string) => setEdges((e) => e.filter((edge) => edge.id !== id))
+  const updateEdge = (id: string, updates: Partial<{ source: string; target: string; label: string }>) => {
+    setEdges((e) => e.map((edge) => edge.id === id ? { ...edge, ...updates } : edge))
   }
 
   const handleApply = () => {
@@ -2003,20 +2541,33 @@ function DeploymentEditor({ state: initial, onApply }: { state?: DeploymentState
 
       <div className="space-y-2">
         {nodes.map((node, i) => (
-          <div key={node.id} className="bg-white border border-gray-200 rounded p-2">
+          <div key={`${node.id}:${i}`} draggable={editingKey !== `d:${i}:${node.id}`} tabIndex={0}
+            className={`bg-white border border-gray-200 rounded p-2 transition-opacity ${dragNodeIdx === i ? 'opacity-40' : ''}`}
+            onDragStart={() => { if (editingKey === `d:${i}:${node.id}`) return; setDragNodeIdx(i) }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => { if (dragNodeIdx !== null && dragNodeIdx !== i) moveNode(dragNodeIdx, i); setDragNodeIdx(null) }}
+            onDragEnd={() => setDragNodeIdx(null)}
+            onKeyDown={(e) => {
+              if (isEditableTarget(e)) return
+              if ((e.key === 'Delete' || e.key === 'Backspace') && editingKey !== `d:${i}:${node.id}`) {
+                e.preventDefault()
+                removeNode(node.id)
+              }
+            }}>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-gray-400">{depLabel(node.nodeType)}</span>
+              <span className="text-xs text-gray-400 cursor-grab select-none">⋮⋮ {depLabel(node.nodeType)}</span>
               <button onClick={() => removeNode(node.id)} className="text-gray-400 hover:text-red-500 text-sm" title={t('editor.deleteServer')}>×</button>
             </div>
-            {editingId === node.id ? (
+            {editingKey === `d:${i}:${node.id}` ? (
               <InlineEdit value={node.label}
-                onSave={(v) => { renameNode(node.id, v); setEditingId(null) }}
+                onSave={(v) => { renameNode(node.id, v); setEditingKey(null) }}
                 onDelete={() => { removeNode(node.id) }}
                 onTab={() => {
-                  if (i + 1 < nodes.length) setEditingId(nodes[i + 1].id)
+                  if (i + 1 < nodes.length) setEditingKey(`d:${i + 1}:${nodes[i + 1].id}`)
+                  else { const id = uid(); setNodes((n) => [...n, { id, label: '', nodeType: 'server', technology: '' }]); setEditingKey(`d:${nodes.length}:${id}`) }
                 }} />
             ) : (
-              <div className="text-sm cursor-pointer" onDoubleClick={() => setEditingId(node.id)}>{node.label}</div>
+              <div className="text-sm cursor-pointer" onDoubleClick={() => setEditingKey(`d:${i}:${node.id}`)}>{node.label}</div>
             )}
             <input className="w-full mt-1 px-1 py-0.5 text-xs border border-gray-300 rounded"
               placeholder={t('editor.techPlaceholder')}
@@ -2024,6 +2575,35 @@ function DeploymentEditor({ state: initial, onApply }: { state?: DeploymentState
               onChange={(e) => setTechnology(node.id, e.target.value)} />
           </div>
         ))}
+      </div>
+
+      {/* 连线（P2：最小连线编辑） */}
+      <div className="border-t border-gray-200 pt-3">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-gray-500">{t('editor.addEdge')}</span>
+          <button onClick={addEdge} disabled={nodes.length < 1}
+            className="px-2 py-0.5 text-xs bg-black text-white rounded hover:bg-gray-800 disabled:opacity-30">
+            + {t('editor.addEdge')}
+          </button>
+        </div>
+        <div className="space-y-1">
+          {edges.map((edge) => (
+            <div key={edge.id} className="flex items-center gap-1 text-xs bg-gray-50 border border-gray-200 rounded px-1 py-1">
+              <select className="flex-1 min-w-0 px-1 py-0.5 border border-gray-300 rounded bg-white"
+                value={edge.source} onChange={(e) => updateEdge(edge.id, { source: e.target.value })}>
+                {nodes.map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
+              </select>
+              <span className="text-gray-400">→</span>
+              <select className="flex-1 min-w-0 px-1 py-0.5 border border-gray-300 rounded bg-white"
+                value={edge.target} onChange={(e) => updateEdge(edge.id, { target: e.target.value })}>
+                {nodes.map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
+              </select>
+              <input className="w-20 px-1 py-0.5 border border-gray-300 rounded" placeholder={t('editor.edgeLabel')}
+                value={edge.label || ''} onChange={(e) => updateEdge(edge.id, { label: e.target.value })} />
+              <button onClick={() => removeEdge(edge.id)} className="text-gray-400 hover:text-red-500 px-0.5" title={t('editor.removeEdge')}>×</button>
+            </div>
+          ))}
+        </div>
       </div>
 
       <button onClick={handleApply}
@@ -2075,6 +2655,17 @@ function EREditor({ state: initial, onApply }: { state?: ERState; onApply: (json
   const [mergeMn, setMergeMn] = useState(true)
   const [centerId, setCenterId] = useState('auto')
   const [parsePreview, setParsePreview] = useState<{ tables: number; relations: number; source: string } | null>(null)
+
+  // App 已去掉 key={er-...-configVersion} 的重挂载，改为受控同步：
+  // 外部配置变化（应用修改 / 撤销 / 导入）时刷新实体与关系，
+  // 但本地 UI 状态（SQL 文本 / 合并 M:N / AI 布局 / 中心实体 / 解析提示）保持不变，
+  // 否则点一次「应用修改」就把用户刚粘的 SQL 和布局选项清空了。
+  const initialRef = useRef(initial)
+  useEffect(() => {
+    if (initialRef.current === initial) return
+    initialRef.current = initial
+    setState(initial || { entities: [], relationships: [] })
+  }, [initial])
 
   const handleParseSql = async () => {
     setParseError('')
@@ -2465,15 +3056,13 @@ function EREditor({ state: initial, onApply }: { state?: ERState; onApply: (json
         </div>
       )}
 
-      {/* Apply Button */}
-      {state.entities.length > 0 && (
-        <button
-          onClick={() => onApply(erToJson(state))}
-          className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800"
-        >
-          {t('editor.apply')}
-        </button>
-      )}
+      {/* Apply Button：不再受 entities.length > 0 门禁，空实体（全删）也要能提交 */}
+      <button
+        onClick={() => onApply(erToJson(state))}
+        className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800"
+      >
+        {t('editor.apply')}
+      </button>
     </div>
   )
 }

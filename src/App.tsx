@@ -19,7 +19,7 @@ import { useUndoRedo } from './hooks/useUndoRedo'
 import type { DiagramNodeData, DiagramType, ConfigMap, ERNotation } from './types/diagram'
 import type { UseCaseState, TreeNode, EntityState, SequenceState, ERState, ClassState, ActivityState, DeploymentState } from './components/panels/NodeEditor'
 import { useCasePresets, structureNodes, structureEdges, userEntityPreset, erSystemJson, sequenceSystemJson, classSystemJson, activitySystemJson, deploymentSystemJson } from './data/mockData'
-import { configsToJson, parseDiagram, jsonToConfigs, normalizeUseCaseConfig, TAB_KEYS } from './utils/configSerialize'
+import { configsToJson, parseDiagram, jsonToConfigs, normalizeUseCaseConfig, normalizeEntityConfig, TAB_KEYS } from './utils/configSerialize'
 import i18n from './i18n'
 
 const LS_KEY = 'diagram-editor-configs'
@@ -100,49 +100,132 @@ function configToUseCaseState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge
   }
 }
 
-function configToTreeState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): TreeNode {
+type TreeStateLike = { roots: TreeNode[] }
+
+/**
+ * 功能结构图：配置 → 编辑器状态（**森林**，不是单棵树）。
+ *
+ * 历史缺陷：旧实现只取「第一个无入边的节点」当根，
+ * - 配置里有多个顶层模块时，其余模块及其子树在「应用修改」后被静默删除；
+ * - 配置里有环（数据损坏 / 手工导入）时 `build()` 无 visited，直接 `Maximum call stack size exceeded` 把整个应用打白；
+ * - 没有任何根（纯环）或空配置时伪造 `{id:'root',label:'系统'}`，应用后被写回成真实数据，覆盖用户内容。
+ *
+ * 现在：DFS 带 visited（防环 / 防 DAG 重复），未被任何根覆盖的节点再作为新根补上（不丢数据），
+ * 无节点时返回空森林（编辑器显示空态 + 「添加根节点」，绝不伪造节点）。
+ */
+function configToTreeState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): TreeStateLike {
+  const nodeMap = new Map<string, Node<DiagramNodeData>>()
+  for (const n of cfg.nodes) if (!nodeMap.has(n.id)) nodeMap.set(n.id, n)
+
   const childrenMap = new Map<string, string[]>()
-  cfg.edges.forEach((e) => {
-    const list = childrenMap.get(e.source) || []
-    list.push(e.target)
-    childrenMap.set(e.source, list)
-  })
-  const nodeMap = new Map(cfg.nodes.map((n) => [n.id, n]))
-  const rootId = cfg.nodes.find((n) => !cfg.edges.some((e) => e.target === n.id))?.id
+  for (const e of cfg.edges) {
+    const source = String(e.source)
+    const target = String(e.target)
+    if (!nodeMap.has(source) || !nodeMap.has(target)) continue
+    const list = childrenMap.get(source) || []
+    if (!list.includes(target)) list.push(target)
+    childrenMap.set(source, list)
+  }
+
+  const styleSource = cfg.nodes[0]?.data
+  const fontFamily = (styleSource?.fontFamily as string) || 'SimSun'
+  const fontSize = (styleSource?.fontSize as number) || 14
+  const spacing = (styleSource?.spacing as number) || 26
+
+  const hasParent = new Set(cfg.edges.map((e) => String(e.target)))
+  const visited = new Set<string>()
 
   function build(id: string, depth: number): TreeNode {
+    visited.add(id)
     const node = nodeMap.get(id)
+    const children = (childrenMap.get(id) || [])
+      .filter((cid) => nodeMap.has(cid))
+      .map((cid) => visited.has(cid)
+        // 已访问过的子节点（共享子节点 / 环的回边）：浅拷贝成叶子 ——
+        // 既保留这条边（否则「应用修改」会把 p2→shared 静默删掉），又不会无限递归。
+        // 编辑器用「父级维度编辑态键」区分两处副本，treeToJson 会按 id 去重节点但保留每条边。
+        ? {
+            id: cid,
+            label: (nodeMap.get(cid)?.data.label as string) || cid,
+            vertical: (nodeMap.get(cid)?.data.vertical as boolean) || depth + 1 >= 2,
+            children: [] as TreeNode[],
+          }
+        : build(cid, depth + 1))
     return {
       id,
       label: (node?.data.label as string) || id,
-        vertical: (node?.data.vertical as boolean) || depth >= 2,
-        fontSize: depth === 0 ? ((node?.data.fontSize as number) || 14) : undefined,
-        fontFamily: depth === 0 ? ((node?.data.fontFamily as string) || 'SimSun') : undefined,
-        spacing: depth === 0 ? ((node?.data.spacing as number) || 26) : undefined,
-      children: (childrenMap.get(id) || []).map((cid) => build(cid, depth + 1)),
+      vertical: (node?.data.vertical as boolean) || depth >= 2,
+      fontSize: depth === 0 ? ((node?.data.fontSize as number) || fontSize) : undefined,
+      fontFamily: depth === 0 ? ((node?.data.fontFamily as string) || fontFamily) : undefined,
+      spacing: depth === 0 ? ((node?.data.spacing as number) || spacing) : undefined,
+      children,
     }
   }
-  return rootId ? build(rootId, 0) : { id: 'root', label: '系统', vertical: false, children: [] }
+
+  const roots: TreeNode[] = []
+  // 第一轮：真正的顶层节点（无入边），保持配置顺序
+  for (const n of cfg.nodes) {
+    if (hasParent.has(n.id) || visited.has(n.id)) continue
+    roots.push(build(n.id, 0))
+  }
+  // 第二轮：只出现在环里 / 不可达的节点 —— 让它们各自成根，既不丢数据也不会无限递归
+  for (const n of cfg.nodes) {
+    if (visited.has(n.id)) continue
+    roots.push(build(n.id, 0))
+  }
+  return { roots }
 }
 
 function configToEntityState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): EntityState {
-  const entities = cfg.nodes.filter((n) => n.type === 'rectangle')
+  const firstById = new Map<string, Node<DiagramNodeData>>()
+  for (const n of cfg.nodes) if (!firstById.has(n.id)) firstById.set(n.id, n)
+
+  const entities: Node<DiagramNodeData>[] = []
+  const seenEntity = new Set<string>()
+  for (const n of cfg.nodes) {
+    if (n.type !== 'rectangle' || seenEntity.has(n.id)) continue
+    seenEntity.add(n.id)
+    entities.push(n)
+  }
+
   const styleSource = cfg.nodes[0]?.data
+  const usedAttributeIds = new Set<string>()
+  const stateEntities = entities.map((ent) => {
+    const seen = new Set<string>()
+    const attributes: { id: string; label: string }[] = []
+    // 按该实体的出边顺序收集属性（列表顺序 = 图上顺序），同 id 只保留一条
+    for (const e of cfg.edges) {
+      if (String(e.source) !== ent.id) continue
+      const target = String(e.target)
+      if (seen.has(target)) continue
+      const node = firstById.get(target)
+      if (!node || node.type !== 'ellipse') continue
+      seen.add(target)
+      usedAttributeIds.add(target)
+      attributes.push({ id: node.id, label: (node.data.label as string) || '' })
+    }
+    return {
+      id: ent.id,
+      label: (ent.data.label as string) || '实体',
+      attributes,
+    }
+  })
+
+  // 未被任何实体引用的椭圆：保留并在编辑器「未关联属性」区块里可管理，不再静默删除
+  const unlinkedAttributes: { id: string; label: string }[] = []
+  const seenUnlinked = new Set<string>()
+  for (const n of cfg.nodes) {
+    if (n.type !== 'ellipse' || usedAttributeIds.has(n.id) || seenUnlinked.has(n.id)) continue
+    seenUnlinked.add(n.id)
+    unlinkedAttributes.push({ id: n.id, label: (n.data.label as string) || '' })
+  }
+
   return {
     fontFamily: (styleSource?.fontFamily as string) || 'SimSun',
     fontSize: (styleSource?.fontSize as number) || 14,
-    entities: entities.map((ent) => {
-      const eid = ent.id
-      const connectedIds = new Set(cfg.edges.filter((e) => e.source === eid).map((e) => e.target))
-      return {
-        id: eid,
-        label: (ent.data.label as string) || '实体',
-        attributes: cfg.nodes
-          .filter((n) => n.type === 'ellipse' && connectedIds.has(n.id))
-          .map((a) => ({ id: a.id, label: (a.data.label as string) || '' })),
-      }
-    }),
-  }
+    entities: stateEntities,
+    unlinkedAttributes,
+  } as EntityState & { unlinkedAttributes: { id: string; label: string }[] }
 }
 
 function configToSequenceState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): SequenceState {
@@ -151,14 +234,30 @@ function configToSequenceState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edg
     label: (p.data.label as string) || '',
     participantType: ((p.data as any).participantType || 'system') as 'actor' | 'system' | 'database',
   }))
-  const messages = cfg.edges.map((e) => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    label: (e.label as string) || (e as any).data?.label || '',
-    messageType: (((e as any).data?.messageType || 'sync') as 'sync' | 'async' | 'return'),
-  }))
-  return { participants, messages }
+  // 编辑器不建模的节点（例如 activation）与它们相关的边：原样带着走，避免「应用修改」时被吞
+  const extraNodes = cfg.nodes
+    .filter((n) => n.type !== 'participant')
+    .map((n) => ({ id: n.id, type: String(n.type), data: { ...(n.data as Record<string, unknown>) } }))
+  const participantIds = new Set(participants.map((p) => p.id))
+  const extraNodeIds = new Set(extraNodes.map((n) => n.id))
+  const messages = cfg.edges
+    .filter((e) => participantIds.has(String(e.source)) && participantIds.has(String(e.target)))
+    .map((e) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      label: (e.label as string) || (e as any).data?.label || '',
+      messageType: (((e as any).data?.messageType || 'sync') as 'sync' | 'async' | 'return'),
+    }))
+  const extraEdges = cfg.edges.filter(
+    (e) => extraNodeIds.has(String(e.source)) || extraNodeIds.has(String(e.target)),
+  )
+  return {
+    participants,
+    messages,
+    extraNodes,
+    extraEdges,
+  } as SequenceState & { extraNodes: { id: string; type: string; data: Record<string, unknown> }[]; extraEdges: Edge[] }
 }
 
 function configToERState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): ERState {
@@ -220,23 +319,34 @@ function configToERState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] })
   return { entities, relationships }
 }
 
+const CLASS_NODE_TYPES = ['class', 'interface', 'enum'] as const
+
 function configToClassState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): ClassState {
-  const classes = cfg.nodes.filter((n) => n.type === 'class').map((n) => ({
-    id: n.id,
-    label: (n.data.label as string) || '',
-    attributes: (n.data.attributes as string[]) || [],
-    methods: (n.data.methods as string[]) || [],
-    isAbstract: n.data.isAbstract as boolean | undefined,
-    stereotype: n.data.stereotype as string | undefined,
-  }))
-  const relations = cfg.edges.map((e) => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    relationType: (e.data?.relationType as string) || 'association',
-    label: (e.data?.label as string) || undefined,
-  }))
-  return { classes, relations }
+  // 旧实现只认 type==='class'：默认示例里的 «interface» Notifiable（type:'interface'）在编辑器里根本不可见，
+  // 点一次「应用修改」就被永久删除，还留下 2 条悬空关系。现在保留 class/interface/enum 并带出 type。
+  const classes = cfg.nodes
+    .filter((n) => (CLASS_NODE_TYPES as readonly string[]).includes(String(n.type)))
+    .map((n) => ({
+      id: n.id,
+      label: (n.data.label as string) || '',
+      attributes: (n.data.attributes as string[]) || [],
+      methods: (n.data.methods as string[]) || [],
+      isAbstract: n.data.isAbstract as boolean | undefined,
+      stereotype: n.data.stereotype as string | undefined,
+      type: String(n.type) as 'class' | 'interface' | 'enum',
+    }))
+  const classIds = new Set(classes.map((c) => c.id))
+  // 端点已不存在的边（悬空关系）不再带进编辑器，避免越积越多
+  const relations = cfg.edges
+    .filter((e) => classIds.has(String(e.source)) && classIds.has(String(e.target)))
+    .map((e) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      relationType: (e.data?.relationType as string) || 'association',
+      label: (e.data?.label as string) || undefined,
+    }))
+  return { classes, relations } as ClassState & { classes: (ClassState['classes'][number] & { type: 'class' | 'interface' | 'enum' })[] }
 }
 
 function configToActivityState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): ActivityState {
@@ -249,17 +359,20 @@ function configToActivityState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edg
     id: e.id,
     source: e.source,
     target: e.target,
-    guard: (e.data?.guard as string) || undefined,
+    // 渲染层（drawio/SVG）同时认 data.guard、data.label、顶层 label；
+    // 读入侧只认 data.guard 会导致「图上看得到、应用一次就没了」
+    guard: (e.data?.guard as string) || (e.data?.label as string) || (e.label as string) || undefined,
   }))
   return { nodes, edges }
 }
 
 function configToDeploymentState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): DeploymentState {
+  // 白名单必须与 types/diagram.ts 的 DeploymentNodeType 对齐（曾漏 browser/mobile → 被悄悄改成 server）
+  const DEPLOY_TYPES = ['server', 'database', 'component', 'artifact', 'node', 'browser', 'mobile']
   const nodes = cfg.nodes.map((n) => ({
     id: n.id,
     label: (n.data.label as string) || '',
-    // 原实现把非 database 一律当成 server —— 组件/制品/设备这些类型在切页签时会被悄悄改掉
-    nodeType: (['server', 'database', 'component', 'artifact', 'node'].includes(String(n.type))
+    nodeType: (DEPLOY_TYPES.includes(String(n.type))
       ? n.type
       : 'server') as DeploymentState['nodes'][number]['nodeType'],
     technology: (n.data.technology as string) || undefined,
@@ -350,8 +463,13 @@ function App() {
     (json: string) => {
       try {
         const result = parseDiagram(json)
-        // 用例图：应用时归一化，保证每个角色持有独立用例节点（不存在共享用例）
-        pushConfigs({ ...configs, [active]: active === 'usecase' ? normalizeUseCaseConfig(result) : result })
+        // 用例图 / 实体属性图：应用时归一化，保证「一个子节点只属于一个父级」
+        // （否则共享子节点会在配置 ↔ 编辑态之间交叉放大）
+        const normalized =
+          active === 'usecase' ? normalizeUseCaseConfig(result)
+            : active === 'entity' ? normalizeEntityConfig(result)
+              : result
+        pushConfigs({ ...configs, [active]: normalized })
       } catch { /* ignore */ }
     },
     [active, configs, pushConfigs]
@@ -470,10 +588,17 @@ function App() {
     '实体属性图': 'entity', 'Entity': 'entity', 'E-R Diagram': 'entity',
     '总体ER图': 'er', 'ER Diagram': 'er',
     '时序图': 'sequence', 'Sequence': 'sequence',
-    '类图': 'class', 'Class': 'class',
+    '类图': 'class', 'Class': 'class', 'Class Diagram': 'class',
     '活动图': 'activity', 'Activity': 'activity',
     '部署图': 'deployment', 'Deployment': 'deployment',
   }
+  // 纯文本快速导入只支持这三种图（其余图的节点语义无法用「空格分隔的层级文本」表达）
+  const quickFormatTypes: DiagramType[] = ['usecase', 'structure', 'entity']
+  const emptyConfigMap = (): ConfigMap => ({
+    usecase: { ...emptyConfig }, structure: { ...emptyConfig }, entity: { ...emptyConfig },
+    er: { ...emptyConfig }, sequence: { ...emptyConfig }, class: { ...emptyConfig },
+    activity: { ...emptyConfig }, deployment: { ...emptyConfig },
+  })
 
   const handleImport = () => {
     const input = document.createElement('input')
@@ -484,20 +609,17 @@ function App() {
       const reader = new FileReader()
       reader.onload = () => {
         const text = reader.result as string
+        const trimmed = text.trim()
         let importConfigs: ConfigMap | null = null
-        // JSON
-        if (text.trim().startsWith('{')) {
+        // JSON（对象或数组都走 JSON 分支：数组交给 jsonToConfigs 判定为非法并提示）
+        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
           importConfigs = jsonToConfigs(text)
           if (!importConfigs) { alert(t('import.jsonError')); return }
         }
-        // MD format
+        // MD format —— 合并式：只覆盖文件里出现的节，其余图保持现状（旧实现会把其余 5 张图清空）
         else if (text.includes('\n# ') || text.startsWith('# ')) {
           const sections = text.split(/(?=^# )/m)
-          const newConfigs: Record<string, any> = {
-            usecase: emptyConfig, structure: emptyConfig, entity: emptyConfig,
-            er: emptyConfig, sequence: emptyConfig, class: emptyConfig,
-            activity: emptyConfig, deployment: emptyConfig,
-          }
+          const nextConfigs: ConfigMap = { ...configs }
           let hasData = false
           sections.forEach((sec) => {
             const lines = sec.trim().split('\n')
@@ -507,15 +629,16 @@ function App() {
             const body = lines.slice(1).join('\n').trim()
             if (!body) return
             const result = parseQuickFormat(body, type)
-            if (result) { newConfigs[type] = result; hasData = true }
+            if (result) { nextConfigs[type] = result; hasData = true }
           })
-          if (hasData) importConfigs = newConfigs as ConfigMap
+          if (hasData) importConfigs = nextConfigs
           else { alert(t('import.mdError')); return }
         }
         // Plain quick format
         else {
+          if (!quickFormatTypes.includes(active)) { alert(t('import.quickUnsupported')); return }
           const result = parseQuickFormat(text, active)
-          if (result) importConfigs = { usecase: emptyConfig, structure: emptyConfig, entity: emptyConfig, er: emptyConfig, sequence: emptyConfig, class: emptyConfig, activity: emptyConfig, deployment: emptyConfig, [active]: result }
+          if (result) importConfigs = { ...emptyConfigMap(), [active]: result }
           else { alert(t('import.quickError')); return }
         }
         setPendingImport(importConfigs)
@@ -577,7 +700,9 @@ function App() {
         {active === 'usecase' && <NodeEditor key={`usecase-${configVersion}`} type="usecase" useCase={ucState} onApply={handleApply} />}
         {active === 'structure' && <NodeEditor key={`structure-${configVersion}`} type="structure" tree={treeState} onApply={handleApply} />}
         {active === 'entity' && <NodeEditor key={`entity-${configVersion}`} type="entity" entity={entityState} onApply={handleApply} />}
-        {active === 'er' && <NodeEditor key={`er-${configVersion}`} type="er" er={erState} onApply={handleApply} />}
+        {/* ER 编辑器不再按 configVersion 重挂载：内部用 useEffect 同步 state，
+            sqlText / 合并M:N / AI布局 / 中心实体 这些输入不会在「应用修改」后被打回原状 */}
+        {active === 'er' && <NodeEditor type="er" er={erState} onApply={handleApply} />}
         {active === 'sequence' && <NodeEditor key={`sequence-${configVersion}`} type="sequence" sequence={seqState} onApply={handleApply} />}
         {active === 'class' && <NodeEditor key={`class-${configVersion}`} type="class" classState={classState} onApply={handleApply} />}
         {active === 'activity' && <NodeEditor key={`activity-${configVersion}`} type="activity" activity={activityState} onApply={handleApply} />}
@@ -636,7 +761,7 @@ function App() {
       </div>
 
       {/* Modals */}
-      {showExport && <ExportModal active={active} config={configs[active as DiagramType]} flowRef={flowRef} onClose={() => setShowExport(false)} />}
+      {showExport && <ExportModal active={active} config={configs[active as DiagramType]} erNotation={erNotation} flowRef={flowRef} onClose={() => setShowExport(false)} />}
       {showDataExport && <ExportDataModal configs={configs} onClose={() => setShowDataExport(false)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
 

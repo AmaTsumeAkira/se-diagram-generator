@@ -7,7 +7,7 @@ export type NodeType = 'actor' | 'usecase' | 'rectangle' | 'ellipse'
 export type SequenceNodeType = 'participant' | 'activation'
 export type ClassNodeType = 'class' | 'interface' | 'enum'
 export type ActivityNodeType = 'start' | 'end' | 'action' | 'decision' | 'fork' | 'join'
-export type DeploymentNodeType = 'server' | 'database' | 'node' | 'artifact' | 'component'
+export type DeploymentNodeType = 'server' | 'database' | 'node' | 'artifact' | 'component' | 'browser' | 'mobile'
 export type ERNodeType = 'erEntity' | 'erDiamond'
 
 // 联合类型

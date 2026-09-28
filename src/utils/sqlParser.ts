@@ -72,11 +72,52 @@ function cleanName(name: string): string {
   return name.replace(/[`"[\]]/g, '').trim()
 }
 
+/** 归一整定名（去掉引号/方括号与 `.` 两侧空白）：`` `shop` . `users` `` → `shop.users` */
+function normalizeName(name: string): string {
+  return cleanName(name)
+    .split('.')
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .join('.')
+}
+
+/** 取 schema 限定部分：`shop.users` → `shop`；无 schema 前缀 → '' */
+function qualifierOf(name: string): string {
+  const n = normalizeName(name)
+  return n.includes('.') ? n.slice(0, n.lastIndexOf('.')) : ''
+}
+
 /** 去掉 schema 前缀，`shop.order_item` → `order_item`（让跨 schema 引用也能对上） */
 function baseName(name: string): string {
-  const cleaned = cleanName(name)
+  const cleaned = normalizeName(name)
   return cleaned.includes('.') ? cleaned.split('.').pop()!.trim() : cleaned
 }
+
+/**
+ * 标识符字符类：支持裸标识符 / `` `x` `` / "x" / [x]，并支持 CJK（PHP/MySQL 中文表名很常见）。
+ * `\w` 不匹配中文，旧写法会把 `` CREATE TABLE `学生` `` 整条丢掉。
+ */
+const IDENT_BODY = '[^\\s`"\\[\\](),;]+'
+const IDENT = '(?:\\[[^\\]]+\\]|"[^"]+"|`[^`]+`|' + IDENT_BODY + ')'
+/** 限定名 schema.table（每一段都可带引号） */
+const QUALIFIED_IDENT = IDENT + '(?:\\s*\\.\\s*' + IDENT + ')*'
+/** 可选的 `CONSTRAINT <name> ` 前缀 */
+const CONSTRAINT_PREFIX = '(?:CONSTRAINT\\s+' + IDENT + '\\s+)?'
+
+const PK_RE = new RegExp('^' + CONSTRAINT_PREFIX + 'PRIMARY\\s+KEY\\s*\\(([^)]+)\\)', 'i')
+const FK_RE = new RegExp(
+  '^' + CONSTRAINT_PREFIX + 'FOREIGN\\s+KEY\\s*\\(([^)]+)\\)\\s*REFERENCES\\s+(' + QUALIFIED_IDENT + ')\\s*\\(([^)]+)\\)',
+  'i',
+)
+const UQ_RE = new RegExp(
+  '^' + CONSTRAINT_PREFIX + 'UNIQUE(?:\\s+(?:KEY|INDEX))?(?:\\s+' + IDENT + ')?\\s*\\(([^)]+)\\)',
+  'i',
+)
+const COL_RE = new RegExp('^(' + IDENT + ')\\s+([\\s\\S]+)$')
+const COL_REF_RE = new RegExp(
+  '\\bREFERENCES\\s+(' + QUALIFIED_IDENT + ')\\s*\\(([^)]+)\\)',
+  'i',
+)
 
 /**
  * 括号配对扫描：从 openIdx 处的 '(' 开始，返回与之配对的 ')' 的下标。
@@ -115,6 +156,88 @@ function matchParen(s: string, openIdx: number): number {
     }
   }
   return -1
+}
+
+/** 多词类型里允许的「续接词」：前一个词 → 可跟随的词 */
+const TYPE_CONTINUATIONS: Record<string, string[]> = {
+  DOUBLE: ['PRECISION'],
+  NATIONAL: ['CHARACTER'],
+  CHARACTER: ['VARYING', 'LARGE'],
+  BIT: ['VARYING'],
+  BINARY: ['VARYING', 'LARGE'],
+  TIMESTAMP: ['WITH', 'WITHOUT'],
+  TIME: ['WITH', 'WITHOUT'],
+  LOCAL: ['TIME'],
+  LONG: ['VARCHAR', 'RAW'],
+  INTERVAL: ['DAY', 'YEAR', 'MONTH', 'HOUR', 'MINUTE', 'SECOND'],
+  DAY: ['TO'],
+  YEAR: ['TO'],
+  MONTH: ['TO'],
+  HOUR: ['TO'],
+  MINUTE: ['TO'],
+  TO: ['SECOND', 'MINUTE', 'HOUR', 'DAY', 'MONTH', 'YEAR'],
+}
+/** MySQL 类型修饰词（可跟在任意类型后） */
+const TYPE_MODIFIERS = new Set(['UNSIGNED', 'SIGNED', 'ZEROFILL', 'BINARY'])
+
+function continuesType(lastWord: string, next: string): boolean {
+  const n = next.toUpperCase()
+  if (TYPE_MODIFIERS.has(n)) return true
+  if (lastWord === 'WITH' || lastWord === 'WITHOUT') return n === 'TIME' || n === 'LOCAL'
+  if (lastWord === 'TIME') return n === 'ZONE'
+  return (TYPE_CONTINUATIONS[lastWord] || []).includes(n)
+}
+
+/** 只把单引号外的部分大写，`'x'` 这类字面量保持原样（ENUM('x','y','z') 不被改写） */
+function upperOutsideQuotes(s: string): string {
+  let out = ''
+  let inQuote = false
+  for (const ch of s) {
+    if (ch === "'") {
+      inQuote = !inQuote
+      out += ch
+      continue
+    }
+    out += inQuote ? ch : ch.toUpperCase()
+  }
+  return out
+}
+
+/**
+ * 解析列类型（保留多词类型整体）：
+ *   DOUBLE PRECISION / TIMESTAMP WITH TIME ZONE / NATIONAL CHARACTER VARYING(30)
+ *   BIT VARYING(8) / ENUM('x','y','z') / INT UNSIGNED / DECIMAL(10,2)
+ * 旧实现只取第一个词，导致 `DOUBLE PRECISION` 退化成 `DOUBLE`。
+ * 约束关键字（PRIMARY KEY / NOT NULL / DEFAULT / COMMENT…）不是续接词，因此不会被吞进类型。
+ */
+function readColumnType(rest: string): string {
+  const head = /^[A-Za-z][A-Za-z0-9_]*/.exec(rest)
+  if (!head) return 'TEXT'
+
+  let out = head[0]
+  let lastWord = head[0].toUpperCase()
+  let i = head[0].length
+
+  for (;;) {
+    let j = i
+    while (j < rest.length && /\s/.test(rest[j])) j++
+
+    if (rest[j] === '(') {
+      const close = matchParen(rest, j)
+      if (close < 0) break
+      out += rest.slice(j, close + 1)
+      i = close + 1
+      continue
+    }
+
+    const word = /^[A-Za-z][A-Za-z0-9_]*/.exec(rest.slice(j))
+    if (!word || !continuesType(lastWord, word[0])) break
+    out += ' ' + word[0]
+    lastWord = word[0].toUpperCase()
+    i = j + word[0].length
+  }
+
+  return upperOutsideQuotes(out)
 }
 
 /** 顶层逗号切分（同样跳过引号与注释） */
@@ -189,8 +312,15 @@ function leadingComment(sql: string, createIdx: number): string | undefined {
 // ====== 列与约束解析 ======
 
 const TABLE_CONSTRAINT_SKIP = /^(?:UNIQUE\s+)?(?:FULLTEXT\s+|SPATIAL\s+)?(?:INDEX|KEY)\s/i
+const CHECK_CONSTRAINT_RE = new RegExp('^(?:CONSTRAINT\\s+' + IDENT + '\\s+)?CHECK\\s', 'i')
 
-function parseTableBody(body: string, tableName: string, tableComment?: string, lineComment?: string): SqlTable {
+function parseTableBody(
+  body: string,
+  tableName: string,
+  tableComment: string | undefined,
+  lineComment: string | undefined,
+  errors: string[],
+): SqlTable {
   const columns: SqlColumn[] = []
   const primaryKeys: string[] = []
   const foreignKeys: SqlForeignKey[] = []
@@ -201,30 +331,30 @@ function parseTableBody(body: string, tableName: string, tableComment?: string, 
     if (!trimmed) continue
 
     // 表级 PRIMARY KEY
-    const pkMatch = trimmed.match(/^(?:CONSTRAINT\s+[`"[\]]?\w+[`"\]]?\s+)?PRIMARY\s+KEY\s*\(([^)]+)\)/i)
+    const pkMatch = trimmed.match(PK_RE)
     if (pkMatch) {
       primaryKeys.push(...pkMatch[1].split(',').map((c) => cleanName(c.trim())))
       continue
     }
 
     // 表级 FOREIGN KEY（可带 CONSTRAINT 名，支持复合列）
-    const fkMatch = trimmed.match(
-      /^(?:CONSTRAINT\s+[`"[\]]?\w+[`"\]]?\s+)?FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+([`"[\].\w]+)\s*\(([^)]+)\)/i,
-    )
+    const fkMatch = trimmed.match(FK_RE)
     if (fkMatch) {
       const cols = fkMatch[1].split(',').map((c) => cleanName(c.trim()))
       const refCols = fkMatch[3].split(',').map((c) => cleanName(c.trim()))
+      // 先按原样保留 schema 前缀，全部表解析完后再统一解析成真实表名
+      const refTable = normalizeName(fkMatch[2])
       if (cols.length > 1) {
         // 复合外键：合成一条联系（列为逗号串），避免同一约束裂成多条
         foreignKeys.push({
           column: cols.join(','),
-          refTable: baseName(fkMatch[2]),
+          refTable,
           refColumn: refCols.join(','),
         })
       } else {
         foreignKeys.push({
           column: cols[0],
-          refTable: baseName(fkMatch[2]),
+          refTable,
           refColumn: refCols[0] ?? '',
         })
       }
@@ -232,31 +362,34 @@ function parseTableBody(body: string, tableName: string, tableComment?: string, 
     }
 
     // 表级 UNIQUE
-    const uqMatch = trimmed.match(/^(?:CONSTRAINT\s+[`"[\]]?\w+[`"\]]?\s+)?UNIQUE(?:\s+(?:KEY|INDEX))?(?:\s+[`"[\]]?\w+[`"\]]?)?\s*\(([^)]+)\)/i)
+    const uqMatch = trimmed.match(UQ_RE)
     if (uqMatch) {
       uniqueSets.push(uqMatch[1].split(',').map((c) => cleanName(c.trim())))
       continue
     }
 
     // INDEX / KEY / CHECK 等跳过
-    if (TABLE_CONSTRAINT_SKIP.test(trimmed) || /^CHECK\s/i.test(trimmed)) continue
+    if (TABLE_CONSTRAINT_SKIP.test(trimmed) || CHECK_CONSTRAINT_RE.test(trimmed)) continue
 
     // 列定义
-    const colMatch = trimmed.match(/^[`"[\]]?(\w+)[`"\]]?\s+([\s\S]+)$/)
-    if (!colMatch) continue
+    const colMatch = trimmed.match(COL_RE)
+    if (!colMatch) {
+      // 不要静默丢弃：无法识别的定义至少落到 errors（例如中文列名解析失败）
+      errors.push(`表 "${tableName}" 中的定义无法解析：${trimmed.slice(0, 60)}`)
+      continue
+    }
     const colName = cleanName(colMatch[1])
     const rest = colMatch[2]
 
-    const typeMatch = rest.match(/^([A-Za-z]\w*(?:\s*\([^)]*\))?(?:\s+UNSIGNED)?(?:\s+ZEROFILL)?)/)
-    const colType = typeMatch ? typeMatch[1].trim().toUpperCase() : 'TEXT'
+    const colType = readColumnType(rest)
 
     const isPK = /\bPRIMARY\s+KEY\b/i.test(rest)
     const isNotNull = /\bNOT\s+NULL\b/i.test(rest)
     const isUnique = /\bUNIQUE\b/i.test(rest)
     const comment = quoted(rest.match(/COMMENT\s+'((?:[^']|'')*)'/i)?.[0] ?? '') || undefined
-    const refMatch = rest.match(/\bREFERENCES\s+([`"[\].\w]+)\s*\(([^)]+)\)/i)
+    const refMatch = rest.match(COL_REF_RE)
     const references = refMatch
-      ? { table: baseName(refMatch[1]), column: cleanName(refMatch[2].trim()) }
+      ? { table: normalizeName(refMatch[1]), column: cleanName(refMatch[2].trim()) }
       : undefined
 
     if (isPK) primaryKeys.push(colName)
@@ -295,52 +428,136 @@ function isUniqueFk(table: SqlTable, fk: SqlForeignKey): boolean {
 
 // ====== 主解析 ======
 
-const CREATE_TABLE_RE = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([`"[\].\w]+)\s*\(/gi
-const ALTER_FK_RE = /ALTER\s+TABLE\s+([`"[\].\w]+)\s+ADD\s+(?:CONSTRAINT\s+[`"[\]]?\w+[`"\]]?\s+)?FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+([`"[\].\w]+)\s*\(([^)]+)\)/gi
-const COMMENT_ON_TABLE_RE = /COMMENT\s+ON\s+TABLE\s+([`"[\].\w]+)\s+IS\s+'((?:[^']|'')*)'/gi
-const COMMENT_ON_COLUMN_RE = /COMMENT\s+ON\s+COLUMN\s+([`"[\].\w]+)\s+IS\s+'((?:[^']|'')*)'/gi
+const CREATE_TABLE_RE = new RegExp(
+  'CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(' + QUALIFIED_IDENT + ')\\s*\\(',
+  'gi',
+)
+const ALTER_FK_RE = new RegExp(
+  'ALTER\\s+TABLE\\s+(' + QUALIFIED_IDENT + ')\\s+ADD\\s+' + CONSTRAINT_PREFIX +
+    'FOREIGN\\s+KEY\\s*\\(([^)]+)\\)\\s*REFERENCES\\s+(' + QUALIFIED_IDENT + ')\\s*\\(([^)]+)\\)',
+  'gi',
+)
+const COMMENT_ON_TABLE_RE = new RegExp(
+  'COMMENT\\s+ON\\s+TABLE\\s+(' + QUALIFIED_IDENT + ")\\s+IS\\s+'((?:[^']|'')*)'",
+  'gi',
+)
+const COMMENT_ON_COLUMN_RE = new RegExp(
+  'COMMENT\\s+ON\\s+COLUMN\\s+(' + QUALIFIED_IDENT + ")\\s+IS\\s+'((?:[^']|'')*)'",
+  'gi',
+)
+
+interface CreateEntry {
+  index: number
+  /** 原样（去引号）限定名，如 shop.users */
+  qualified: string
+  /** 去掉 schema 后的表名 */
+  base: string
+  openIdx: number
+  closeIdx: number
+}
 
 export function parseSql(sql: string): SqlParseResult {
   const tables: SqlTable[] = []
   const errors: string[] = []
   const normalized = sql.replace(/\r\n?/g, '\n')
-  const byName = new Map<string, SqlTable>()
 
-  // ---- CREATE TABLE ----
+  // ---- 第一遍：定位所有 CREATE TABLE 与其表体范围 ----
+  const entries: CreateEntry[] = []
   CREATE_TABLE_RE.lastIndex = 0
   let m: RegExpExecArray | null
   while ((m = CREATE_TABLE_RE.exec(normalized)) !== null) {
-    const rawName = baseName(m[1])
-    if (!rawName) continue
+    const qualified = normalizeName(m[1])
+    const base = baseName(qualified)
     const openIdx = m.index + m[0].length - 1
     const closeIdx = matchParen(normalized, openIdx)
     if (closeIdx < 0) {
-      errors.push(`表 "${rawName}" 的括号未闭合，已跳过`)
+      errors.push(`表 "${qualified || m[1]}" 的括号未闭合，已跳过`)
       continue
     }
+    if (qualified) entries.push({ index: m.index, qualified, base, openIdx, closeIdx })
+    CREATE_TABLE_RE.lastIndex = closeIdx + 1
+  }
+
+  // ---- 表名归一：跨 schema 同名表用 schema 前缀区分（shop.users / public.users → shop_users / public_users），
+  //      并保证返回的 tables 名称唯一（否则节点 id 相撞、实体框完全重叠） ----
+  const baseCount = new Map<string, number>()
+  for (const e of entries) {
+    const key = e.base.toLowerCase()
+    baseCount.set(key, (baseCount.get(key) ?? 0) + 1)
+  }
+  const usedNames = new Set<string>()
+  const claimName = (want: string): string => {
+    let name = want
+    let i = 2
+    while (!name || usedNames.has(name.toLowerCase())) name = `${want}_${i++}`
+    usedNames.add(name.toLowerCase())
+    return name
+  }
+
+  // ---- 第二遍：解析表体 ----
+  const parsed: { table: SqlTable; entry: CreateEntry }[] = []
+  for (const entry of entries) {
+    const { qualified, base, index, openIdx, closeIdx } = entry
+    const schema = qualifierOf(qualified)
+    const name = claimName(
+      (baseCount.get(base.toLowerCase()) ?? 0) > 1 && schema
+        ? `${schema.replace(/\./g, '_')}_${base}`
+        : base,
+    )
     try {
       const body = normalized.slice(openIdx + 1, closeIdx)
       const tail = normalized.slice(closeIdx + 1, Math.min(normalized.length, closeIdx + 600))
       const stop = tail.search(/;/)
       const tailClause = stop >= 0 ? tail.slice(0, stop) : tail
       const comment = quoted(tailClause.match(/COMMENT\s*=?\s*'((?:[^']|'')*)'/i)?.[0] ?? '') || undefined
-      const lineComment = leadingComment(normalized, m.index)
-      const table = parseTableBody(body, rawName, comment, lineComment)
+      const lineComment = leadingComment(normalized, index)
+      const table = parseTableBody(body, name, comment, lineComment, errors)
       tables.push(table)
-      byName.set(rawName, table)
+      parsed.push({ table, entry })
     } catch (e) {
-      errors.push(`解析表 "${rawName}" 失败: ${(e as Error).message}`)
+      errors.push(`解析表 "${qualified}" 失败: ${(e as Error).message}`)
     }
-    CREATE_TABLE_RE.lastIndex = closeIdx + 1
+  }
+
+  // ---- 引用查表：支持 限定名 / 归一名 / 唯一的 base 名 ----
+  const byLookup = new Map<string, SqlTable>()
+  for (const p of parsed) {
+    byLookup.set(p.entry.qualified.toLowerCase(), p.table)
+    byLookup.set(p.entry.base.toLowerCase(), p.table)
+    byLookup.set(p.table.name.toLowerCase(), p.table)
+  }
+  // base 名撞车（同名表来自不同 schema）时不可用 base 名反查，避免张冠李戴
+  const ambiguousBases = new Set<string>()
+  for (const [key, count] of baseCount) {
+    if (count > 1) {
+      ambiguousBases.add(key)
+      byLookup.delete(key)
+    }
+  }
+  const lookupTable = (ref: string): SqlTable | undefined => {
+    const key = normalizeName(ref).toLowerCase()
+    if (key && byLookup.has(key)) return byLookup.get(key)
+    const b = baseName(ref).toLowerCase()
+    if (b && !ambiguousBases.has(b) && byLookup.has(b)) return byLookup.get(b)
+    return undefined
+  }
+  const canonicalRef = (ref: string): string => lookupTable(ref)?.name ?? normalizeName(ref)
+
+  // 外键目标统一成真实表名（qualified → shop_users），否则跨 schema 引用对不上
+  for (const table of tables) {
+    for (const fk of table.foreignKeys) fk.refTable = canonicalRef(fk.refTable)
+    for (const col of table.columns) {
+      if (col.references) col.references.table = canonicalRef(col.references.table)
+    }
   }
 
   // ---- ALTER TABLE ... ADD FOREIGN KEY ----
   ALTER_FK_RE.lastIndex = 0
   while ((m = ALTER_FK_RE.exec(normalized)) !== null) {
-    const table = byName.get(baseName(m[1]))
+    const table = lookupTable(m[1])
     if (!table) continue
     const cols = m[2].split(',').map((c) => cleanName(c.trim()))
-    const refTable = baseName(m[3])
+    const refTable = canonicalRef(m[3])
     const refCols = m[4].split(',').map((c) => cleanName(c.trim()))
     const column = cols.length > 1 ? cols.join(',') : cols[0]
     const refColumn = refCols.length > 1 ? refCols.join(',') : refCols[0]
@@ -353,14 +570,14 @@ export function parseSql(sql: string): SqlParseResult {
   // ---- COMMENT ON TABLE / COLUMN ----
   COMMENT_ON_TABLE_RE.lastIndex = 0
   while ((m = COMMENT_ON_TABLE_RE.exec(normalized)) !== null) {
-    const table = byName.get(baseName(m[1]))
+    const table = lookupTable(m[1])
     if (table) table.comment = m[2].replace(/''/g, "'")
   }
   COMMENT_ON_COLUMN_RE.lastIndex = 0
   while ((m = COMMENT_ON_COLUMN_RE.exec(normalized)) !== null) {
-    const path = cleanName(m[1]).split('.')
+    const path = normalizeName(m[1]).split('.')
     if (path.length < 2) continue
-    const table = byName.get(baseName(path.slice(0, -1).join('.')))
+    const table = lookupTable(path.slice(0, -1).join('.'))
     const col = table?.columns.find((c) => c.name === path[path.length - 1])
     if (col) col.comment = m[2].replace(/''/g, "'")
   }
@@ -371,6 +588,21 @@ export function parseSql(sql: string): SqlParseResult {
       fk.isUnique = isUniqueFk(table, fk)
     }
     table.label = resolveTableLabel({ name: table.name, comment: table.comment, lineComment: table.lineComment })
+  }
+
+  // 展示名同样不能重复（shop.users / public.users 都会译成「用户」）：重复时补 schema 限定
+  const labelCount = new Map<string, number>()
+  for (const table of tables) labelCount.set(table.label, (labelCount.get(table.label) ?? 0) + 1)
+  const usedLabels = new Set<string>()
+  for (const { table, entry } of parsed) {
+    if ((labelCount.get(table.label) ?? 0) > 1) {
+      table.label = `${table.label} (${qualifierOf(entry.qualified) || table.name})`
+    }
+    let label = table.label
+    let i = 2
+    while (usedLabels.has(label)) label = `${table.label} #${i++}`
+    usedLabels.add(label)
+    table.label = label
   }
 
   if (tables.length === 0 && sql.trim().length > 0) {
@@ -510,26 +742,42 @@ export function sqlToERConfig(result: SqlParseResult, opts: DeriveOptions = {}):
   const edges: EREdgeConfig[] = []
 
   const { entities, relationships } = buildErModel(result.tables, opts)
+
+  // id 兜底唯一化：名称归一后仍然保证节点 id 不撞车（撞车会让两个实体框完全重叠）
+  const usedIds = new Set<string>()
+  const claimId = (base: string): string => {
+    const safe = base.replace(/[.\s]+/g, '_')
+    let id = safe
+    let i = 2
+    while (!id || usedIds.has(id)) id = `${safe}_${i++}`
+    usedIds.add(id)
+    return id
+  }
+  const entityId = new Map<string, string>()
   for (const table of entities) {
-    nodes.push({ id: `ent_${table.name}`, type: 'erEntity', label: table.label || table.name })
+    const id = claimId(`ent_${table.name}`)
+    entityId.set(table.name, id)
+    nodes.push({ id, type: 'erEntity', label: table.label || table.name })
   }
 
   for (const rel of relationships) {
     // 用联系自身的 id 做菱形 id：同一对实体之间的多条联系（如收件人 / 发件人）不会撞名
-    const diamondId = `dia_${rel.id}`
+    const diamondId = claimId(`dia_${rel.id}`)
     nodes.push({ id: diamondId, type: 'erDiamond', label: rel.label })
 
+    const source = entityId.get(rel.sourceTable) ?? `ent_${rel.sourceTable}`
+    const target = entityId.get(rel.targetTable) ?? `ent_${rel.targetTable}`
     edges.push({
-      id: `e_${rel.sourceTable}_${diamondId}`,
-      source: `ent_${rel.sourceTable}`,
+      id: `e_${source}_${diamondId}`,
+      source,
       target: diamondId,
       sourceCard: rel.sourceCardinality,
       targetCard: '',
     })
     edges.push({
-      id: `e_${diamondId}_${rel.targetTable}`,
+      id: `e_${diamondId}_${target}`,
       source: diamondId,
-      target: `ent_${rel.targetTable}`,
+      target,
       sourceCard: '',
       targetCard: rel.targetCardinality,
     })
