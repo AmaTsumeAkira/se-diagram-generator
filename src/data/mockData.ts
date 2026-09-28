@@ -56,8 +56,11 @@ function makeUseCasePreset(
  * 多角色版本：给出"整个系统"的完整用例图（全部角色 + 全部用例）。
  *
  * `makeUseCasePreset` 只画单个角色那一份，于是默认图里只见一个角色。
- * 这里把各角色的用例合并去重；被多个角色共享的用例（如"修改密码"）只保留一个节点、
- * 但会得到多条关联 —— 渲染层按角色分块，因此共享用例会在各自的块里各出现一次。
+ * 这里把各角色的用例合并成一张图。
+ *
+ * 注意：本项目**没有「共享用例」概念** —— 用例之间相互独立、互不干扰。
+ * 因此即便两个角色下出现同名用例（如"修改密码"），它们也是各自独立的节点，
+ * 拥有全局唯一的 id：编辑 / 删除 / 排序只影响当前角色那一份。
  */
 function makeSystemUseCasePreset(
   actors: { id: string; label: string; useCases: { id: string; label: string }[] }[],
@@ -66,20 +69,23 @@ function makeSystemUseCasePreset(
   const edges: Edge[] = []
   const jsonNodes: { id: string; type: string; label: string }[] = []
   const jsonEdges: { id: string; source: string; target: string }[] = []
-  const seen = new Set<string>()
+  const usedIds = new Set<string>()
 
   for (const a of actors) {
     nodes.push({ id: a.id, type: 'actor', data: { label: a.label }, position: { x: 0, y: 0 } })
     jsonNodes.push({ id: a.id, type: 'actor', label: a.label })
+    usedIds.add(a.id)
     for (const uc of a.useCases) {
-      if (!seen.has(uc.id)) {
-        seen.add(uc.id)
-        nodes.push({ id: uc.id, type: 'usecase', data: { label: uc.label, rx: 60, ry: 15 }, position: { x: 0, y: 0 } })
-        jsonNodes.push({ id: uc.id, type: 'usecase', label: uc.label })
-      }
-      const eid = `e_${a.id}_${uc.id}`
-      edges.push({ id: eid, source: a.id, target: uc.id })
-      jsonEdges.push({ id: eid, source: a.id, target: uc.id })
+      // 兜底：即使调用方传了重复 id，也补成独立 id，避免又退化成"共享用例"
+      let id = uc.id
+      let suffix = 1
+      while (usedIds.has(id)) id = `${uc.id}__${++suffix}`
+      usedIds.add(id)
+      nodes.push({ id, type: 'usecase', data: { label: uc.label, rx: 60, ry: 15 }, position: { x: 0, y: 0 } })
+      jsonNodes.push({ id, type: 'usecase', label: uc.label })
+      const eid = `e_${a.id}_${id}`
+      edges.push({ id: eid, source: a.id, target: id })
+      jsonEdges.push({ id: eid, source: a.id, target: id })
     }
   }
 
@@ -92,7 +98,8 @@ function makeSystemUseCasePreset(
 }
 
 export const useCasePresets: Record<string, UseCasePreset> = {
-  // 默认展示这一份：整个「公寓报修管理系统」的完整用例图（3 个角色 / 11 个用例）
+  // 默认展示这一份：整个「公寓报修管理系统」的完整用例图（3 个角色 / 14 个用例）
+  // 同名用例（修改密码 / 维修评价）在各角色下都是独立节点，id 不重复
   system: makeSystemUseCasePreset([
     {
       id: 'a1',
@@ -103,27 +110,27 @@ export const useCasePresets: Record<string, UseCasePreset> = {
         { id: 'u3', label: '公寓设施管理' },
         { id: 'u4', label: '报修服务管理' },
         { id: 'u5', label: '维修服务评价' },
-        { id: 'u11', label: '修改密码' },
+        { id: 'u6', label: '修改密码' },
       ],
     },
     {
       id: 'a2',
       label: '业主',
       useCases: [
-        { id: 'u6', label: '个人中心' },
-        { id: 'u7', label: '报修服务' },
-        { id: 'u8', label: '维修评价' },
-        { id: 'u11', label: '修改密码' },
+        { id: 'u7', label: '个人中心' },
+        { id: 'u8', label: '报修服务' },
+        { id: 'u9', label: '维修评价' },
+        { id: 'u10', label: '修改密码' },
       ],
     },
     {
       id: 'a3',
       label: '维修人员',
       useCases: [
-        { id: 'u9', label: '个人资料管理' },
-        { id: 'u10', label: '报修服务订单' },
-        { id: 'u8', label: '维修评价' },
-        { id: 'u11', label: '修改密码' },
+        { id: 'u11', label: '个人资料管理' },
+        { id: 'u12', label: '报修服务订单' },
+        { id: 'u13', label: '维修评价' },
+        { id: 'u14', label: '修改密码' },
       ],
     },
   ]),

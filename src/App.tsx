@@ -19,7 +19,7 @@ import { useUndoRedo } from './hooks/useUndoRedo'
 import type { DiagramNodeData, DiagramType, ConfigMap, ERNotation } from './types/diagram'
 import type { UseCaseState, TreeNode, EntityState, SequenceState, ERState, ClassState, ActivityState, DeploymentState } from './components/panels/NodeEditor'
 import { useCasePresets, structureNodes, structureEdges, userEntityPreset, erSystemJson, sequenceSystemJson, classSystemJson, activitySystemJson, deploymentSystemJson } from './data/mockData'
-import { configsToJson, parseDiagram, jsonToConfigs, TAB_KEYS } from './utils/configSerialize'
+import { configsToJson, parseDiagram, jsonToConfigs, normalizeUseCaseConfig, TAB_KEYS } from './utils/configSerialize'
 import i18n from './i18n'
 
 const LS_KEY = 'diagram-editor-configs'
@@ -62,20 +62,39 @@ function safeRemoveItem(key: string): boolean {
 // ====== Config → Editor state (for undo sync) ======
 
 function configToUseCaseState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): UseCaseState {
-  const actors = cfg.nodes.filter((n) => n.type === 'actor')
+  // 用例之间相互独立：列表顺序取「该角色自己的关联边顺序」，
+  // 而不是全局节点数组顺序（否则别的角色块里的节点会插到前面，顺序错乱）。
+  const firstById = new Map<string, Node<DiagramNodeData>>()
+  for (const n of cfg.nodes) if (!firstById.has(n.id)) firstById.set(n.id, n)
+
+  const actors: Node<DiagramNodeData>[] = []
+  const seenActor = new Set<string>()
+  for (const n of cfg.nodes) {
+    if (n.type !== 'actor' || seenActor.has(n.id)) continue
+    seenActor.add(n.id)
+    actors.push(n)
+  }
+
   const styleSource = cfg.nodes[0]?.data
   return {
     fontFamily: (styleSource?.fontFamily as string) || 'SimSun',
     fontSize: (styleSource?.fontSize as number) || 14,
     actors: actors.map((actor) => {
-      const actorId = actor.id
-      const connectedIds = new Set(cfg.edges.filter((e) => e.source === actorId).map((e) => e.target))
+      const seen = new Set<string>()
+      const useCases: { id: string; label: string }[] = []
+      for (const e of cfg.edges) {
+        if (String(e.source) !== actor.id) continue
+        const target = String(e.target)
+        if (seen.has(target)) continue
+        seen.add(target)
+        const node = firstById.get(target)
+        if (!node || node.type !== 'usecase') continue
+        useCases.push({ id: node.id, label: (node.data.label as string) || '' })
+      }
       return {
-        id: actorId,
+        id: actor.id,
         label: (actor.data.label as string) || '角色',
-        useCases: cfg.nodes
-          .filter((n) => n.type === 'usecase' && connectedIds.has(n.id))
-          .map((uc) => ({ id: uc.id, label: (uc.data.label as string) || '' })),
+        useCases,
       }
     }),
   }
@@ -258,7 +277,7 @@ function configToDeploymentState(cfg: { nodes: Node<DiagramNodeData>[]; edges: E
 
 const initialConfigs: ConfigMap = {
   // 默认给整个系统的完整用例图（全部角色 + 全部用例），而不是单个角色那一份
-  usecase: parseDiagram(useCasePresets.system.json),
+  usecase: normalizeUseCaseConfig(parseDiagram(useCasePresets.system.json)),
   structure: parseDiagram(JSON.stringify({
     nodes: structureNodes.map((n) => ({ id: n.id, type: n.type, label: n.data.label, vertical: n.data.vertical })),
     edges: structureEdges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
@@ -331,7 +350,8 @@ function App() {
     (json: string) => {
       try {
         const result = parseDiagram(json)
-        pushConfigs({ ...configs, [active]: result })
+        // 用例图：应用时归一化，保证每个角色持有独立用例节点（不存在共享用例）
+        pushConfigs({ ...configs, [active]: active === 'usecase' ? normalizeUseCaseConfig(result) : result })
       } catch { /* ignore */ }
     },
     [active, configs, pushConfigs]

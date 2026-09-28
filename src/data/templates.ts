@@ -64,12 +64,13 @@ export const useCaseTemplates: Template[] = [
         { id: 'u1', type: 'usecase', data: { label: '预约挂号', rx: 60, ry: 15 }, position: { x: 0, y: 0 } },
         { id: 'u2', type: 'usecase', data: { label: '在线问诊', rx: 60, ry: 15 }, position: { x: 0, y: 0 } },
         { id: 'u3', type: 'usecase', data: { label: '开具处方', rx: 60, ry: 15 }, position: { x: 0, y: 0 } },
+        { id: 'u4', type: 'usecase', data: { label: '在线问诊', rx: 60, ry: 15 }, position: { x: 0, y: 0 } },
       ],
       edges: [
         { id: 'e1', source: 'a1', target: 'u1' },
         { id: 'e2', source: 'a1', target: 'u2' },
-        { id: 'e3', source: 'a2', target: 'u2' },
-        { id: 'e4', source: 'a2', target: 'u3' },
+        { id: 'e3', source: 'a2', target: 'u3' },
+        { id: 'e4', source: 'a2', target: 'u4' },
       ]
     }
   },

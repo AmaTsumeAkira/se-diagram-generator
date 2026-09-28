@@ -100,7 +100,79 @@ export function jsonToConfigs(json: string): Record<DiagramType, ConfigLike> | n
     const configs = {} as Record<DiagramType, ConfigLike>
     for (const key of TAB_KEYS) {
       configs[key] = flat[key] ? parseDiagram(JSON.stringify(flat[key])) : { nodes: [], edges: [] }
+      // 用例图：读入时归一化，避免历史/导入数据里"同一个用例被多个角色引用"而膨胀
+      if (key === 'usecase') configs[key] = normalizeUseCaseConfig(configs[key])
     }
     return configs
   } catch { return null }
+}
+
+/**
+ * 用例图配置归一化 —— 项目里**不存在「共享用例」**：每个角色各自持有自己的用例节点，
+ * id 全局唯一，编辑 / 删除 / 排序互不影响（方案 B）。
+ *
+ * 归一化规则：
+ * - 角色按原顺序输出；每个角色的用例**按该角色的关联边顺序**输出（顺序即左侧列表顺序）；
+ * - 同一角色内对同一个用例的重复引用只保留第一条；
+ * - 同一用例 id 被多个角色引用时，从第二个角色起派生独立 id（`原id__角色id`），
+ *   这样历史遗留的"共享"配置以及已经膨胀出重复节点的配置都会被就地修好；
+ * - 没有任何角色引用的节点与边原样保留，不静默丢数据。
+ *
+ * 已归一化的配置再次传入结果不变（幂等），因此可以放心地在载入 / 应用时调用。
+ */
+export function normalizeUseCaseConfig(cfg: ConfigLike): ConfigLike {
+  const nodes = Array.isArray(cfg?.nodes) ? cfg.nodes : []
+  const edges = Array.isArray(cfg?.edges) ? cfg.edges : []
+
+  // 同一个 id 出现多份时以第一份为准（膨胀数据里的副本直接丢弃）
+  const firstById = new Map<string, Node<DiagramNodeData>>()
+  for (const n of nodes) if (!firstById.has(n.id)) firstById.set(n.id, n)
+
+  const actors: Node<DiagramNodeData>[] = []
+  const actorIds = new Set<string>()
+  for (const n of nodes) {
+    if (n.type !== 'actor' || actorIds.has(n.id)) continue
+    actorIds.add(n.id)
+    actors.push(n)
+  }
+
+  const usedIds = new Set<string>(actorIds)
+  const outNodes: Node<DiagramNodeData>[] = []
+  const outEdges: Edge[] = []
+  const consumedEdge = new Set<number>()
+
+  for (const actor of actors) {
+    outNodes.push(actor)
+    const seenTargets = new Set<string>()
+    edges.forEach((e, i) => {
+      if (consumedEdge.has(i) || String(e.source) !== actor.id) return
+      const src = firstById.get(String(e.target))
+      if (!src || src.type !== 'usecase') return
+      consumedEdge.add(i)
+      if (seenTargets.has(src.id)) return
+      seenTargets.add(src.id)
+
+      let id = src.id
+      if (usedIds.has(id)) {
+        let k = 1
+        let candidate = `${src.id}__${actor.id}`
+        while (usedIds.has(candidate)) candidate = `${src.id}__${actor.id}_${++k}`
+        id = candidate
+      }
+      usedIds.add(id)
+      outNodes.push(id === src.id ? src : { ...src, id })
+      outEdges.push({ ...e, target: id })
+    })
+  }
+
+  // 未被任何角色引用的节点 / 边原样保留（例如导入数据里的未关联用例）
+  const emitted = new Set(outNodes.map((n) => n.id))
+  for (const n of nodes) {
+    if (emitted.has(n.id)) continue
+    emitted.add(n.id)
+    outNodes.push(n)
+  }
+  edges.forEach((e, i) => { if (!consumedEdge.has(i)) outEdges.push(e) })
+
+  return { nodes: outNodes, edges: outEdges }
 }

@@ -949,7 +949,8 @@ function ActorSection({ actor, editingId, setEditingId, onRename, onRemove, onAd
               onFocus={() => setFocusedIdx(i)} onBlur={() => setFocusedIdx(null)}
               onKeyDown={(e) => {
                 if ((e.key === 'Delete' || e.key === 'Backspace') && editingId !== uc.id) onRemoveUc(uc.id)
-                if (e.key === 'Enter') setEditingId(uc.id)
+                // 编辑框里的 Enter 由 InlineEdit 自己提交并关闭，这里不能再重新打开编辑态
+                if (e.key === 'Enter' && editingId !== uc.id) setEditingId(uc.id)
               }}>
               <span className="text-xs text-gray-300 mr-1 cursor-grab select-none">⋮⋮</span>
               {editingId === uc.id ? (
@@ -1324,7 +1325,8 @@ function AttrList({ attributes, editingId, setEditingId, onAdd, onRemove, onRena
             onFocus={() => setFocusedIdx(i)} onBlur={() => setFocusedIdx(null)}
             onKeyDown={(e) => {
               if ((e.key === 'Delete' || e.key === 'Backspace') && editingId !== a.id) onRemove(a.id)
-              if (e.key === 'Enter') setEditingId(a.id)
+              // 同上：编辑框里的 Enter 不应重新打开编辑态
+              if (e.key === 'Enter' && editingId !== a.id) setEditingId(a.id)
             }}
             onDragStart={() => { if (editingId === a.id) return; setDragIdx(i) }} onDragOver={(e) => e.preventDefault()}
             onDrop={() => { if (dragIdx !== null && dragIdx !== i) onMove(dragIdx, i); setDragIdx(null) }}
