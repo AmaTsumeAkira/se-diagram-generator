@@ -212,7 +212,12 @@ export default function SvgCanvas({ svg }: { svg: string }) {
         onPointerDown={(e) => e.stopPropagation()}
       >
         <button type="button" className={btn} onClick={() => step(-1)} disabled={view.zoom <= ZOOM_MIN} title={t('diagram.zoomOut')}>−</button>
-        <button type="button" className={`${btn} min-w-[3.2rem]`} onClick={() => setUserView(null)} title={t('diagram.zoomReset')}>{Math.round(view.zoom * 100)}%</button>
+        <button
+          type="button"
+          className={`${btn} min-w-[3.2rem]`}
+          onClick={() => { const el = wrapRef.current; if (el) zoomTo(el.clientWidth / 2, el.clientHeight / 2, 1) }}
+          title={t('diagram.zoomReset')}
+        >{Math.round(view.zoom * 100)}%</button>
         <button type="button" className={btn} onClick={() => step(1)} disabled={view.zoom >= ZOOM_MAX} title={t('diagram.zoomIn')}>＋</button>
         <button type="button" className={`${btn} ml-0.5`} onClick={() => setUserView(null)} title={t('diagram.fitView')}>
           <span aria-hidden="true">⤢</span>

@@ -2,6 +2,7 @@ import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
 import type { Node, Edge } from '@xyflow/react'
 import type { DiagramNodeData } from '../types/diagram'
+import { rankOfFlow } from './layout'
 
 type DNode = Node<DiagramNodeData>
 
@@ -132,6 +133,47 @@ function lineGeometry(x1: number, y1: number, x2: number, y2: number): string {
     row('LineTo', 2, cell('X', x2) + cell('Y', y2)),
   ].join(''))
 }
+
+/** 菱形（流程图的判断符号）：四点多边形，坐标全是 0~1 的纯数值。 */
+function diamondGeometry(): string {
+  return section('Geometry', [
+    cell('NoFill', 0),
+    cell('NoLine', 0),
+    row('RelMoveTo', 1, cell('X', 0.5) + cell('Y', 0)),
+    row('RelLineTo', 2, cell('X', 1) + cell('Y', 0.5)),
+    row('RelLineTo', 3, cell('X', 0.5) + cell('Y', 1)),
+    row('RelLineTo', 4, cell('X', 0) + cell('Y', 0.5)),
+    row('RelLineTo', 5, cell('X', 0.5) + cell('Y', 0)),
+  ].join(''))
+}
+
+/**
+ * 胶囊（流程图的开始/结束符号）：矩形 + 两端半圆，折线逼近。
+ *
+ * 这里不用 Visio 的 Row T="RoundRect" / 圆角矩形模板：和椭圆一样，
+ * 公式型几何会写进 V 属性导致 libvisio 解析失败；折线逼近则全是纯数值。
+ * 半圆的绝对半径是 Height/2，换算成 RelX 就是 (Height/2)/Width = rxRel。
+ */
+function capsuleGeometry(rxRel: number, segments = 16): string {
+  const rx = Math.max(0.02, Math.min(0.5, rxRel))
+  const pts: [number, number][] = [
+    [rx, 0],
+    [1 - rx, 0],
+  ]
+  for (let i = 1; i <= segments; i++) {
+    const a = -Math.PI / 2 + (Math.PI * i) / segments
+    pts.push([1 - rx + rx * Math.cos(a), 0.5 + 0.5 * Math.sin(a)])
+  }
+  pts.push([rx, 1])
+  for (let i = 1; i <= segments; i++) {
+    const a = Math.PI / 2 + (Math.PI * i) / segments
+    pts.push([rx + rx * Math.cos(a), 0.5 + 0.5 * Math.sin(a)])
+  }
+  const rows = [cell('NoFill', 0), cell('NoLine', 0), row('RelMoveTo', 1, cell('X', pts[0][0]) + cell('Y', pts[0][1]))]
+  pts.slice(1).forEach((p, i) => rows.push(row('RelLineTo', i + 2, cell('X', p[0]) + cell('Y', p[1]))))
+  return section('Geometry', rows.join(''))
+}
+
 
 // ====== 包内容 ======
 
@@ -300,6 +342,11 @@ interface NodeBox {
   w: number
   h: number
   ellipse: boolean
+  /**
+   * 流程图专用几何（可选）：capsule=开始/结束胶囊、diamond=判断菱形。
+   * 缺省时沿用椭圆/矩形，既有 8 类图的导出行为完全不变。
+   */
+  kind?: 'capsule' | 'diamond'
 }
 
 interface EdgeLine {
@@ -310,6 +357,8 @@ interface EdgeLine {
   x2: number
   y2: number
   dashed?: boolean
+  /** 终点画实心箭头（流程图用；缺省与既有 8 类图一致：无箭头） */
+  arrow?: boolean
 }
 
 const ELLIPSE_TYPES = new Set(['ellipse', 'usecase', 'erAttribute', 'start', 'end', 'decision', 'erDiamond'])
@@ -508,6 +557,124 @@ function edgeLabel(e: Edge): string {
 
 // ====== 导出函数 ======
 
+/**
+ * 画布像素盒子 + 连线 → .vsdx 并触发下载（页面尺寸、坐标换算、OPC 打包的唯一实现）。
+ *
+ * 从 exportToVisio 里原样抽出来，供流程图复用：流程图的节点几何多了胶囊/菱形两态，
+ * 但页面尺寸、Y 轴翻转、部件清单这些必须是同一份，避免两处实现走偏。
+ */
+async function emitVisio(
+  boxes: NodeBox[],
+  lines: EdgeLine[],
+  diagramName: string,
+  filename: string,
+): Promise<void> {
+  // 内容包围盒 → 页面尺寸（英寸，向上取到 0.5in 网格）
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  const grow = (x: number, y: number) => {
+    minX = Math.min(minX, x)
+    minY = Math.min(minY, y)
+    maxX = Math.max(maxX, x)
+    maxY = Math.max(maxY, y)
+  }
+  boxes.forEach((b) => {
+    grow(b.x, b.y)
+    grow(b.x + b.w, b.y + b.h)
+  })
+  lines.forEach((l) => {
+    grow(l.x1, l.y1)
+    grow(l.x2, l.y2)
+  })
+  if (!Number.isFinite(minX)) {
+    minX = 0
+    minY = 0
+    maxX = 0
+    maxY = 0
+  }
+
+  const ceilHalf = (v: number) => Math.ceil(v * 2) / 2
+  const pageW = Math.max(MIN_PAGE_W, ceilHalf((maxX - minX) / PX_PER_INCH + MARGIN_IN * 2))
+  const pageH = Math.max(MIN_PAGE_H, ceilHalf((maxY - minY) / PX_PER_INCH + MARGIN_IN * 2))
+
+  // 画布像素 → Visio 英寸（Visio 原点在左下角，Y 轴向上）
+  const vx = (px: number) => (px - minX) / PX_PER_INCH + MARGIN_IN
+  const vy = (py: number) => pageH - ((py - minY) / PX_PER_INCH + MARGIN_IN)
+
+  const shapes: string[] = []
+  let shapeId = 1
+
+  // 先画连线（后画的节点覆盖线头，避免线穿进框里）
+  lines.forEach((l) => {
+    const x1 = vx(l.x1)
+    const y1 = vy(l.y1)
+    const x2 = vx(l.x2)
+    const y2 = vy(l.y2)
+    const left = Math.min(x1, x2)
+    const bottom = Math.min(y1, y2)
+    const w = Math.abs(x2 - x1)
+    const h = Math.abs(y2 - y1)
+    shapes.push(
+      shapeXml(
+        shapeId++,
+        `Connector${l.id}`,
+        (x1 + x2) / 2,
+        (y1 + y2) / 2,
+        w,
+        h,
+        lineGeometry(x1 - left, y1 - bottom, x2 - left, y2 - bottom),
+        l.label,
+        l.dashed ? LINE_STYLE_CELLS_DASHED : l.arrow ? LINE_STYLE_CELLS_ARROW : LINE_STYLE_CELLS,
+      ),
+    )
+  })
+
+  // 再画节点
+  boxes.forEach((b) => {
+    shapes.push(
+      shapeXml(
+        shapeId++,
+        `Node${b.id}`,
+        vx(b.x + b.w / 2),
+        vy(b.y + b.h / 2),
+        b.w / PX_PER_INCH,
+        b.h / PX_PER_INCH,
+        b.kind === 'capsule'
+          ? capsuleGeometry(b.h / 2 / Math.max(1, b.w))
+          : b.kind === 'diamond'
+            ? diamondGeometry()
+            : b.ellipse
+              ? ellipseGeometry()
+              : rectGeometry(),
+        b.label,
+        NODE_STYLE_CELLS,
+      ),
+    )
+  })
+
+  const pageName = diagramName || 'Page-1'
+  const zip = new JSZip()
+  zip.file('[Content_Types].xml', contentTypesXml())
+  zip.file('_rels/.rels', rootRelsXml())
+  zip.file('docProps/core.xml', coreXml(pageName))
+  zip.file('docProps/app.xml', appXml())
+  zip.file('visio/document.xml', documentXml())
+  zip.file('visio/_rels/document.xml.rels', documentRelsXml())
+  zip.file('visio/pages/pages.xml', pagesXml(pageW, pageH, pageName))
+  zip.file('visio/pages/_rels/pages.xml.rels', pagesRelsXml())
+  zip.file('visio/pages/page1.xml', pageXml(shapes))
+
+  const blob = await zip.generateAsync({
+    type: 'blob',
+    mimeType: 'application/vnd.ms-visio.drawing',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 6 },
+  })
+  saveAs(blob, `${filename}.vsdx`)
+}
+
 export async function exportToVisio(
   nodes: DNode[],
   edges: Edge[],
@@ -568,104 +735,120 @@ export async function exportToVisio(
     })
   }
 
-  // 内容包围盒 → 页面尺寸（英寸，向上取到 0.5in 网格）
-  let minX = Infinity
-  let minY = Infinity
-  let maxX = -Infinity
-  let maxY = -Infinity
-  const grow = (x: number, y: number) => {
-    minX = Math.min(minX, x)
-    minY = Math.min(minY, y)
-    maxX = Math.max(maxX, x)
-    maxY = Math.max(maxY, y)
+  await emitVisio(boxes, lines, diagramName || 'Page-1', filename)
+}
+
+// ====== 程序流程图 ======
+
+/** 流程图连线样式：在基础线样式上补一个实心终点箭头（仅流程图使用，不影响其它图）。 */
+const LINE_STYLE_CELLS_ARROW = LINE_STYLE_CELLS + cell('EndArrow', 4)
+
+/**
+ * 程序流程图 → .vsdx。
+ *
+ * 不复用 exportToVisio 的默认形状表：那张表里 decision 走的是椭圆、start/end 是 32×32 的
+ * 圆点（文字装不下），而流程图需要「判断=菱形、开始/结束=胶囊」。所以这里自己算盒子，
+ * 再交给同一份 emitVisio 打包（页面尺寸 / Y 轴翻转 / OPC 部件清单完全共用）。
+ * 布局用与 drawio 相同的 rankOfFlow：从 start 出发分层、自顶向下、层内居中。
+ */
+export async function flowchartVisio(nodes: DNode[], edges: Edge[]): Promise<void> {
+  const H_GAP = 60
+  const V_GAP = 70
+  const rank = rankOfFlow(nodes, edges)
+
+  const sizeOf = (n: DNode) => {
+    const label = String(n.data?.label ?? '')
+    const tw = textWidth(label)
+    switch (String(n.type ?? '')) {
+      case 'start':
+      case 'end':
+        return { w: Math.max(100, Math.round(tw) + 44), h: 40, kind: 'capsule' as const }
+      case 'decision': {
+        const w = Math.max(120, Math.round(tw * 2) + 20)
+        return { w, h: Math.max(64, Math.round(w * 0.6)), kind: 'diamond' as const }
+      }
+      default:
+        return { w: Math.max(120, Math.round(tw) + 40), h: 50, kind: undefined }
+    }
   }
-  boxes.forEach((b) => {
-    grow(b.x, b.y)
-    grow(b.x + b.w, b.y + b.h)
+
+  const sizes = new Map<string, { w: number; h: number; kind?: 'capsule' | 'diamond' }>()
+  nodes.forEach((n) => sizes.set(n.id, sizeOf(n)))
+
+  const byRank = new Map<number, string[]>()
+  nodes.forEach((n) => {
+    const r = rank.get(n.id) ?? 0
+    const list = byRank.get(r)
+    if (list) list.push(n.id)
+    else byRank.set(r, [n.id])
   })
-  lines.forEach((l) => {
-    grow(l.x1, l.y1)
-    grow(l.x2, l.y2)
-  })
-  if (!Number.isFinite(minX)) {
-    minX = 0
-    minY = 0
-    maxX = 0
-    maxY = 0
+  const ranks = [...byRank.keys()].sort((a, b) => a - b)
+
+  const rowInfo = new Map<number, { y: number; h: number; w: number }>()
+  let cursorY = 0
+  for (const r of ranks) {
+    const ids = byRank.get(r)!
+    const h = Math.max(30, ...ids.map((id) => sizes.get(id)!.h))
+    const w = ids.reduce((sum, id) => sum + sizes.get(id)!.w, 0) + (ids.length - 1) * H_GAP
+    rowInfo.set(r, { y: cursorY, h, w })
+    cursorY += h + V_GAP
+  }
+  const maxRowW = Math.max(1, ...[...rowInfo.values()].map((i) => i.w))
+
+  const boxes: NodeBox[] = []
+  for (const r of ranks) {
+    const ids = byRank.get(r)!
+    const info = rowInfo.get(r)!
+    let x = (maxRowW - info.w) / 2
+    ids.forEach((id) => {
+      const s = sizes.get(id)!
+      const n = nodes.find((nd) => nd.id === id)!
+      boxes.push({
+        id,
+        label: String(n.data?.label ?? ''),
+        x,
+        y: info.y + (info.h - s.h) / 2,
+        w: s.w,
+        h: s.h,
+        ellipse: false,
+        kind: s.kind,
+      })
+      x += s.w + H_GAP
+    })
   }
 
-  const ceilHalf = (v: number) => Math.ceil(v * 2) / 2
-  const pageW = Math.max(MIN_PAGE_W, ceilHalf((maxX - minX) / PX_PER_INCH + MARGIN_IN * 2))
-  const pageH = Math.max(MIN_PAGE_H, ceilHalf((maxY - minY) / PX_PER_INCH + MARGIN_IN * 2))
-
-  // 画布像素 → Visio 英寸（Visio 原点在左下角，Y 轴向上）
-  const vx = (px: number) => (px - minX) / PX_PER_INCH + MARGIN_IN
-  const vy = (py: number) => pageH - ((py - minY) / PX_PER_INCH + MARGIN_IN)
-
-  const shapes: string[] = []
-  let shapeId = 1
-
-  // 先画连线（后画的节点覆盖线头，避免线穿进框里）
-  lines.forEach((l) => {
-    const x1 = vx(l.x1)
-    const y1 = vy(l.y1)
-    const x2 = vx(l.x2)
-    const y2 = vy(l.y2)
-    const left = Math.min(x1, x2)
-    const bottom = Math.min(y1, y2)
-    const w = Math.abs(x2 - x1)
-    const h = Math.abs(y2 - y1)
-    shapes.push(
-      shapeXml(
-        shapeId++,
-        `Connector${l.id}`,
-        (x1 + x2) / 2,
-        (y1 + y2) / 2,
-        w,
-        h,
-        lineGeometry(x1 - left, y1 - bottom, x2 - left, y2 - bottom),
-        l.label,
-        l.dashed ? LINE_STYLE_CELLS_DASHED : LINE_STYLE_CELLS,
-      ),
-    )
+  // 正交折线：向下走时「底出 → 中间横线 → 顶入」，条件文字挂在中间横线上（不会被竖线压扁）；
+  // 回边 / 同层分支按左右侧出侧入。
+  const boxById = new Map(boxes.map((b) => [b.id, b]))
+  const lines: EdgeLine[] = []
+  edges.forEach((e, i) => {
+    const s = boxById.get(e.source)
+    const t = boxById.get(e.target)
+    if (!s || !t) return
+    const label = edgeLabel(e)
+    const scx = s.x + s.w / 2
+    const tcx = t.x + t.w / 2
+    const scy = s.y + s.h / 2
+    const tcy = t.y + t.h / 2
+    if (tcy > scy + 1) {
+      const y1 = s.y + s.h
+      const y2 = t.y
+      if (Math.abs(tcx - scx) < 1) {
+        lines.push({ id: `e${i}`, arrow: true, label, x1: scx, y1, x2: scx, y2 })
+      } else {
+        const midY = (y1 + y2) / 2
+        lines.push({ id: `e${i}a`, label: '', x1: scx, y1, x2: scx, y2: midY })
+        lines.push({ id: `e${i}b`, label, x1: scx, y1: midY, x2: tcx, y2: midY })
+        lines.push({ id: `e${i}c`, label: '', arrow: true, x1: tcx, y1: midY, x2: tcx, y2 })
+      }
+    } else if (tcx >= scx) {
+      lines.push({ id: `e${i}`, arrow: true, label, x1: s.x + s.w, y1: scy, x2: t.x, y2: tcy })
+    } else {
+      lines.push({ id: `e${i}`, arrow: true, label, x1: s.x, y1: scy, x2: t.x + t.w, y2: tcy })
+    }
   })
 
-  // 再画节点
-  boxes.forEach((b) => {
-    shapes.push(
-      shapeXml(
-        shapeId++,
-        `Node${b.id}`,
-        vx(b.x + b.w / 2),
-        vy(b.y + b.h / 2),
-        b.w / PX_PER_INCH,
-        b.h / PX_PER_INCH,
-        b.ellipse ? ellipseGeometry() : rectGeometry(),
-        b.label,
-        NODE_STYLE_CELLS,
-      ),
-    )
-  })
-
-  const pageName = diagramName || 'Page-1'
-  const zip = new JSZip()
-  zip.file('[Content_Types].xml', contentTypesXml())
-  zip.file('_rels/.rels', rootRelsXml())
-  zip.file('docProps/core.xml', coreXml(pageName))
-  zip.file('docProps/app.xml', appXml())
-  zip.file('visio/document.xml', documentXml())
-  zip.file('visio/_rels/document.xml.rels', documentRelsXml())
-  zip.file('visio/pages/pages.xml', pagesXml(pageW, pageH, pageName))
-  zip.file('visio/pages/_rels/pages.xml.rels', pagesRelsXml())
-  zip.file('visio/pages/page1.xml', pageXml(shapes))
-
-  const blob = await zip.generateAsync({
-    type: 'blob',
-    mimeType: 'application/vnd.ms-visio.drawing',
-    compression: 'DEFLATE',
-    compressionOptions: { level: 6 },
-  })
-  saveAs(blob, `${filename}.vsdx`)
+  await emitVisio(boxes, lines, '程序流程图', '程序流程图')
 }
 
 // ====== 快捷导出函数 ======

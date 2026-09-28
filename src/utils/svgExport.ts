@@ -1949,3 +1949,610 @@ export function erSvg(nodes: DNode[], edges: Edge[], opts: { notation?: ERNotati
       return erSvgChen(nodes, edges)
   }
 }
+
+// ====== Program Flowchart SVG（经典程序流程图：胶囊 / 直角矩形 / 菱形）======
+
+/** 判断分支里"继续主干"的那一支（是 / 有效 / yes …），用于挑选主轴 */
+const FLOW_AFFIRMATIVE = /^(是|有效|yes|y|true|成功|通过|正常|正确|有|可以|继续)$/i
+/** 同层相邻图形的最小间隙 */
+const FLOW_HGAP = 56
+/** 相邻层之间的垂直空白带 */
+const FLOW_VGAP = 70
+/** 分支条件文字字号 */
+const FLOW_EDGE_FS = 10
+
+type FlowKind = 'start' | 'end' | 'process' | 'decision'
+
+interface FlowSize {
+  w: number
+  h: number
+  lines: string[]
+}
+
+interface FlowBox {
+  node: DNode
+  kind: FlowKind
+  x: number
+  y: number
+  w: number
+  h: number
+  cx: number
+  cy: number
+  lines: string[]
+  fs: number
+  font: string
+}
+
+interface FlowLayout {
+  placed: Map<string, FlowBox>
+  tree: Map<string, string[]>
+  rank: Map<string, number>
+  back: Set<number>
+  rowBottom: Map<number, number>
+  rowTop: Map<number, number>
+}
+
+function flowKind(t?: string): FlowKind {
+  return t === 'start' || t === 'end' || t === 'decision' ? t : 'process'
+}
+
+/** 按最大行宽折行（先按显式换行，再按字符宽度贪心切分），保证每一行都不超过 maxW */
+function flowLines(label: string, fs: number, maxW: number): string[] {
+  const out: string[] = []
+  const raw = String(label ?? '')
+  if (!raw) return ['']
+  raw.split('\n').forEach((seg) => {
+    if (!seg) { out.push(''); return }
+    let cur = ''
+    for (const ch of seg) {
+      if (cur && textWidth(cur + ch, fs) > maxW) { out.push(cur); cur = ch }
+      else cur += ch
+    }
+    if (cur) out.push(cur)
+  })
+  return out.length ? out : ['']
+}
+
+/**
+ * 节点尺寸：胶囊（圆角 = 高/2）、直角矩形、菱形。
+ *
+ * 菱形按 1.7 宽高比并保证文字块四角落在菱形内：文字半宽 a、半高 b 需满足 a/A + b/B ≤ 0.92
+ * （A/B = 1.7），因此 B ≥ (a/1.7 + b)/0.92 —— 长判断句也能完整放进菱形而不溢出。
+ */
+function flowSize(kind: FlowKind, label: string, fs: number): FlowSize {
+  const lh = fs * 1.3
+  if (kind === 'start' || kind === 'end') {
+    const lines = flowLines(label, fs, 200)
+    const tw = Math.max(...lines.map((l) => textWidth(l, fs)))
+    const h = Math.max(34, Math.ceil(lines.length * lh + 10))
+    return { w: Math.max(76, Math.ceil(tw) + 44, Math.ceil(h * 1.5)), h, lines }
+  }
+  if (kind === 'decision') {
+    const lines = flowLines(label, fs, 190)
+    const tw = Math.max(...lines.map((l) => textWidth(l, fs)))
+    const a = tw / 2 + 8
+    const b = (lines.length * lh) / 2 + 4
+    const B = Math.max(38, (a / 1.7 + b) / 0.92)
+    const A = 1.7 * B
+    return { w: Math.ceil(2 * A), h: Math.ceil(2 * B), lines }
+  }
+  const lines = flowLines(label, fs, 240)
+  const tw = Math.max(...lines.map((l) => textWidth(l, fs)))
+  return { w: Math.max(120, Math.ceil(tw) + 32), h: Math.max(44, Math.ceil(lines.length * lh + 14)), lines }
+}
+
+/**
+ * 分层 + 分支分配布局。
+ *
+ * 1) DFS 找出回边（指向"正在访问"节点），回边不参与分层
+ * 2) 在剩余 DAG 上取最长路径分层（流程顺序不会乱，汇合节点落在两条分支之下）
+ * 3) 主干子节点 = 向下最长路径的那一支（是/有效优先），其余分支挂到左右两侧
+ * 4) 逐层占位：同层区间按 FLOW_HGAP 排开 —— 结构上保证同层不重叠、分支左右分明
+ */
+function flowLayout(nodes: DNode[], edges: Edge[]): FlowLayout {
+  const byId = new Map<string, DNode>()
+  nodes.forEach((n) => { if (n && n.id && !byId.has(n.id)) byId.set(n.id, n) })
+  const ids = [...byId.keys()]
+
+  const links: { e: Edge; i: number; s: string; t: string }[] = []
+  edges.forEach((e, i) => {
+    if (byId.has(e.source) && byId.has(e.target)) links.push({ e, i, s: e.source, t: e.target })
+  })
+  const edgeLabel = (e: Edge) =>
+    ((e.data as Record<string, unknown> | undefined)?.label as string) || (e.label as string) || ''
+
+  const outIdx = new Map<string, number[]>(ids.map((id) => [id, []]))
+  const inDeg = new Map<string, number>(ids.map((id) => [id, 0]))
+  links.forEach((l, k) => {
+    if (l.s === l.t) return
+    outIdx.get(l.s)!.push(k)
+    inDeg.set(l.t, (inDeg.get(l.t) || 0) + 1)
+  })
+
+  // 1) 回边检测
+  const color = new Map<string, number>(ids.map((id) => [id, 0]))
+  const back = new Set<number>()
+  const rootPool = [
+    ...ids.filter((id) => byId.get(id)!.type === 'start'),
+    ...ids.filter((id) => (inDeg.get(id) || 0) === 0),
+    ...ids,
+  ]
+  const seenRoot = new Set<string>()
+  for (const r of rootPool) {
+    if (seenRoot.has(r) || (color.get(r) || 0) !== 0) continue
+    seenRoot.add(r)
+    const stack: { id: string; k: number }[] = [{ id: r, k: 0 }]
+    color.set(r, 1)
+    while (stack.length) {
+      const top = stack[stack.length - 1]
+      const list = outIdx.get(top.id) || []
+      if (top.k >= list.length) { color.set(top.id, 2); stack.pop(); continue }
+      const lk = links[list[top.k++]]
+      const c = color.get(lk.t) || 0
+      if (c === 1) back.add(lk.i)
+      else if (c === 0) { color.set(lk.t, 1); stack.push({ id: lk.t, k: 0 }) }
+    }
+  }
+
+  // 2) 最长路径分层
+  const rank = new Map<string, number>()
+  const indeg = new Map<string, number>(ids.map((id) => [id, 0]))
+  links.forEach((l) => {
+    if (l.s === l.t || back.has(l.i)) return
+    indeg.set(l.t, (indeg.get(l.t) || 0) + 1)
+  })
+  const queue = ids.filter((id) => (indeg.get(id) || 0) === 0)
+  queue.forEach((id) => rank.set(id, 0))
+  for (let h = 0; h < queue.length; h++) {
+    const cur = queue[h]
+    const r = rank.get(cur) || 0
+    for (const k of outIdx.get(cur) || []) {
+      const l = links[k]
+      if (l.s === l.t || back.has(l.i)) continue
+      rank.set(l.t, Math.max(rank.get(l.t) ?? 0, r + 1))
+      indeg.set(l.t, (indeg.get(l.t) || 0) - 1)
+      if ((indeg.get(l.t) || 0) === 0) queue.push(l.t)
+    }
+  }
+  let maxRank = 0
+  rank.forEach((v) => { if (v > maxRank) maxRank = v })
+  ids.forEach((id) => { if (!rank.has(id)) { maxRank += 1; rank.set(id, maxRank) } })
+
+  // 3) 向下最长路径长度 → 挑主干子节点
+  const depth = new Map<string, number>()
+  const depthOf = (id: string, stack: Set<string>): number => {
+    const c = depth.get(id)
+    if (c !== undefined) return c
+    if (stack.has(id)) return 0
+    stack.add(id)
+    let d = 0
+    for (const k of outIdx.get(id) || []) {
+      const l = links[k]
+      if (l.s === l.t || back.has(l.i)) continue
+      d = Math.max(d, 1 + depthOf(l.t, stack))
+    }
+    stack.delete(id)
+    depth.set(id, d)
+    return d
+  }
+  ids.forEach((id) => depthOf(id, new Set()))
+
+  // owned：每个节点只允许被一个父节点（或根）认领，避免环上的节点被二次展开后
+  // 覆盖自己已有的主干子节点（会让整棵子树凭空消失）
+  const owned = new Set<string>()
+  const tree = new Map<string, string[]>()
+  const childOrder = (id: string): string[] => {
+    const cands = new Map<string, number>()
+    for (const k of outIdx.get(id) || []) {
+      const l = links[k]
+      if (l.s === l.t || owned.has(l.t)) continue
+      if (!cands.has(l.t)) cands.set(l.t, k)
+    }
+    return [...cands.entries()]
+      .sort((x, y) => {
+        const dd = (depth.get(y[0]) || 0) - (depth.get(x[0]) || 0)
+        if (dd) return dd
+        const ax = FLOW_AFFIRMATIVE.test(edgeLabel(links[x[1]].e).trim()) ? 1 : 0
+        const ay = FLOW_AFFIRMATIVE.test(edgeLabel(links[y[1]].e).trim()) ? 1 : 0
+        if (ax !== ay) return ay - ax
+        return x[1] - y[1]
+      })
+      .map((v) => v[0])
+  }
+  const rootIds: string[] = []
+  for (const r of rootPool) {
+    if (owned.has(r)) continue
+    owned.add(r)
+    rootIds.push(r)
+    const stack = [r]
+    while (stack.length) {
+      const cur = stack.pop()!
+      const kids = childOrder(cur)
+      kids.forEach((c) => owned.add(c))
+      tree.set(cur, kids)
+      for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i])
+    }
+  }
+
+  // 4) 尺寸 + 层高
+  const sizes = new Map<string, FlowSize>()
+  const sizeOf = (id: string): FlowSize => {
+    let s = sizes.get(id)
+    if (!s) {
+      const n = byId.get(id)!
+      s = flowSize(flowKind(n.type), safeLabel(n.data), fontSize(n.data) || 14)
+      sizes.set(id, s)
+    }
+    return s
+  }
+  const rowH = new Map<number, number>()
+  ids.forEach((id) => {
+    const r = rank.get(id) || 0
+    rowH.set(r, Math.max(rowH.get(r) || 0, sizeOf(id).h))
+  })
+  const rows = [...rowH.keys()].sort((a, b) => a - b)
+  const rowY = new Map<number, number>()
+  const rowTop = new Map<number, number>()
+  const rowBottom = new Map<number, number>()
+  let cursorY = 0
+  for (const r of rows) {
+    rowY.set(r, cursorY)
+    rowTop.set(r, cursorY)
+    rowBottom.set(r, cursorY + (rowH.get(r) || 0))
+    cursorY += (rowH.get(r) || 0) + FLOW_VGAP
+  }
+
+  // 5) 逐层占位：沿 dir 方向找第一个能放下（且与同层图形保持 HGAP）的空位
+  const occ = new Map<number, { l: number; r: number }[]>()
+  const slot = (r: number, w: number, prefAxis: number, dir: 1 | -1): number => {
+    const raw = occ.get(r) || []
+    const list = raw
+      .map((v) => (dir > 0 ? v : { l: -v.r, r: -v.l }))
+      .sort((a, b) => a.l - b.l)
+    let x = prefAxis
+    for (const iv of list) {
+      if (iv.r + FLOW_HGAP <= x) continue
+      if (x + w + FLOW_HGAP <= iv.l) break
+      x = iv.r + FLOW_HGAP
+    }
+    const real = dir > 0 ? x : -x - w
+    const arr = occ.get(r) || []
+    arr.push({ l: real, r: real + w })
+    arr.sort((a, b) => a.l - b.l)
+    occ.set(r, arr)
+    return real
+  }
+
+  const placed = new Map<string, FlowBox>()
+  const placeNode = (id: string, prefAxis: number, dir: 1 | -1) => {
+    if (placed.has(id)) return
+    const n = byId.get(id)!
+    const s = sizeOf(id)
+    const r = rank.get(id) || 0
+    const y = (rowY.get(r) || 0) + (((rowH.get(r) || s.h) - s.h) / 2)
+    const x = slot(r, s.w, prefAxis, dir)
+    placed.set(id, {
+      node: n, kind: flowKind(n.type),
+      x, y, w: s.w, h: s.h, cx: x + s.w / 2, cy: y + s.h / 2,
+      lines: s.lines, fs: fontSize(n.data) || 14, font: fontFamily(n.data),
+    })
+    const kids = tree.get(id) || []
+    kids.forEach((k, i) => {
+      if (placed.has(k)) return
+      const ks = sizeOf(k)
+      if (i === 0) {
+        // 主干子节点与父节点同 x（被同层占位顶开时才右移）
+        placeNode(k, x + s.w / 2 - ks.w / 2, 1)
+      } else {
+        const d: 1 | -1 = i % 2 === 1 ? 1 : -1
+        // 右侧：锚点为"父框右边 + 间隙"；左侧：镜像坐标系下的同一位置
+        placeNode(k, d > 0 ? x + s.w + FLOW_HGAP : FLOW_HGAP - x, d)
+      }
+    })
+  }
+  let cursorX = 0
+  for (const rid of rootIds) {
+    if (placed.has(rid)) continue
+    placeNode(rid, cursorX, 1)
+    const p = placed.get(rid)
+    if (p) cursorX = p.x + p.w + FLOW_HGAP * 3
+  }
+
+  return { placed, tree, rank, back, rowBottom, rowTop }
+}
+
+/**
+ * 程序流程图 SVG（经典符号）：
+ * · start / end 胶囊（圆角 = 高/2，文字在框内）
+ * · process 直角矩形（无圆角，区别于活动图）
+ * · decision 菱形（判断语句居中，按需换行）
+ * · 正交折线 + 实心箭头，箭头落在图形轮廓上；条件文字不带方括号
+ * · 主干自上而下，判断分支左右展开，回边走图形外侧通道回到主干
+ */
+export function flowchartSvg(nodes: DNode[], edges: Edge[]): string {
+  const valid = (nodes || []).filter((n) => n && n.id)
+  if (!valid.length) return wrapSvg(markerDef('arrow'), 0, 0, 400, 300)
+
+  const edgeList = edges || []
+  const { placed, tree, rank, back, rowBottom, rowTop } = flowLayout(valid, edgeList)
+  const boxes = [...placed.values()]
+  const condOf = (e: Edge) =>
+    ((e.data as Record<string, unknown> | undefined)?.label as string) || (e.label as string) || ''
+
+  let minX = Infinity
+  let maxX = -Infinity
+  boxes.forEach((b) => {
+    minX = Math.min(minX, b.x)
+    maxX = Math.max(maxX, b.x + b.w)
+  })
+
+  const pts: { x: number; y: number; w: number; h: number }[] = []
+  const labelRects: { x: number; y: number; w: number; h: number }[] = []
+  const push = (x: number, y: number) => pts.push({ x, y, w: 0, h: 0 })
+  const rectOf = (x: number, y: number, anchor: string, w: number) => {
+    const left = anchor === 'middle' ? x - w / 2 : anchor === 'end' ? x - w : x
+    return { x: left, y: y - FLOW_EDGE_FS, w, h: FLOW_EDGE_FS * 1.4 }
+  }
+  const hit = (
+    a: { x: number; y: number; w: number; h: number },
+    b: { x: number; y: number; w: number; h: number },
+  ) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+  /** 水平线段 y 与图形相交的个数（忽略 skip），用于回边/分支选通道 */
+  const segHits = (x1: number, y: number, x2: number, skip: FlowBox[]) => {
+    const lo = Math.min(x1, x2) - 2
+    const hi = Math.max(x1, x2) + 2
+    let n = 0
+    for (const b of boxes) {
+      if (skip.includes(b)) continue
+      if (y < b.y - 2 || y > b.y + b.h + 2) continue
+      if (hi < b.x || lo > b.x + b.w) continue
+      n += 1
+    }
+    return n
+  }
+  /** 竖直线段 x∈[y0,y1] 是否不穿任何图形（忽略 skip） */
+  const corridorClear = (x: number, y0: number, y1: number, skip: FlowBox[]) =>
+    !boxes.some((b) => {
+      if (skip.includes(b)) return false
+      if (x < b.x - 2 || x > b.x + b.w + 2) return false
+      return Math.min(y0, y1) < b.y + b.h - 2 && b.y + 2 < Math.max(y0, y1)
+    })
+  /** 在 y0→y1 之间挑一条不穿框的竖直通道（优先 t.cx，其次左右错开，最后走图形外侧） */
+  const pickCorridor = (pref: number, y0: number, y1: number, skip: FlowBox[]) => {
+    const cands: number[] = [pref]
+    for (let k = 1; k <= 8; k++) {
+      cands.push(pref + 24 * k, pref - 24 * k)
+    }
+    cands.push(maxX + 30, minX - 30)
+    for (const c of cands) if (corridorClear(c, y0, y1, skip)) return c
+    return maxX + 30
+  }
+  /** 折线：去掉重复点后输出 path，并把所有顶点计入画布边界 */
+  const polyline = (cls: string, from: string, to: string, list: [number, number][]) => {
+    const out: [number, number][] = []
+    list.forEach((p) => {
+      const last = out[out.length - 1]
+      if (!last || Math.abs(last[0] - p[0]) > 0.01 || Math.abs(last[1] - p[1]) > 0.01) out.push(p)
+    })
+    out.forEach(([x, y]) => push(x, y))
+    return `<path class="${cls}" data-from="${esc(from)}" data-to="${esc(to)}" d="M ${out.map(([x, y]) => `${x} ${y}`).join(' L ')}" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>`
+  }
+  /** 条件文字放在线旁；若压到图形/其它标签，按候选位移挪开 */
+  const placeCondLabel = (txt: string, px: number, py: number, anchor: string) => {
+    const w = textWidth(txt, FLOW_EDGE_FS)
+    const cands: [number, number][] = [
+      [0, 0], [0, -FLOW_EDGE_FS * 1.3], [0, FLOW_EDGE_FS * 1.7],
+      [w / 2 + 10, 0], [-w / 2 - 10, 0],
+      [0, -FLOW_EDGE_FS * 2.8], [0, FLOW_EDGE_FS * 3.2],
+    ]
+    for (const [dx, dy] of cands) {
+      const r = rectOf(px + dx, py + dy, anchor, w)
+      if (!boxes.some((b) => hit(r, b)) && !labelRects.some((b) => hit(r, b))) {
+        labelRects.push(r)
+        return { x: px + dx, y: py + dy }
+      }
+    }
+    labelRects.push(rectOf(px, py, anchor, w))
+    return { x: px, y: py }
+  }
+  const condText = (txt: string, x: number, y: number, anchor: string) =>
+    `<text class="flow-edge-label" x="${x}" y="${y}" font-family="sans-serif" font-size="${FLOW_EDGE_FS}" fill="#555" text-anchor="${anchor}">${esc(txt)}</text>`
+
+  // 回边进入点：同一目标的多条回边在其轮廓上均匀分布，避免箭头重叠
+  const totalByTarget = new Map<string, number>()
+  edgeList.forEach((e, i) => {
+    if (!placed.has(e.source) || !placed.has(e.target) || e.source === e.target) return
+    if (back.has(i) || (rank.get(e.target) ?? 0) <= (rank.get(e.source) ?? 0)) {
+      totalByTarget.set(e.target, (totalByTarget.get(e.target) || 0) + 1)
+    }
+  })
+  const entered = new Map<string, number>()
+  let laneR = 0
+  let laneL = 0
+
+  let edgeSvg = ''
+  const labelSvg: string[] = []
+
+  edgeList.forEach((e, i) => {
+    const s = placed.get(e.source)
+    const t = placed.get(e.target)
+    if (!s || !t) return
+    const cond = condOf(e)
+
+    // —— 自环：绕图形右侧一圈，箭头落回轮廓（菱形按棱边取点，保证在轮廓上）——
+    if (e.source === e.target) {
+      const d = Math.min(12, s.h / 4)
+      const out = 30
+      const laneX = s.x + s.w + out
+      const contourX = (dy: number) => {
+        if (s.kind !== 'decision') return s.x + s.w
+        const A = s.w / 2
+        const B = s.h / 2
+        return s.cx + A * (1 - Math.min(1, Math.abs(dy) / B))
+      }
+      const xTop = contourX(d)
+      const xBot = contourX(d)
+      const yTop = s.cy - d
+      const yBot = s.cy + d
+      edgeSvg += `<path class="flow-edge flow-edge-self" data-from="${esc(e.source)}" data-to="${esc(e.target)}" d="M ${xTop} ${yTop} L ${laneX} ${yTop} L ${laneX} ${yBot} L ${xBot} ${yBot}" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>`
+      push(xTop, yTop); push(laneX, yTop); push(laneX, yBot); push(xBot, yBot)
+      if (cond) {
+        const pos = placeCondLabel(cond, laneX + 6, s.cy - 6, 'start')
+        labelSvg.push(condText(cond, pos.x, pos.y, 'start'))
+      }
+      return
+    }
+
+    // —— 回边：从图形外侧通道绕回主干，箭头落在目标轮廓上 ——
+    // 出/入的横段若会被同层图形挡住，就改走该层旁侧的空白带（srcGap/tgtBand），
+    // 仍被挡时从目标顶边进入 —— 保证回边不穿方框。
+    if (back.has(i) || (rank.get(e.target) ?? 0) <= (rank.get(e.source) ?? 0)) {
+      const srcRank = rank.get(s.node.id) || 0
+      const tgtRank = rank.get(t.node.id) || 0
+      const k = entered.get(e.target) || 0
+      entered.set(e.target, k + 1)
+      const m = totalByTarget.get(e.target) || 1
+      const entY = t.y + t.h * ((k + 1) / (m + 1))
+      const opt = (side: 1 | -1) => {
+        const lane = side > 0 ? maxX + 30 * (laneR + 1) : minX - 30 * (laneL + 1)
+        const ex = side > 0 ? s.x + s.w : s.x
+        const enx = side > 0 ? t.x + t.w : t.x
+        const exitHits = segHits(ex, s.cy, lane, [s, t])
+        const entryHits = segHits(lane, entY, enx, [s, t])
+        return { side, lane, ex, enx, score: exitHits + entryHits, entryHits }
+      }
+      const pr = opt(1)
+      const pl = opt(-1)
+      const pick = pr.score <= pl.score ? pr : pl
+      if (pick.side > 0) laneR += 1
+      else laneL += 1
+      const ey = s.cy
+      const exitClear = segHits(pick.ex, ey, pick.lane, [s, t]) === 0
+      const exitY = exitClear
+        ? ey
+        : (rowBottom.get(srcRank) ?? s.y + s.h) + FLOW_VGAP / 2
+      const entryClear = pick.entryHits === 0
+      const entryY = entryClear
+        ? entY
+        : (rowTop.get(tgtRank) ?? t.y) - FLOW_VGAP / 2
+      const d: string[] = [`M ${pick.ex} ${ey}`]
+      const line: [number, number][] = [[pick.ex, ey]]
+      if (!exitClear) {
+        d.push(`L ${pick.ex} ${exitY}`)
+        line.push([pick.ex, exitY])
+      }
+      d.push(`L ${pick.lane} ${exitY}`)
+      line.push([pick.lane, exitY])
+      d.push(`L ${pick.lane} ${entryY}`)
+      line.push([pick.lane, entryY])
+      if (entryClear) {
+        d.push(`L ${pick.enx} ${entryY}`)
+        line.push([pick.enx, entryY])
+      } else {
+        // 从目标正上方的空白带下落到顶边（落在轮廓上，且避开正向入边）
+        const tx2 = t.cx + pick.side * Math.min(16, t.w / 4)
+        d.push(`L ${tx2} ${entryY}`)
+        line.push([tx2, entryY])
+        d.push(`L ${tx2} ${t.y}`)
+        line.push([tx2, t.y])
+      }
+      edgeSvg += `<path class="flow-edge flow-edge-back" data-from="${esc(e.source)}" data-to="${esc(e.target)}" d="${d.join(' ')}" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>`
+      line.forEach(([x, y]) => push(x, y))
+      if (cond) {
+        const pos = placeCondLabel(cond, (pick.ex + pick.lane) / 2, ey - 6, 'middle')
+        labelSvg.push(condText(cond, pos.x, pos.y, 'middle'))
+      }
+      return
+    }
+
+    const srcRank = rank.get(s.node.id) || 0
+    const tgtRank = rank.get(t.node.id) || 0
+    // 本层下方的空白带 / 目标层上方的空白带 —— 所有横移都在空白带里做，绝不会压到方框
+    const gapS = (rowBottom.get(srcRank) ?? s.y + s.h) + FLOW_VGAP / 2
+    const gapT = (rowTop.get(tgtRank) ?? t.y) - FLOW_VGAP / 2
+    const kids = tree.get(s.node.id) || []
+    const kidIdx = kids.indexOf(t.node.id)
+
+    // —— 主干：垂直向下（若中间层有图形挡路，则改走空白带 + 竖直通道）——
+    if (Math.abs(t.cx - s.cx) < 0.6 && corridorClear(s.cx, s.y + s.h, t.y, [s, t])) {
+      const y1 = s.y + s.h
+      edgeSvg += `<path class="flow-edge" data-from="${esc(e.source)}" data-to="${esc(e.target)}" d="M ${s.cx} ${y1} L ${t.cx} ${t.y}" fill="none" stroke="#000" stroke-width="1.2" marker-end="url(#arrow)"/>`
+      push(s.cx, y1); push(t.cx, t.y)
+      if (cond) {
+        const pos = placeCondLabel(cond, s.cx + 7, (y1 + t.y) / 2, 'start')
+        labelSvg.push(condText(cond, pos.x, pos.y, 'start'))
+      }
+      return
+    }
+
+    const corridor = pickCorridor(t.cx, gapS, gapT, [s, t])
+
+    // —— 判断分支：侧面出线 → 本层下方空白带 → 竖直通道 → 目标层上方空白带 → 箭头落在分支框顶边 ——
+    if (kidIdx > 0) {
+      const dir: 1 | -1 = t.cx > s.cx ? 1 : -1
+      const ex = dir > 0 ? s.x + s.w : s.x
+      const ey = s.cy
+      const stub = Math.min(24, Math.abs(t.cx - ex) / 2)
+      const sx = ex + dir * stub
+      edgeSvg += polyline('flow-edge flow-edge-branch', e.source, e.target, [
+        [ex, ey], [sx, ey], [sx, gapS], [corridor, gapS],
+        [corridor, gapT], [t.cx, gapT], [t.cx, t.y],
+      ])
+      if (cond) {
+        const pos = placeCondLabel(cond, ex + dir * (stub + 4), ey - 6, dir > 0 ? 'start' : 'end')
+        labelSvg.push(condText(cond, pos.x, pos.y, dir > 0 ? 'start' : 'end'))
+      }
+      return
+    }
+
+    // —— 汇合 / 跨层前向边：从底边出线，在空白带里拐弯，必要时绕开中间层的图形 ——
+    const y1 = s.y + s.h
+    edgeSvg += polyline('flow-edge', e.source, e.target, [
+      [s.cx, y1], [s.cx, gapS], [corridor, gapS],
+      [corridor, gapT], [t.cx, gapT], [t.cx, t.y],
+    ])
+    if (cond) {
+      const pos = placeCondLabel(cond, (s.cx + corridor) / 2, gapS - 6, 'middle')
+      labelSvg.push(condText(cond, pos.x, pos.y, 'middle'))
+    }
+  })
+
+  // —— 图形 + 框内文字（后画，盖住可能压线的笔画）——
+  const ordered = boxes.slice().sort((a, b) => a.y - b.y || a.x - b.x)
+  let shapeSvg = ''
+  let nodeTextSvg = ''
+  ordered.forEach((p) => {
+    const id = esc(String(p.node.id))
+    if (p.kind === 'decision') {
+      shapeSvg += `<polygon class="flow-shape flow-decision" data-node-id="${id}" points="${p.cx},${p.y} ${p.x + p.w},${p.cy} ${p.cx},${p.y + p.h} ${p.x},${p.cy}" fill="#fff" stroke="#000" stroke-width="1.5"/>`
+    } else if (p.kind === 'start' || p.kind === 'end') {
+      const r = p.h / 2
+      shapeSvg += `<rect class="flow-shape flow-${p.kind}" data-node-id="${id}" x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="${r}" ry="${r}" fill="#fff" stroke="#000" stroke-width="1.5"/>`
+    } else {
+      shapeSvg += `<rect class="flow-shape flow-process" data-node-id="${id}" x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" fill="#fff" stroke="#000" stroke-width="1.5"/>`
+    }
+    const lh = p.fs * 1.3
+    const n = p.lines.length
+    p.lines.forEach((ln, li) => {
+      if (!ln) return
+      const ty = p.cy + (li - (n - 1) / 2) * lh + p.fs * 0.35
+      nodeTextSvg += `<text class="flow-node-label" data-node-id="${id}" x="${p.cx}" y="${ty}" font-family="${esc(p.font)}" font-size="${p.fs}" text-anchor="middle" fill="#000">${esc(ln)}</text>`
+    })
+    pts.push({ x: p.x, y: p.y, w: p.w, h: p.h })
+  })
+
+  let bx0 = Infinity
+  let by0 = Infinity
+  let bx1 = -Infinity
+  let by1 = -Infinity
+  const add = (x: number, y: number, w: number, h: number) => {
+    bx0 = Math.min(bx0, x); by0 = Math.min(by0, y)
+    bx1 = Math.max(bx1, x + w); by1 = Math.max(by1, y + h)
+  }
+  pts.forEach((p) => add(p.x, p.y, p.w, p.h))
+  labelRects.forEach((p) => add(p.x, p.y, p.w, p.h))
+
+  const pad = 40
+  const content = markerDef('arrow') + edgeSvg + shapeSvg + nodeTextSvg + labelSvg.join('')
+  return wrapSvg(content, bx0 - pad, by0 - pad, bx1 - bx0 + pad * 2, by1 - by0 + pad * 2)
+}

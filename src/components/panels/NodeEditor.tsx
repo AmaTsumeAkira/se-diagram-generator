@@ -117,6 +117,15 @@ export interface DeploymentState {
   }[]
 }
 
+/**
+ * 程序流程图（flowchart）：与活动图 nodeType 不同——这里没有 action，处理节点统一叫 process。
+ * 渲染器契约：节点 `{id, type, label}`；条件文字放边**顶层 label**（`e.data?.label || e.label`）。
+ */
+export interface FlowState {
+  nodes: { id: string; label: string; nodeType: 'start' | 'end' | 'process' | 'decision' }[]
+  edges: { id: string; source: string; target: string; label?: string }[]
+}
+
 export interface ERState {
   entities: {
     id: string
@@ -144,7 +153,7 @@ export interface ERState {
   }[]
 }
 
-export type DiagramType = 'usecase' | 'structure' | 'entity' | 'er' | 'sequence' | 'class' | 'activity' | 'deployment'
+export type DiagramType = 'usecase' | 'structure' | 'entity' | 'er' | 'sequence' | 'class' | 'activity' | 'deployment' | 'flowchart'
 
 interface Props {
   type: DiagramType
@@ -157,6 +166,7 @@ interface Props {
   classState?: ClassState
   activity?: ActivityState
   deployment?: DeploymentState
+  flow?: FlowState
   onApply: (json: string) => void
 }
 
@@ -428,6 +438,23 @@ function deploymentToJson(state: DeploymentState): string {
     source: e.source,
     target: e.target,
     ...(e.label && { label: e.label }),
+  }))
+  return JSON.stringify({ nodes, edges }, null, 2)
+}
+
+/**
+ * 程序流程图序列化：`type` 直接取 nodeType（start/end/process/decision）；
+ * 边的条件文字（是/否…）写**顶层 label**，渲染器按 `e.data?.label || e.label` 读取。
+ * 注：保持模块内私有 —— 对外 export 会触发 react-refresh/only-export-components
+ * （本文件此前零该类错误）；契约已由 FlowState + onApply 的 JSON 端到端验证。
+ */
+function flowchartToJson(state: FlowState): string {
+  const nodes = (state.nodes || []).map((n) => ({ id: n.id, type: n.nodeType, label: n.label }))
+  const edges = (state.edges || []).map((e) => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+    label: e.label || '',
   }))
   return JSON.stringify({ nodes, edges }, null, 2)
 }
@@ -879,7 +906,7 @@ function parseMermaidDeployment(code: string): DeploymentState | null {
 
 // ====== Main ======
 
-export default function NodeEditor({ type, useCase, tree, entity, er, sequence, classState, activity, deployment, onApply }: Props) {
+export default function NodeEditor({ type, useCase, tree, entity, er, sequence, classState, activity, deployment, flow, onApply }: Props) {
   const { t } = useTranslation()
   const { sitePv, pagePv, siteUv } = useVercount()
   const titleKeys: Record<DiagramType, string> = {
@@ -891,6 +918,7 @@ export default function NodeEditor({ type, useCase, tree, entity, er, sequence, 
     class: 'editor.classTitle',
     activity: 'editor.activityTitle',
     deployment: 'editor.deploymentTitle',
+    flowchart: 'editor.flowchartTitle',
   }
   const titleKey = titleKeys[type] || 'editor.usecaseTitle'
   return (
@@ -908,6 +936,7 @@ export default function NodeEditor({ type, useCase, tree, entity, er, sequence, 
         {type === 'class' && <ClassEditor state={classState} onApply={onApply} />}
         {type === 'activity' && <ActivityEditor state={activity} onApply={onApply} />}
         {type === 'deployment' && <DeploymentEditor state={deployment} onApply={onApply} />}
+        {type === 'flowchart' && <FlowchartEditor state={flow} onApply={onApply} />}
       </div>
       <div className="px-3 py-2 border-t border-gray-200 bg-white text-[10px] text-gray-400 text-center">
         <div className="mb-1">{t('stats.sitePv')}: {sitePv} &nbsp; {t('stats.pagePv')}: {pagePv} &nbsp; {t('stats.siteUv')}: {siteUv}</div>
@@ -2434,6 +2463,272 @@ function ActivityEditor({ state: initial, onApply }: { state?: ActivityState; on
             />
             <div className="flex gap-2">
               <button onClick={handleMermaidImport}
+                className="flex-1 py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
+                {t('quickImport.import')}
+              </button>
+              <button onClick={() => { setShowMermaid(false); setMermaidText('') }}
+                className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100">
+                {t('quickImport.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ====== Flowchart Editor ======
+
+type FlowNodeType = FlowState['nodes'][number]['nodeType']
+
+const FLOW_NODE_TYPES: FlowNodeType[] = ['start', 'end', 'process', 'decision']
+
+function FlowchartEditor({ state: initial, onApply }: { state?: FlowState; onApply: (json: string) => void }) {
+  const { t } = useTranslation()
+  const [nodes, setNodes] = useState<FlowState['nodes']>(initial?.nodes || [])
+  const [edges, setEdges] = useState<FlowState['edges']>(initial?.edges || [])
+  // 编辑态键带序号 + id：重复 id 也不会两行互抢焦点
+  const [editingKey, setEditingKey] = useState<string | null>(null)
+  const [newNodeType, setNewNodeType] = useState<FlowNodeType>('process')
+  const [dragNodeIdx, setDragNodeIdx] = useState<number | null>(null)
+  const [showMermaid, setShowMermaid] = useState(false)
+  const [mermaidText, setMermaidText] = useState('')
+
+  const initialRef = useRef(initial)
+  useEffect(() => {
+    if (initialRef.current === initial) return
+    initialRef.current = initial
+    setNodes(initial?.nodes || [])
+    setEdges(initial?.edges || [])
+    setEditingKey(null)
+  }, [initial])
+
+  const flowTypeLabel = (tp: FlowNodeType) =>
+    tp === 'start' ? t('editor.flowStart')
+      : tp === 'end' ? t('editor.flowEnd')
+        : tp === 'decision' ? t('editor.flowDecision')
+          : t('editor.flowProcess')
+
+  /** 开始/结束是流程唯一入口/出口：已存在时复用（提示并定位过去），不再制造重复锚点 */
+  const reuseAnchorIfExists = (nodeType: FlowNodeType): boolean => {
+    if (nodeType !== 'start' && nodeType !== 'end') return false
+    const idx = nodes.findIndex((n) => n.nodeType === nodeType)
+    if (idx < 0) return false
+    alert(t('editor.flowAnchorExists', { name: flowTypeLabel(nodeType) }))
+    setEditingKey(`f:${idx}:${nodes[idx].id}`)
+    return true
+  }
+
+  const addNode = (nodeType: FlowNodeType = 'process') => {
+    if (reuseAnchorIfExists(nodeType)) return
+    setNodes((n) => [...n, { id: uid(), label: flowTypeLabel(nodeType), nodeType }])
+  }
+
+  const switchNodeType = (id: string, nodeType: FlowNodeType) => {
+    const current = nodes.find((n) => n.id === id)
+    if (!current || current.nodeType === nodeType) return
+    if (nodeType === 'start' || nodeType === 'end') {
+      const idx = nodes.findIndex((n) => n.id !== id && n.nodeType === nodeType)
+      if (idx >= 0) {
+        alert(t('editor.flowAnchorExists', { name: flowTypeLabel(nodeType) }))
+        setEditingKey(`f:${idx}:${nodes[idx].id}`)
+        return
+      }
+    }
+    setNodes((n) => n.map((node) => node.id === id ? { ...node, nodeType } : node))
+  }
+
+  const moveNode = (from: number, to: number) => {
+    setNodes((n) => { const arr = [...n]; const [item] = arr.splice(from, 1); arr.splice(to, 0, item); return arr })
+  }
+
+  const removeNode = (id: string) => {
+    setNodes((n) => n.filter((item) => item.id !== id))
+    // 删除节点时同步删除相关连线，不留悬空边
+    setEdges((e) => e.filter((edge) => edge.source !== id && edge.target !== id))
+    setEditingKey(null)
+  }
+
+  const renameNode = (id: string, label: string) => {
+    setNodes((n) => n.map((item) => item.id === id ? { ...item, label } : item))
+  }
+
+  // ===== 连线编辑 =====
+  const addEdge = () => {
+    const src = nodes[0]?.id
+    const tgt = nodes[1]?.id || nodes[0]?.id
+    if (!src || !tgt) return
+    setEdges((e) => [...e, { id: uid(), source: src, target: tgt, label: '' }])
+  }
+  const removeEdge = (id: string) => setEdges((e) => e.filter((edge) => edge.id !== id))
+  const updateEdge = (id: string, updates: Partial<{ source: string; target: string; label: string }>) => {
+    setEdges((e) => e.map((edge) => edge.id === id ? { ...edge, ...updates } : edge))
+  }
+
+  const handleApply = () => {
+    onApply(flowchartToJson({ nodes, edges }))
+  }
+
+  const handleMermaidImport = () => {
+    const parsed = parseMermaidActivity(mermaidText)
+    if (!parsed) {
+      alert(t('editor.mermaidError'))
+      return
+    }
+    // 活动图 nodeType(action) → 流程图 process；start/end/decision 同名直接映射；边 guard → label
+    setNodes(parsed.nodes.map((n) => ({
+      id: n.id,
+      label: n.label,
+      nodeType: (n.nodeType === 'action' ? 'process' : n.nodeType) as FlowNodeType,
+    })))
+    setEdges(parsed.edges.map((e) => ({ id: e.id, source: e.source, target: e.target, label: e.guard })))
+    setShowMermaid(false)
+    setMermaidText('')
+  }
+
+  const nodeLabel = (id: string) => nodes.find((n) => n.id === id)?.label || id
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <button onClick={() => addNode(newNodeType)} data-testid="flow-add-node"
+          className="flex-1 py-2 text-sm border-2 border-dashed border-gray-300 rounded hover:border-gray-500 hover:bg-gray-100 text-gray-500">
+          {t('editor.addFlowNode')}
+        </button>
+        <select value={newNodeType} onChange={(e) => setNewNodeType(e.target.value as FlowNodeType)}
+          aria-label={t('editor.addFlowNode')} data-testid="flow-new-type"
+          className="px-2 py-2 text-sm border border-gray-300 rounded bg-white text-gray-600">
+          {FLOW_NODE_TYPES.map((tp) => <option key={tp} value={tp}>{flowTypeLabel(tp)}</option>)}
+        </select>
+        <button onClick={() => setShowMermaid(true)} data-testid="flow-mermaid-open"
+          className="px-3 py-2 text-sm border border-gray-300 rounded hover:bg-gray-100 text-gray-500">
+          {t('editor.importMermaid')}
+        </button>
+      </div>
+
+      {/* 节点列表：类型切换 / 双击改名 / 删除 / 拖拽排序 */}
+      <div className="space-y-2" data-testid="flow-nodes">
+        {nodes.length === 0 ? (
+          <div className="text-xs text-gray-400 text-center py-4 border border-dashed border-gray-300 rounded" data-testid="flow-empty">
+            <div className="mb-2">{t('editor.flowNoNodes')}</div>
+            <button onClick={() => addNode('process')}
+              className="px-3 py-1 text-xs border border-gray-300 rounded hover:bg-gray-100 text-gray-500 bg-white">
+              {t('editor.addFlowNode')}
+            </button>
+          </div>
+        ) : nodes.map((node, i) => {
+          const selfKey = `f:${i}:${node.id}`
+          return (
+            <div key={`${node.id}:${i}`} draggable={editingKey !== selfKey} tabIndex={0} data-testid="flow-node-row"
+              data-node-type={node.nodeType}
+              className={`bg-white border border-gray-200 rounded p-2 transition-opacity ${dragNodeIdx === i ? 'opacity-40' : ''}`}
+              onDragStart={() => { if (editingKey === selfKey) return; setDragNodeIdx(i) }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => { if (dragNodeIdx !== null && dragNodeIdx !== i) moveNode(dragNodeIdx, i); setDragNodeIdx(null) }}
+              onDragEnd={() => setDragNodeIdx(null)}
+              onKeyDown={(e) => {
+                if (isEditableTarget(e)) return
+                if ((e.key === 'Delete' || e.key === 'Backspace') && editingKey !== selfKey) {
+                  e.preventDefault()
+                  removeNode(node.id)
+                }
+                // 编辑框里的 Enter 由 InlineEdit 自己提交并关闭，这里不能再重新打开编辑态
+                if (e.key === 'Enter' && editingKey !== selfKey) {
+                  e.preventDefault()
+                  setEditingKey(selfKey)
+                }
+              }}>
+              <div className="flex items-center gap-1 mb-1">
+                <span className="text-xs text-gray-400 cursor-grab select-none">⋮⋮</span>
+                <select value={node.nodeType} onChange={(e) => switchNodeType(node.id, e.target.value as FlowNodeType)}
+                  className="text-xs px-1 py-0.5 border border-gray-300 rounded bg-white text-gray-600">
+                  {FLOW_NODE_TYPES.map((tp) => (
+                    <option key={tp} value={tp}>{flowTypeLabel(tp)}</option>
+                  ))}
+                </select>
+                <span className="flex-1" />
+                <button onClick={() => removeNode(node.id)} className="text-gray-400 hover:text-red-500 text-sm" title={t('editor.deleteAction')}>×</button>
+              </div>
+              {editingKey === selfKey ? (
+                <InlineEdit value={node.label}
+                  onSave={(v) => { renameNode(node.id, v); setEditingKey(null) }}
+                  onDelete={() => { removeNode(node.id) }}
+                  onTab={() => {
+                    if (i + 1 < nodes.length) setEditingKey(`f:${i + 1}:${nodes[i + 1].id}`)
+                    else {
+                      const id = uid()
+                      setNodes((n) => [...n, { id, label: t('editor.flowProcess'), nodeType: 'process' }])
+                      setEditingKey(`f:${nodes.length}:${id}`)
+                    }
+                  }} />
+              ) : (
+                <div className="text-sm cursor-pointer" onDoubleClick={() => setEditingKey(selfKey)}>{node.label}</div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* 连线列表：源 / 目标 / 条件文字 / 删除 */}
+      <div className="border-t border-gray-200 pt-3">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-gray-500">{t('editor.flowEdges')}</span>
+          <button onClick={addEdge} disabled={nodes.length < 1} data-testid="flow-add-edge"
+            className="px-2 py-0.5 text-xs bg-black text-white rounded hover:bg-gray-800 disabled:opacity-30">
+            {t('editor.addFlowEdge')}
+          </button>
+        </div>
+        <div className="space-y-1" data-testid="flow-edges">
+          {edges.map((edge) => (
+            <div key={edge.id} data-testid="flow-edge-row"
+              className="flex items-center gap-1 text-xs bg-gray-50 border border-gray-200 rounded px-1 py-1">
+              <select className="flex-1 min-w-0 px-1 py-0.5 border border-gray-300 rounded bg-white"
+                aria-label={t('editor.flowSource')} value={edge.source}
+                onChange={(e) => updateEdge(edge.id, { source: e.target.value })}>
+                {nodes.map((n) => <option key={n.id} value={n.id}>{nodeLabel(n.id)}</option>)}
+              </select>
+              <span className="text-gray-400">→</span>
+              <select className="flex-1 min-w-0 px-1 py-0.5 border border-gray-300 rounded bg-white"
+                aria-label={t('editor.flowTarget')} value={edge.target}
+                onChange={(e) => updateEdge(edge.id, { target: e.target.value })}>
+                {nodes.map((n) => <option key={n.id} value={n.id}>{nodeLabel(n.id)}</option>)}
+              </select>
+              <input className="w-16 px-1 py-0.5 border border-gray-300 rounded"
+                aria-label={t('editor.flowCondition')} placeholder={t('editor.flowConditionPlaceholder')}
+                value={edge.label || ''} onChange={(e) => updateEdge(edge.id, { label: e.target.value })} />
+              <button onClick={() => removeEdge(edge.id)} className="text-gray-400 hover:text-red-500 px-0.5" title={t('editor.removeEdge')}>×</button>
+            </div>
+          ))}
+          {nodes.length > 0 && edges.length === 0 && (
+            <div className="text-xs text-gray-400 text-center py-1">{t('editor.addFlowEdge')}</div>
+          )}
+        </div>
+      </div>
+
+      <button onClick={handleApply} data-testid="flow-apply"
+        className="w-full py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
+        {t('editor.apply')}
+      </button>
+
+      {/* Mermaid Import Modal */}
+      {showMermaid && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowMermaid(false)}>
+          <div className="bg-white rounded-lg shadow-xl p-5 w-[460px]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold">{t('editor.mermaidFlowTitle')}</h3>
+              <button onClick={() => setShowMermaid(false)} className="text-gray-400 hover:text-black text-lg leading-none">×</button>
+            </div>
+            <pre className="text-[10px] text-gray-400 mb-2 whitespace-pre-wrap">{t('editor.mermaidFlowHint')}</pre>
+            <textarea
+              data-testid="flow-mermaid-text"
+              className="w-full h-40 text-xs font-mono border border-gray-300 rounded p-2 mb-3 focus:outline-none focus:ring-1 focus:ring-black"
+              placeholder={t('editor.mermaidFlowPlaceholder')}
+              value={mermaidText}
+              onChange={(e) => setMermaidText(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <button onClick={handleMermaidImport} data-testid="flow-mermaid-import"
                 className="flex-1 py-2 bg-black text-white text-sm font-medium rounded hover:bg-gray-800">
                 {t('quickImport.import')}
               </button>

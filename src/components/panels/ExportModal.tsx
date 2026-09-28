@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toPng } from 'html-to-image'
-import { useCaseSvg, structureSvg, entitySvg, erSvg, sequenceSvg, classSvg, activitySvg, deploymentSvg } from '../../utils/svgExport'
-import { useCaseDrawio, structureDrawio, entityDrawio, erDrawio, sequenceDrawio, classDrawio, activityDrawio, deploymentDrawio } from '../../utils/drawioExport'
-import { useCaseVisio, structureVisio, entityVisio, erVisio, sequenceVisio, classVisio, activityVisio, deploymentVisio } from '../../utils/visioExport'
+import { useCaseSvg, structureSvg, entitySvg, erSvg, sequenceSvg, classSvg, activitySvg, deploymentSvg, flowchartSvg } from '../../utils/svgExport'
+import { useCaseDrawio, structureDrawio, entityDrawio, erDrawio, sequenceDrawio, classDrawio, activityDrawio, deploymentDrawio, flowchartDrawio } from '../../utils/drawioExport'
+import { useCaseVisio, structureVisio, entityVisio, erVisio, sequenceVisio, classVisio, activityVisio, deploymentVisio, flowchartVisio } from '../../utils/visioExport'
 import type { Node, Edge } from '@xyflow/react'
 import type { DiagramNodeData, ERNotation } from '../../types/diagram'
 
@@ -53,6 +53,7 @@ function buildSvg(active: string, nodes: Node<DiagramNodeData>[], edges: Edge[],
     case 'class': return classSvg(nodes, edges)
     case 'activity': return activitySvg(nodes, edges)
     case 'deployment': return deploymentSvg(nodes, edges)
+    case 'flowchart': return flowchartSvg(nodes, edges)
     default: return ''
   }
 }
@@ -67,11 +68,13 @@ function buildDrawio(active: string, nodes: Node<DiagramNodeData>[], edges: Edge
     case 'class': return classDrawio(nodes, edges)
     case 'activity': return activityDrawio(nodes, edges)
     case 'deployment': return deploymentDrawio(nodes, edges)
+    case 'flowchart': return flowchartDrawio(nodes, edges)
     default: return ''
   }
 }
 
-const svgPngExportTypes = new Set(['structure', 'er', 'sequence', 'class', 'activity', 'deployment'])
+// 这些类型的 PNG 走「SVG → Canvas」（iframe/跨域 DOM 截不了图）；程序流程图同样由 SVG 渲染，故一并纳入
+const svgPngExportTypes = new Set(['structure', 'er', 'sequence', 'class', 'activity', 'deployment', 'flowchart'])
 
 export default function ExportModal({ active, config, flowRef, erNotation = 'chen', onClose }: Props) {
   const { t } = useTranslation()
@@ -123,6 +126,9 @@ export default function ExportModal({ active, config, flowRef, erNotation = 'che
       // 结构图：iframe 跨域无法截图，用 SVG 转 Canvas
       if (svgPngExportTypes.has(active)) {
         const svg = buildSvg(active, config.nodes, config.edges, erNotation)
+        // 渲染器暂不可用（如流程图 SVG 尚未落地）时直接结束预览，避免空 blob 触发
+        // img.onerror → 未捕获 rejection，弹窗永远停在「生成中」
+        if (!svg) { if (!cancelled) setLoading(false); return }
         const img = new Image()
         const svgBlob = new Blob([svg], { type: 'image/svg+xml' })
         const url = URL.createObjectURL(svgBlob)
@@ -205,6 +211,7 @@ export default function ExportModal({ active, config, flowRef, erNotation = 'che
         case 'class': await classVisio(config.nodes, config.edges); break
         case 'activity': await activityVisio(config.nodes, config.edges); break
         case 'deployment': await deploymentVisio(config.nodes, config.edges); break
+        case 'flowchart': await flowchartVisio(config.nodes, config.edges); break
       }
     } catch (err) {
       console.error('Visio export failed:', err)

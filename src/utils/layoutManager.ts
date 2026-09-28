@@ -290,6 +290,8 @@ export function autoLayout(
     class: { algorithm: 'class', class: { direction: 'TB', classGap: 100 } },
     activity: { algorithm: 'activity', activity: { direction: 'TB', actionSpacing: 80 } },
     deployment: { algorithm: 'deployment', deployment: { layerGap: 200, nodeGap: 150 } },
+    // 程序流程图：与活动图同为自上而下的流程，共用一套分层布局参数
+    flowchart: { algorithm: 'activity', activity: { direction: 'TB', actionSpacing: 80 } },
   }
   
   return applyLayout(nodes, edges, options[diagramType])

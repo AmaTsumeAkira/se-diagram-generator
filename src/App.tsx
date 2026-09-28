@@ -10,6 +10,7 @@ import SequenceDiagram from './components/diagrams/SequenceDiagram'
 import ClassDiagram from './components/diagrams/ClassDiagram'
 import ActivityDiagram from './components/diagrams/ActivityDiagram'
 import DeploymentDiagram from './components/diagrams/DeploymentDiagram'
+import FlowchartDiagram from './components/diagrams/FlowchartDiagram'
 import NodeEditor from './components/panels/NodeEditor'
 import ExportModal from './components/panels/ExportModal'
 import ExportDataModal from './components/panels/ExportDataModal'
@@ -17,8 +18,8 @@ import SettingsModal from './components/panels/SettingsModal'
 import PromoPopup from './components/PromoPopup'
 import { useUndoRedo } from './hooks/useUndoRedo'
 import type { DiagramNodeData, DiagramType, ConfigMap, ERNotation } from './types/diagram'
-import type { UseCaseState, TreeNode, EntityState, SequenceState, ERState, ClassState, ActivityState, DeploymentState } from './components/panels/NodeEditor'
-import { useCasePresets, structureNodes, structureEdges, userEntityPreset, erSystemJson, sequenceSystemJson, classSystemJson, activitySystemJson, deploymentSystemJson } from './data/mockData'
+import type { UseCaseState, TreeNode, EntityState, SequenceState, ERState, ClassState, ActivityState, DeploymentState, FlowState } from './components/panels/NodeEditor'
+import { useCasePresets, structureNodes, structureEdges, userEntityPreset, erSystemJson, sequenceSystemJson, classSystemJson, activitySystemJson, deploymentSystemJson, flowchartSampleJson } from './data/mockData'
 import { configsToJson, parseDiagram, jsonToConfigs, normalizeUseCaseConfig, normalizeEntityConfig, TAB_KEYS } from './utils/configSerialize'
 import i18n from './i18n'
 
@@ -386,6 +387,28 @@ function configToDeploymentState(cfg: { nodes: Node<DiagramNodeData>[]; edges: E
   return { nodes, edges }
 }
 
+// ====== 程序流程图（经典流程图符号）======
+
+function configToFlowState(cfg: { nodes: Node<DiagramNodeData>[]; edges: Edge[] }): FlowState {
+  const nodes = cfg.nodes.map((n) => ({
+    id: n.id,
+    label: (n.data.label as string) || '',
+    nodeType: (['start', 'end', 'process', 'decision'].includes(String(n.type))
+      ? n.type
+      : 'process') as FlowState['nodes'][number]['nodeType'],
+  }))
+  const ids = new Set(nodes.map((n) => n.id))
+  const edges = cfg.edges
+    .filter((e) => ids.has(String(e.source)) && ids.has(String(e.target)))
+    .map((e) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      label: (e.data?.label as string) || (e.label as string) || undefined,
+    }))
+  return { nodes, edges }
+}
+
 // ====== Initial data ======
 
 const initialConfigs: ConfigMap = {
@@ -407,6 +430,7 @@ const initialConfigs: ConfigMap = {
   class: parseDiagram(classSystemJson),
   activity: parseDiagram(activitySystemJson),
   deployment: parseDiagram(deploymentSystemJson),
+  flowchart: parseDiagram(flowchartSampleJson),
 }
 
 function loadConfigs(): ConfigMap {
@@ -484,6 +508,7 @@ function App() {
   const classState = useMemo(() => configToClassState(configs.class), [configs.class])
   const activityState = useMemo(() => configToActivityState(configs.activity), [configs.activity])
   const deploymentState = useMemo(() => configToDeploymentState(configs.deployment), [configs.deployment])
+  const flowState = useMemo(() => configToFlowState(configs.flowchart), [configs.flowchart])
 
   // ====== Derive diagram data ======
   const useCaseGroups = useMemo(() => {
@@ -597,7 +622,7 @@ function App() {
   const emptyConfigMap = (): ConfigMap => ({
     usecase: { ...emptyConfig }, structure: { ...emptyConfig }, entity: { ...emptyConfig },
     er: { ...emptyConfig }, sequence: { ...emptyConfig }, class: { ...emptyConfig },
-    activity: { ...emptyConfig }, deployment: { ...emptyConfig },
+    activity: { ...emptyConfig }, deployment: { ...emptyConfig }, flowchart: { ...emptyConfig },
   })
 
   const handleImport = () => {
@@ -707,6 +732,7 @@ function App() {
         {active === 'class' && <NodeEditor key={`class-${configVersion}`} type="class" classState={classState} onApply={handleApply} />}
         {active === 'activity' && <NodeEditor key={`activity-${configVersion}`} type="activity" activity={activityState} onApply={handleApply} />}
         {active === 'deployment' && <NodeEditor key={`deployment-${configVersion}`} type="deployment" deployment={deploymentState} onApply={handleApply} />}
+        {active === 'flowchart' && <NodeEditor key={`flowchart-${configVersion}`} type="flowchart" flow={flowState} onApply={handleApply} />}
 
         <div className="flex-1" ref={flowRef}>
           <ReactFlowProvider>
@@ -756,6 +782,12 @@ function App() {
           )}
           {active === 'deployment' && configs.deployment.nodes.length === 0 && (
             <div className="flex items-center justify-center h-full text-gray-400">{t('editor.addDeploymentHint')}</div>
+          )}
+          {active === 'flowchart' && configs.flowchart.nodes.length > 0 && (
+            <FlowchartDiagram nodes={configs.flowchart.nodes} edges={configs.flowchart.edges} />
+          )}
+          {active === 'flowchart' && configs.flowchart.nodes.length === 0 && (
+            <div className="flex items-center justify-center h-full text-gray-400">{t('editor.flowNoNodes')}</div>
           )}
         </div>
       </div>

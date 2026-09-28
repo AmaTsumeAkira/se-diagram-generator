@@ -643,3 +643,50 @@ export const deploymentSystemJson: string = JSON.stringify(
   null,
   2,
 )
+
+// ====== 程序流程图：默认示例（经典流程图符号：开始/结束胶囊、处理矩形、判断菱形）======
+// 结构对齐「资产领用」这类审批流程：主干自上而下，判断的「是/否」左右分支，并有回边汇合
+export const flowchartSampleJson: string = JSON.stringify(
+  {
+    nodes: [
+      { id: 'f_start', type: 'start', label: '开始' },
+      { id: 'f_choose', type: 'process', label: '选择需用资产' },
+      { id: 'f_claim', type: 'process', label: '点领用' },
+      { id: 'f_fill', type: 'process', label: '填表单' },
+      { id: 'f_exist', type: 'decision', label: '资产是否存在' },
+      { id: 'f_notexist', type: 'process', label: '资产不存在' },
+      { id: 'f_idle', type: 'decision', label: '状态是否闲置' },
+      { id: 'f_onlyidle', type: 'process', label: '只有闲置状态资产才可领用' },
+      { id: 'f_user', type: 'decision', label: '目标用户是否存在' },
+      { id: 'f_nouser', type: 'process', label: '用户不存在' },
+      { id: 'f_error', type: 'process', label: '提示错误' },
+      { id: 'f_record', type: 'process', label: '记录领用信息' },
+      { id: 'f_setuser', type: 'process', label: '设使用人' },
+      { id: 'f_dept', type: 'process', label: '改部门' },
+      { id: 'f_refresh', type: 'process', label: '刷新列表' },
+      { id: 'f_end', type: 'end', label: '结束' },
+    ],
+    edges: [
+      { id: 'fe1', source: 'f_start', target: 'f_choose' },
+      { id: 'fe2', source: 'f_choose', target: 'f_claim' },
+      { id: 'fe3', source: 'f_claim', target: 'f_fill' },
+      { id: 'fe4', source: 'f_fill', target: 'f_exist' },
+      { id: 'fe5', source: 'f_exist', target: 'f_notexist', label: '否' },
+      { id: 'fe6', source: 'f_exist', target: 'f_idle', label: '是' },
+      { id: 'fe7', source: 'f_idle', target: 'f_onlyidle', label: '否' },
+      { id: 'fe8', source: 'f_idle', target: 'f_user', label: '是' },
+      { id: 'fe9', source: 'f_user', target: 'f_nouser', label: '否' },
+      { id: 'fe10', source: 'f_user', target: 'f_record', label: '是' },
+      { id: 'fe11', source: 'f_notexist', target: 'f_error' },
+      { id: 'fe12', source: 'f_onlyidle', target: 'f_error' },
+      { id: 'fe13', source: 'f_nouser', target: 'f_error' },
+      { id: 'fe14', source: 'f_error', target: 'f_record' },
+      { id: 'fe15', source: 'f_record', target: 'f_setuser' },
+      { id: 'fe16', source: 'f_setuser', target: 'f_dept' },
+      { id: 'fe17', source: 'f_dept', target: 'f_refresh' },
+      { id: 'fe18', source: 'f_refresh', target: 'f_end' },
+    ],
+  },
+  null,
+  2,
+)

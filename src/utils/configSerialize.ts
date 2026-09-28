@@ -66,7 +66,7 @@ export function configsToJson(configs: Record<string, ConfigLike>): string {
 
 /** 全部图表类型，顺序即工具栏标签顺序 */
 export const TAB_KEYS: DiagramType[] = [
-  'usecase', 'structure', 'entity', 'er', 'sequence', 'class', 'activity', 'deployment',
+  'usecase', 'structure', 'entity', 'er', 'sequence', 'class', 'activity', 'deployment', 'flowchart',
 ]
 
 /** 单张图的平面 JSON → 运行时配置 */

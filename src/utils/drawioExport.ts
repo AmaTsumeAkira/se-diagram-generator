@@ -637,6 +637,143 @@ export function deploymentDrawio(nodes: DNode[], edges: Edge[]): string {
   return wrap('部署图', cells.join('\n'))
 }
 
+// ====== Flowchart (程序流程图) ======
+
+/** 流程图连线：正交折线 + 实心箭头（起点无箭头），条件文字写在 value 上（不加方括号）。 */
+const FLOW_EDGE = 'edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=none;'
+
+/**
+ * 流程图边的出入锚点：
+ *  - 向下走的边：底出、顶入（自顶向下阅读，分支不会互相压线）；
+ *  - 回边 / 同层分支：按目标在左还是在右，从最近的侧边出、对侧入。
+ */
+function flowAnchors(
+  src: { x: number; y: number; w: number; h: number },
+  tgt: { x: number; y: number; w: number; h: number },
+): string {
+  const scx = src.x + src.w / 2
+  const scy = src.y + src.h / 2
+  const tcx = tgt.x + tgt.w / 2
+  const tcy = tgt.y + tgt.h / 2
+  const dx = tcx - scx
+  const dy = tcy - scy
+  if (dy >= 0 && Math.abs(dy) >= Math.abs(dx)) {
+    return 'exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;'
+  }
+  if (dx >= 0) {
+    return 'exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;'
+  }
+  return 'exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;'
+}
+
+/**
+ * 程序流程图 → draw.io。
+ *
+ * 符号：start/end = 终止符（胶囊）、process = 直角矩形、decision = 菱形，文字一律居中。
+ * 布局：用 rankOfFlow（与活动图共用同一份分层实现）从 start 出发 BFS 定层，
+ * 自顶向下逐层排列、层内按实际宽度居中 —— 保证流程自上而下、分支左右分开不重叠。
+ * value 一律走 esc()（& < > " '），否则含 "<" 的文字会让整个 mxfile 不是合法 XML。
+ */
+export function flowchartDrawio(nodes: DNode[], edges: Edge[]): string {
+  let cellId = 2
+  const nid = () => String(cellId++)
+  const idMap = new Map<string, string>()
+  const cells: string[] = []
+  const startX = 100
+  const startY = 60
+  const H_GAP = 60
+  const V_GAP = 70
+
+  const rank = rankOfFlow(nodes, edges)
+
+  // 尺寸随文字自适应：菱形内接矩形只有一半宽，判断文字要按 2 倍文字宽给
+  const sizeOf = (type: string | undefined, label: string, data: DiagramNodeData) => {
+    const tw = textWidth(label, fontSize(data))
+    switch (type) {
+      case 'start':
+      case 'end':
+        return { w: Math.max(100, Math.round(tw) + 44), h: 40 }
+      case 'decision': {
+        const w = Math.max(120, Math.round(tw * 2) + 20)
+        return { w, h: Math.max(64, Math.round(w * 0.6)) }
+      }
+      default:
+        return { w: Math.max(120, Math.round(tw) + 40), h: 50 }
+    }
+  }
+
+  const sizes = new Map<string, { w: number; h: number }>()
+  nodes.forEach((n) => sizes.set(n.id, sizeOf(String(n.type || 'process'), String(n.data.label || ''), n.data)))
+
+  const byRank = new Map<number, string[]>()
+  nodes.forEach((n) => {
+    const r = rank.get(n.id) ?? 0
+    const list = byRank.get(r)
+    if (list) list.push(n.id)
+    else byRank.set(r, [n.id])
+  })
+  const ranks = [...byRank.keys()].sort((a, b) => a - b)
+
+  // 逐层定行高、行宽（层内按节点实际宽度排，不用固定格子，长标签不会互相压住）
+  const rowInfo = new Map<number, { y: number; h: number; w: number }>()
+  let cursorY = startY
+  for (const r of ranks) {
+    const ids = byRank.get(r)!
+    const h = Math.max(30, ...ids.map((id) => sizes.get(id)!.h))
+    const w = ids.reduce((sum, id) => sum + sizes.get(id)!.w, 0) + (ids.length - 1) * H_GAP
+    rowInfo.set(r, { y: cursorY, h, w })
+    cursorY += h + V_GAP
+  }
+  const maxRowW = Math.max(1, ...[...rowInfo.values()].map((i) => i.w))
+
+  const geom = new Map<string, { x: number; y: number; w: number; h: number }>()
+  for (const r of ranks) {
+    const ids = byRank.get(r)!
+    const info = rowInfo.get(r)!
+    let x = startX + (maxRowW - info.w) / 2
+    ids.forEach((id) => {
+      const s = sizes.get(id)!
+      geom.set(id, { x: Math.round(x), y: Math.round(info.y + (info.h - s.h) / 2), w: s.w, h: s.h })
+      x += s.w + H_GAP
+    })
+  }
+
+  nodes.forEach((node) => {
+    const did = nid()
+    idMap.set(node.id, did)
+    const g = geom.get(node.id)
+    if (!g) return
+    const label = String(node.data.label || '')
+    const type = String(node.type || 'process')
+    // 胶囊用 draw.io 终止符图形；矩形用 rounded=0（直角）；判断用菱形
+    const shape =
+      type === 'start' || type === 'end'
+        ? 'shape=terminator;'
+        : type === 'decision'
+          ? 'rhombus;'
+          : 'rounded=0;'
+    const style = `${shape}whiteSpace=wrap;html=1;align=center;verticalAlign=middle;fillColor=#ffffff;strokeColor=#000000;${fontStyle(node.data)}`
+    cells.push(rect(did, g.x, g.y, g.w, g.h, label, style))
+  })
+
+  edges.forEach((e) => {
+    const sid = idMap.get(e.source)
+    const tid = idMap.get(e.target)
+    if (!sid || !tid) return
+    const sg = geom.get(e.source)
+    const tg = geom.get(e.target)
+    const anchors = sg && tg ? flowAnchors(sg, tg) : ''
+    // 条件文字：渲染时不要方括号（与屏幕上 FlowchartDiagram 的写法保持一致）
+    const condition = (e.data?.label as string) || (e.label as string) || ''
+    cells.push(
+      `<mxCell id="${nid()}" value="${esc(condition)}" style="${FLOW_EDGE}${anchors}strokeColor=#000000;" edge="1" parent="1" source="${sid}" target="${tid}">` +
+        `<mxGeometry relative="1" as="geometry"/></mxCell>`,
+    )
+  })
+
+  return wrap('程序流程图', cells.join('\n'))
+}
+
 // ====== ER Diagram (Chen-style) ======
 
 export function erDrawio(nodes: DNode[], edges: Edge[]): string {

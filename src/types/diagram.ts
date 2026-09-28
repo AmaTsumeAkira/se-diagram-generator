@@ -116,7 +116,10 @@ export interface DiagramConfig {
 }
 
 // ====== 图表类型枚举 ======
-export type DiagramType = 'usecase' | 'structure' | 'entity' | 'er' | 'sequence' | 'class' | 'activity' | 'deployment'
+export type DiagramType = 'usecase' | 'structure' | 'entity' | 'er' | 'sequence' | 'class' | 'activity' | 'deployment' | 'flowchart'
+
+/** 程序流程图节点：开始/结束（胶囊）、处理（直角矩形）、判断（菱形） */
+export type FlowNodeType = 'start' | 'end' | 'process' | 'decision'
 
 // ====== 配置映射 ======
 export type ConfigMap = Record<DiagramType, DiagramConfig>
