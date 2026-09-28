@@ -1,9 +1,8 @@
 import { useMemo } from 'react'
-import { useTranslation } from 'react-i18next'
-import * as pako from 'pako'
 import type { Edge, Node } from '@xyflow/react'
-import { activityDrawio } from '../../utils/drawioExport'
+import { activitySvg } from '../../utils/svgExport'
 import type { DiagramNodeData } from '../../types/diagram'
+import SvgCanvas from './SvgCanvas'
 
 interface Props {
   nodes: Node<DiagramNodeData>[]
@@ -11,26 +10,16 @@ interface Props {
   showGrid?: boolean
 }
 
-function encodeDiagram(xml: string): string {
-  const deflated = pako.deflateRaw(xml)
-  let bin = ''
-  deflated.forEach((b: number) => { bin += String.fromCharCode(b) })
-  return encodeURIComponent(btoa(bin))
-}
-
+/**
+ * 活动图 —— 本地自绘 SVG 渲染，**不再使用 drawio / viewer.diagrams.net**。
+ *
+ * `activitySvg()`（原「导出图片」用的渲染器）已包含：开始（实心圆）/ 结束（同心圆）、
+ * 动作用圆角框、判断用菱形、以及连线上的 guard 标签（如 `[是]` / `[否]` / `[提交后]`）。
+ * 复用后首屏毫秒级、离线可用，且**所见即导出**。
+ *
+ * 「导出图片 → 下载全图 Drawio」保留，需要拿去 draw.io 继续编辑时可用。
+ */
 export default function ActivityDiagram({ nodes, edges }: Props) {
-  const { t } = useTranslation()
-  const xml = useMemo(() => activityDrawio(nodes, edges), [nodes, edges])
-  const src = useMemo(() => {
-    const enc = encodeDiagram(xml)
-    return `https://viewer.diagrams.net/?lightbox=1&layers=0&nav=0#R${enc}`
-  }, [xml])
-
-  return (
-    <iframe
-      src={src}
-      style={{ width: '100%', height: '100%', border: 'none' }}
-      title={t('app.activity')}
-    />
-  )
+  const svg = useMemo(() => activitySvg(nodes, edges), [nodes, edges])
+  return <SvgCanvas svg={svg} />
 }

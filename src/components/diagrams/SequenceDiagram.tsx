@@ -1,9 +1,8 @@
 import { useMemo } from 'react'
-import { useTranslation } from 'react-i18next'
-import * as pako from 'pako'
 import type { Edge, Node } from '@xyflow/react'
-import { sequenceDrawio } from '../../utils/drawioExport'
+import { sequenceSvg } from '../../utils/svgExport'
 import type { DiagramNodeData } from '../../types/diagram'
+import SvgCanvas from './SvgCanvas'
 
 interface Props {
   nodes: Node<DiagramNodeData>[]
@@ -11,26 +10,17 @@ interface Props {
   showGrid?: boolean
 }
 
-function encodeDiagram(xml: string): string {
-  const deflated = pako.deflateRaw(xml)
-  let bin = ''
-  deflated.forEach((b: number) => { bin += String.fromCharCode(b) })
-  return encodeURIComponent(btoa(bin))
-}
-
+/**
+ * 时序图 —— 本地自绘 SVG 渲染，**不再使用 drawio / viewer.diagrams.net**。
+ *
+ * `sequenceSvg()`（原「导出图片」用的渲染器）已包含：参与者三种形状
+ * （actor 火柴人 / system 方框 / database 圆柱）、虚线生命线、
+ * 同步（实心箭头）/ 异步（开放箭头）/ 返回（虚线开放箭头）三种消息与消息文字。
+ * 复用后首屏毫秒级、离线可用，且**所见即导出**。
+ *
+ * 「导出图片 → 下载全图 Drawio」保留，需要拿去 draw.io 继续编辑时可用。
+ */
 export default function SequenceDiagram({ nodes, edges }: Props) {
-  const { t } = useTranslation()
-  const xml = useMemo(() => sequenceDrawio(nodes, edges), [nodes, edges])
-  const src = useMemo(() => {
-    const enc = encodeDiagram(xml)
-    return `https://viewer.diagrams.net/?lightbox=1&layers=0&nav=0#R${enc}`
-  }, [xml])
-
-  return (
-    <iframe
-      src={src}
-      style={{ width: '100%', height: '100%', border: 'none' }}
-      title={t('app.sequence')}
-    />
-  )
+  const svg = useMemo(() => sequenceSvg(nodes, edges), [nodes, edges])
+  return <SvgCanvas svg={svg} />
 }

@@ -1,9 +1,8 @@
 import { useMemo } from 'react'
-import { useTranslation } from 'react-i18next'
-import * as pako from 'pako'
 import type { Edge, Node } from '@xyflow/react'
-import { deploymentDrawio } from '../../utils/drawioExport'
+import { deploymentSvg } from '../../utils/svgExport'
 import type { DiagramNodeData } from '../../types/diagram'
+import SvgCanvas from './SvgCanvas'
 
 interface Props {
   nodes: Node<DiagramNodeData>[]
@@ -11,26 +10,16 @@ interface Props {
   showGrid?: boolean
 }
 
-function encodeDiagram(xml: string): string {
-  const deflated = pako.deflateRaw(xml)
-  let bin = ''
-  deflated.forEach((b: number) => { bin += String.fromCharCode(b) })
-  return encodeURIComponent(btoa(bin))
-}
-
+/**
+ * 部署图 —— 本地自绘 SVG 渲染，**不再使用 drawio / viewer.diagrams.net**。
+ *
+ * `deploymentSvg()`（原「导出图片」用的渲染器）已包含：server / database（圆柱）/
+ * component / artifact / node / browser / mobile 的形状与 «stereotype» 标注、
+ * technology 技术栈文字、以及连线标签。复用后首屏毫秒级、离线可用，且**所见即导出**。
+ *
+ * 「导出图片 → 下载全图 Drawio」保留，需要拿去 draw.io 继续编辑时可用。
+ */
 export default function DeploymentDiagram({ nodes, edges }: Props) {
-  const { t } = useTranslation()
-  const xml = useMemo(() => deploymentDrawio(nodes, edges), [nodes, edges])
-  const src = useMemo(() => {
-    const enc = encodeDiagram(xml)
-    return `https://viewer.diagrams.net/?lightbox=1&layers=0&nav=0#R${enc}`
-  }, [xml])
-
-  return (
-    <iframe
-      src={src}
-      style={{ width: '100%', height: '100%', border: 'none' }}
-      title={t('app.deployment')}
-    />
-  )
+  const svg = useMemo(() => deploymentSvg(nodes, edges), [nodes, edges])
+  return <SvgCanvas svg={svg} />
 }

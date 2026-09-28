@@ -734,7 +734,7 @@ function App() {
             <div className="flex items-center justify-center h-full text-gray-400">{t('editor.addErEntityHint')}</div>
           )}
           {active === 'sequence' && configs.sequence.nodes.length > 0 && (
-            <SequenceDiagram key={`sequence-${configVersion}`} nodes={configs.sequence.nodes} edges={configs.sequence.edges} />
+            <SequenceDiagram nodes={configs.sequence.nodes} edges={configs.sequence.edges} />
           )}
           {active === 'sequence' && configs.sequence.nodes.length === 0 && (
             <div className="flex items-center justify-center h-full text-gray-400">{t('editor.addParticipantHint')}</div>
@@ -746,13 +746,13 @@ function App() {
             <div className="flex items-center justify-center h-full text-gray-400">{t('editor.addClassHint')}</div>
           )}
           {active === 'activity' && configs.activity.nodes.length > 0 && (
-            <ActivityDiagram key={`activity-${configVersion}`} nodes={configs.activity.nodes} edges={configs.activity.edges} />
+            <ActivityDiagram nodes={configs.activity.nodes} edges={configs.activity.edges} />
           )}
           {active === 'activity' && configs.activity.nodes.length === 0 && (
             <div className="flex items-center justify-center h-full text-gray-400">{t('editor.addActivityHint')}</div>
           )}
           {active === 'deployment' && configs.deployment.nodes.length > 0 && (
-            <DeploymentDiagram key={`deployment-${configVersion}`} nodes={configs.deployment.nodes} edges={configs.deployment.edges} />
+            <DeploymentDiagram nodes={configs.deployment.nodes} edges={configs.deployment.edges} />
           )}
           {active === 'deployment' && configs.deployment.nodes.length === 0 && (
             <div className="flex items-center justify-center h-full text-gray-400">{t('editor.addDeploymentHint')}</div>
