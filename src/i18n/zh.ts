@@ -232,6 +232,15 @@ export default {
     import: '导入',
     cancel: '取消',
   },
+  promo: {
+    title: '扫码联系我',
+    qrAlt: '微信二维码',
+    scanHint: '微信扫一扫，加我好友',
+    services: ['计算机程序设计', '论文指导', '程序修改'],
+    note: '以上需求均可联系，备注来意即可',
+    open: '联系作者',
+    close: '收起',
+  },
   reset: {
     confirm: '确定要重置所有图表为初始状态吗？此操作不可撤销。',
   },

@@ -9,3 +9,25 @@ body {
   width: 100%;
   height: 100vh;
 }
+
+/* 右下角推广二维码弹窗的入场动画 */
+@keyframes promo-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.promo-pop {
+  animation: promo-pop-in 0.22s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .promo-pop {
+    animation: none;
+  }
+}

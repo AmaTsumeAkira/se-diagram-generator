@@ -232,6 +232,15 @@ export default {
     import: 'Import',
     cancel: 'Cancel',
   },
+  promo: {
+    title: 'Scan to Contact Me',
+    qrAlt: 'WeChat QR code',
+    scanHint: 'Scan with WeChat to add me',
+    services: ['Programming', 'Thesis Guidance', 'Code Revision'],
+    note: 'Feel free to contact me for the above — just say hi on WeChat',
+    open: 'Contact',
+    close: 'Collapse',
+  },
   reset: {
     confirm: 'Reset all diagrams to initial state? This cannot be undone.',
   },

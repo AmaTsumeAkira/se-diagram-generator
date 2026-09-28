@@ -14,6 +14,7 @@ import NodeEditor from './components/panels/NodeEditor'
 import ExportModal from './components/panels/ExportModal'
 import ExportDataModal from './components/panels/ExportDataModal'
 import SettingsModal from './components/panels/SettingsModal'
+import PromoPopup from './components/PromoPopup'
 import { useUndoRedo } from './hooks/useUndoRedo'
 import type { DiagramNodeData, DiagramType, ConfigMap, ERNotation } from './types/diagram'
 import type { UseCaseState, TreeNode, EntityState, SequenceState, ERState, ClassState, ActivityState, DeploymentState } from './components/panels/NodeEditor'
@@ -618,6 +619,9 @@ function App() {
       {showExport && <ExportModal active={active} config={configs[active as DiagramType]} flowRef={flowRef} onClose={() => setShowExport(false)} />}
       {showDataExport && <ExportDataModal configs={configs} onClose={() => setShowDataExport(false)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+
+      {/* 右下角推广二维码弹窗 */}
+      <PromoPopup />
       {/* Import confirm modal */}
       {pendingImport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
