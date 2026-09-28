@@ -190,14 +190,19 @@ export default function SvgCanvas({ svg }: { svg: string }) {
         onPointerUp={endPointer}
         onPointerCancel={endPointer}
       >
+        {/*
+          缩放不能靠 CSS transform: scale() —— 那样浏览器会按 1× 栅格化后再放大，字和线都会糊
+          （配合 will-change: transform 更明显）。这里把缩放落到元素的 width/height 上，
+          让内联 SVG 依据自己的 viewBox **按目标尺寸重新做矢量渲染**，transform 只负责平移。
+          与用例图/实体属性图（React Flow 重排 DOM）的清晰度一致，任意倍数都不失真。
+        */}
         <div
-          className="[&>svg]:block"
+          className="[&>svg]:block [&>svg]:h-full [&>svg]:w-full"
           style={{
-            width: svgW,
-            height: svgH,
-            transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`,
+            width: Math.max(1, svgW * view.zoom),
+            height: Math.max(1, svgH * view.zoom),
+            transform: `translate(${view.x}px, ${view.y}px)`,
             transformOrigin: '0 0',
-            willChange: 'transform',
           }}
           dangerouslySetInnerHTML={{ __html: svg }}
         />
