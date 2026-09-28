@@ -258,9 +258,9 @@ export default {
     close: 'Collapse',
   },
   diagram: {
-    loading: 'Loading diagram… (first load fetches the renderer from viewer.diagrams.net and may be slow)',
-    loadFailed: 'Preview failed: viewer.diagrams.net is unreachable. Use "Export image" in the toolbar to download PNG / SVG instead.',
-    retry: 'Retry',
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
+    zoomReset: 'Reset to 100%',
   },
   reset: {
     confirm: 'Reset all diagrams to initial state? You can still revert it with Ctrl+Z.',

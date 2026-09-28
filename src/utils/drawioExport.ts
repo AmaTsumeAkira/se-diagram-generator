@@ -2,6 +2,7 @@ import type { Node, Edge } from '@xyflow/react'
 import type { DiagramNodeData } from '../types/diagram'
 import { layoutTreeStructure, rankOfFlow, layeredLayoutOf } from './layout'
 import { collectERRelations, routeRelations } from './erRouting'
+import { structureBox } from './svgExport'
 
 type DNode = Node<DiagramNodeData>
 
@@ -226,17 +227,14 @@ export function structureDrawio(nodes: DNode[], edges: Edge[]): string {
     const did = nid(); idMap.set(n.id, did)
     const x = n.position.x; const y = n.position.y
     const vert = n.data.vertical as boolean
-    const fs = (n.data.fontSize as number) || 14
     const ffStyle = fontStyle(n.data)
-    const vh = (n.data.nodeH as number) || 110
-    const vw = Math.max(18, fs * 1.2)
-    const hw = (n.data.nodeW as number) || n.measured?.width || 80
-    const hh = (n.data.nodeH as number) || fs * 1.6
+    // 方框尺寸与屏幕上的 SVG 共用同一套规则（此前这里写死 80，长标签的框会比屏幕小一圈）
+    const { w, h } = structureBox(n)
 
     if (vert) {
-      cells.push(`<mxCell id="${did}" value="&lt;font style=&quot;writing-mode: vertical-rl;&quot;&gt;${esc(n.data.label || '')}&lt;/font&gt;" style="whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;${ffStyle}" vertex="1" parent="1"><mxGeometry x="${Math.round(x)}" y="${Math.round(y)}" width="${Math.round(vw)}" height="${Math.round(vh)}" as="geometry"/></mxCell>`)
+      cells.push(`<mxCell id="${did}" value="&lt;font style=&quot;writing-mode: vertical-rl;&quot;&gt;${esc(n.data.label || '')}&lt;/font&gt;" style="whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;${ffStyle}" vertex="1" parent="1"><mxGeometry x="${Math.round(x)}" y="${Math.round(y)}" width="${Math.round(w)}" height="${Math.round(h)}" as="geometry"/></mxCell>`)
     } else {
-      cells.push(rect(did, x, y, hw, hh, n.data.label || '', RECT + ffStyle))
+      cells.push(rect(did, x, y, w, h, n.data.label || '', RECT + ffStyle))
     }
   })
 

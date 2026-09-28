@@ -725,7 +725,7 @@ function App() {
           </ReactFlowProvider>
           {/* drawio iframe diagrams */}
           {active === 'structure' && (
-            <StructureDiagram key={`structure-${configVersion}`} nodes={configs.structure.nodes} edges={configs.structure.edges} />
+            <StructureDiagram nodes={configs.structure.nodes} edges={configs.structure.edges} />
           )}
           {active === 'er' && configs.er.nodes.length > 0 && (
             <ERDiagram key={`er-${configVersion}`} nodes={configs.er.nodes} edges={configs.er.edges} notation={erNotation} />
@@ -740,7 +740,7 @@ function App() {
             <div className="flex items-center justify-center h-full text-gray-400">{t('editor.addParticipantHint')}</div>
           )}
           {active === 'class' && configs.class.nodes.length > 0 && (
-            <ClassDiagram key={`class-${configVersion}`} nodes={configs.class.nodes} edges={configs.class.edges} />
+            <ClassDiagram nodes={configs.class.nodes} edges={configs.class.edges} />
           )}
           {active === 'class' && configs.class.nodes.length === 0 && (
             <div className="flex items-center justify-center h-full text-gray-400">{t('editor.addClassHint')}</div>

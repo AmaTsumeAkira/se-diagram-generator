@@ -110,6 +110,24 @@ export function useCaseSvg(nodes: DNode[], edges: Edge[]): string {
 
 // ====== Structure SVG ======
 
+/**
+ * 结构图节点的方框几何（唯一定义）。
+ *
+ * 必须让「画方框」和「画连线」共用同一个尺寸函数：此前连线只认 `measured.width || 80`，
+ * 而方框还有「按字数估算宽度」的兜底，导致长标签节点（如根节点「公寓报修管理系统」
+ * 实际宽 121.6px）的竖线从 x+40 而不是 x+60.8 下垂 —— 所有竖线都不居中。
+ */
+export function structureBox(n: DNode): { w: number; h: number } {
+  const fs = (n.data.fontSize as number) || 14
+  if (n.data.vertical) {
+    return { w: Math.max(18, fs * 1.2), h: (n.data.nodeH as number) || 110 }
+  }
+  const label = String(n.data.label ?? '')
+  const h = (n.data.nodeH as number) || fs * 1.6
+  const w = (n.data.nodeW as number) || n.measured?.width || Math.max(80, label.length * fs * 0.8 + 32)
+  return { w, h }
+}
+
 export function structureSvg(nodes: DNode[], edges: Edge[]): string {
   const { nodes: ln } = layoutTreeStructure(nodes, edges)
   const nodeMap = new Map(ln.map((n) => [n.id, n]))
@@ -122,46 +140,38 @@ export function structureSvg(nodes: DNode[], edges: Edge[]): string {
     const vert = n.data.vertical as boolean
     const fs = (n.data.fontSize as number) || 14
     const ff = esc(fontFamily(n.data))
-    const vh = (n.data.nodeH as number) || 110
-    const vw = Math.max(18, fs * 1.2)
+    const { w, h } = structureBox(n)
 
     if (vert) {
-      svg += `<rect x="${x}" y="${y}" width="${vw}" height="${vh}" fill="#fff" stroke="#000" stroke-width="1"/>`
+      svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#fff" stroke="#000" stroke-width="1"/>`
       // vertical text char by char
       const chars = rawLabel.split('')
       const ls = Math.max(1, fs * 0.15)
       const charH = fs + ls
-      const startY = y + (vh - chars.length * charH + ls) / 2 + fs * 0.8
+      const startY = y + (h - chars.length * charH + ls) / 2 + fs * 0.8
       chars.forEach((ch, ci) => {
-        svg += `<text x="${x + vw / 2}" y="${startY + ci * charH}" font-family="${ff}" font-size="${fs}" text-anchor="middle" fill="#000">${esc(ch)}</text>`
+        svg += `<text x="${x + w / 2}" y="${startY + ci * charH}" font-family="${ff}" font-size="${fs}" text-anchor="middle" fill="#000">${esc(ch)}</text>`
       })
     } else {
-      const h = (n.data.nodeH as number) || (fs * 1.6)
-      const w = (n.data.nodeW as number) || n.measured?.width || Math.max(80, label.length * fs * 0.8 + 32)
       svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#fff" stroke="#000" stroke-width="1"/>`
       svg += `<text x="${x + w / 2}" y="${y + h / 2 + fs * 0.3}" font-family="${ff}" font-size="${fs}" text-anchor="middle" fill="#000">${label}</text>`
     }
   })
 
-  // step edges
+  // step edges —— 竖线一律从父框「底边中点」出发、落在子框「顶边中点」上
   edges.forEach((e) => {
     const src = nodeMap.get(e.source); const tgt = nodeMap.get(e.target)
     if (!src || !tgt) return
-    const sx = src.position.x + ((src.measured?.width as number) || 80) / 2
-    const sy = src.position.y + (src.data.vertical ? (src.data.nodeH as number || 110) : ((src.data.nodeH as number) || (src.data.fontSize as number || 14) * 1.6))
-    const tx = tgt.position.x + (tgt.data.vertical ? Math.max(18, (tgt.data.fontSize as number || 14) * 1.2) : (tgt.measured?.width as number) || 80) / 2
+    const sb = structureBox(src); const tb = structureBox(tgt)
+    const sx = src.position.x + sb.w / 2
+    const sy = src.position.y + sb.h
+    const tx = tgt.position.x + tb.w / 2
     const ty = tgt.position.y
     const oy = (ty - sy) / 2
     svg += `<path d="M ${sx} ${sy} L ${sx} ${sy + oy} L ${tx} ${sy + oy} L ${tx} ${ty}" fill="none" stroke="#000" stroke-width="1"/>`
   })
 
-  const bb = bounds(ln.map((n) => {
-    const v = n.data.vertical as boolean
-    const fs = (n.data.fontSize as number) || 14
-    const h = v ? ((n.data.nodeH as number) || 110) : ((n.data.nodeH as number) || fs * 1.6)
-    const w = v ? Math.max(18, fs * 1.2) : ((n.data.nodeW as number) || n.measured?.width || 80)
-    return { x: n.position.x, y: n.position.y, w, h }
-  }))
+  const bb = bounds(ln.map((n) => ({ x: n.position.x, y: n.position.y, ...structureBox(n) })))
   return wrapSvg(svg, bb.x - 20, bb.y - 20, bb.w + 40, bb.h + 40)
 }
 

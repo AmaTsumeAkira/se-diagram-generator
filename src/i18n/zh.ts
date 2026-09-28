@@ -258,9 +258,9 @@ export default {
     close: '收起',
   },
   diagram: {
-    loading: '图加载中…（首次需从 viewer.diagrams.net 拉取渲染器，可能较慢）',
-    loadFailed: '预览加载失败：无法访问 viewer.diagrams.net。可以点工具栏「导出图片」直接下载 PNG / SVG。',
-    retry: '重试',
+    zoomIn: '放大',
+    zoomOut: '缩小',
+    zoomReset: '恢复 100%',
   },
   reset: {
     confirm: '确定要重置所有图表为初始状态吗？重置后仍可用 Ctrl+Z 还原。',
