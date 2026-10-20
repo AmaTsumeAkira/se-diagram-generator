@@ -24,6 +24,11 @@ export default {
     gridOn: '背景',
     gridOff: '纯白',
   },
+  mcp: {
+    label: 'MCP',
+    connected: 'MCP 已连接：可把外部生成的图推送到编辑器，也能被 MCP 读取（点击断开）',
+    disconnected: 'MCP 未连接：先运行 npm run mcp，再点这里连接本地服务',
+  },
   editor: {
     usecaseTitle: '用例图 - 节点编辑',
     structureTitle: '功能结构图 - 节点编辑',

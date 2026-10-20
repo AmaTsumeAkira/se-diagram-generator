@@ -7,7 +7,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "mcp": "tsx mcp/server.ts",
+    "mcp:bridge": "tsx mcp/bridge-only.ts",
+    "mcp:selftest": "tsx mcp/selftest.ts",
+    "mcp:smoke": "node mcp/smoke.mjs",
+    "typecheck:mcp": "tsc -p tsconfig.mcp.json"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.4",
@@ -27,6 +32,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@types/dagre": "^0.7.54",
     "@types/file-saver": "^2.0.7",
     "@types/node": "^24.12.2",
@@ -39,8 +45,11 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "gh-pages": "^6.3.0",
     "globals": "^17.5.0",
+    "jiti": "^2.7.0",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.2",
-    "vite": "^8.0.10"
+    "vite": "^8.0.10",
+    "zod": "^4.6.7"
   }
 }

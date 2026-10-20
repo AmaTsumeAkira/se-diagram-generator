@@ -1,6 +1,6 @@
 # 软件工程图生成器 · SE Diagram Generator
 
-在线软件工程图表绘制工具，支持**用例图**、**系统功能结构图**、**E-R 实体属性图**三种类型，可视化编辑，一键导出 PNG。支持中英文切换。
+在线软件工程图表绘制工具，支持**用例图、功能结构图、实体属性图、总体 ER 图、时序图、类图、活动图、部署图、程序流程图**九类图，可视化编辑，一键导出 PNG / SVG / draw.io / Visio。支持中英文切换。
 
 ## 在线访问
 
@@ -19,12 +19,19 @@
 - **导入/导出数据** — JSON 完整配置 + Markdown 快速格式，一键导入导出
 - **本地持久化** — localStorage 自动保存，刷新不丢失
 - **国际化** — 中文 / English 切换
+- **MCP 本地服务** — 外部 AI（Claude Desktop / Cursor / Claude Code 等）通过 MCP 工具生成图并实时推送到编辑器，也能读回当前图、导出 SVG / Visio；详见 [mcp/README.md](mcp/README.md)
 
 ## 本地运行
 
 ```bash
 npm install
 npm run dev
+```
+
+可选：启动本地 MCP 服务（另开一个终端，编辑器工具栏点 MCP 徽标即可连接）：
+
+```bash
+npm run mcp
 ```
 
 ## 技术栈

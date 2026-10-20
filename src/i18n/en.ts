@@ -24,6 +24,11 @@ export default {
     gridOn: 'Grid',
     gridOff: 'White',
   },
+  mcp: {
+    label: 'MCP',
+    connected: 'MCP connected: external diagrams can be pushed here, and MCP can read the current diagram (click to disconnect)',
+    disconnected: 'MCP not connected: run npm run mcp, then click here to connect the local bridge',
+  },
   editor: {
     usecaseTitle: 'Use Case - Editor',
     structureTitle: 'Structure - Editor',
