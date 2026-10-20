@@ -17,7 +17,7 @@ import ExportDataModal from './components/panels/ExportDataModal'
 import SettingsModal from './components/panels/SettingsModal'
 import PromoPopup from './components/PromoPopup'
 import { useUndoRedo } from './hooks/useUndoRedo'
-import { useMcpBridge } from './hooks/useMcpBridge'
+import { isMcpBridgeEnabled, useMcpBridge } from './hooks/useMcpBridge'
 import type { DiagramNodeData, DiagramType, ConfigMap, ERNotation } from './types/diagram'
 import type { UseCaseState, TreeNode, EntityState, SequenceState, ERState, ClassState, ActivityState, DeploymentState, FlowState } from './components/panels/NodeEditor'
 import { useCasePresets, structureNodes, structureEdges, userEntityPreset, erSystemJson, sequenceSystemJson, classSystemJson, activitySystemJson, deploymentSystemJson, flowchartSampleJson } from './data/mockData'
@@ -474,7 +474,8 @@ function App() {
     pushConfigs(next)
     if (type) setActive(type)
   }, [pushConfigs])
-  const mcpBridge = useMcpBridge({ configs, onApply: handleMcpApply })
+  const mcpEnabled = isMcpBridgeEnabled()
+  const mcpBridge = useMcpBridge({ configs, onApply: handleMcpApply, enabled: mcpEnabled })
 
   // ? key → toggle shortcut panel
   useEffect(() => {
@@ -701,15 +702,17 @@ function App() {
           <button onClick={() => setShowDataExport(true)} className="px-2 py-1 text-xs border rounded hover:bg-gray-50">{t('toolbar.exportData')}</button>
           <button onClick={() => setShowExport(true)} className="px-3 py-1 text-xs bg-black text-white rounded hover:bg-gray-800">{t('toolbar.exportImage')}</button>
           <span className="w-px h-5 bg-gray-300 mx-1" />
-          <button
-            onClick={mcpBridge.toggle}
-            title={mcpBridge.lastError ?? t(mcpBridge.status === 'connected' ? 'mcp.connected' : 'mcp.disconnected')}
-            aria-label={t('mcp.label')}
-            className={`px-2 py-1 text-xs border rounded ml-1 flex items-center gap-1 ${mcpBridge.status === 'connected' ? 'text-green-600 border-green-300 bg-green-50' : 'text-gray-500 hover:bg-gray-50'}`}
-          >
-            <span className={`inline-block w-2 h-2 rounded-full ${mcpBridge.status === 'connected' ? 'bg-green-500' : mcpBridge.status === 'off' ? 'bg-gray-300' : 'bg-amber-400 animate-pulse'}`} />
-            {t('mcp.label')}
-          </button>
+          {mcpEnabled && (
+            <button
+              onClick={mcpBridge.toggle}
+              title={mcpBridge.lastError ?? t(mcpBridge.status === 'connected' ? 'mcp.connected' : 'mcp.disconnected')}
+              aria-label={t('mcp.label')}
+              className={`px-2 py-1 text-xs border rounded ml-1 flex items-center gap-1 ${mcpBridge.status === 'connected' ? 'text-green-600 border-green-300 bg-green-50' : 'text-gray-500 hover:bg-gray-50'}`}
+            >
+              <span className={`inline-block w-2 h-2 rounded-full ${mcpBridge.status === 'connected' ? 'bg-green-500' : mcpBridge.status === 'off' ? 'bg-gray-300' : 'bg-amber-400 animate-pulse'}`} />
+              {t('mcp.label')}
+            </button>
+          )}
           <button onClick={() => setShowSettings(true)} className="px-2 py-1 text-xs border rounded hover:bg-gray-50" title={t('toolbar.settings')}>{t('toolbar.settings')}</button>
           <button onClick={handleReset} className="px-2 py-1 text-xs text-red-400 border border-red-200 rounded hover:bg-red-50 ml-1">{t('toolbar.reset')}</button>
           <button onClick={() => setShowShortcuts(true)} className="px-2 py-1 text-xs text-gray-400 border rounded hover:bg-gray-50 ml-1" title={t('toolbar.shortcuts')}>?</button>

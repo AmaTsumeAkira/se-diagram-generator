@@ -19,6 +19,9 @@ import { normalizeErRelations } from '../utils/erRelationNormalize'
  *   - 桥接不存在时静默降级（status='off'），不影响编辑器任何原有功能
  *   - 只连 127.0.0.1，且生产站点是 https，混用内容会被浏览器直接拦掉，不会误连
  *   - 用户在工具栏点 MCP 徽标即可连接/断开，选择会记住（localStorage）
+ *   - 线上静态站点（GitHub Pages / 腾讯云 Pages）默认隐藏徽标、也不发探测请求：
+ *     线上页面连不到本机桥接，徽标只会占页眉空间。本地 `npm run dev` 始终显示；
+ *     生产构建想在本机预览时启用，用 `?mcp=1` 打开页面即可。
  */
 
 export type McpBridgeStatus = 'off' | 'probing' | 'connecting' | 'connected'
@@ -60,6 +63,8 @@ export interface UseMcpBridgeOptions {
   configs: ConfigMap
   /** MCP 推来的配置已归一化，直接应用即可；activeType 用于自动切标签页 */
   onApply: (next: ConfigMap, activeType?: DiagramType) => void
+  /** 是否允许自动连接（线上站点默认 false：不显示徽标、不探测本地端口） */
+  enabled?: boolean
 }
 
 export interface McpBridge {
@@ -69,6 +74,21 @@ export interface McpBridge {
   connect: () => void
   disconnect: () => void
   toggle: () => void
+}
+
+/**
+ * 是否显示/启用 MCP 徽标与桥接连接：
+ *   - 开发服务器（npm run dev）→ 始终启用
+ *   - 生产静态站点 → 默认关闭；带 ?mcp=1 时启用（方便本机预览 / 特殊场景）
+ */
+export function isMcpBridgeEnabled(): boolean {
+  if (import.meta.env.DEV) return true
+  try {
+    const value = new URLSearchParams(window.location.search).get('mcp')
+    return value === '1' || value === 'true'
+  } catch {
+    return false
+  }
 }
 
 function isDiagramType(value: unknown): value is DiagramType {
@@ -84,7 +104,7 @@ function toWireConfigs(configs: ConfigMap): unknown {
   }
 }
 
-export function useMcpBridge({ configs, onApply }: UseMcpBridgeOptions): McpBridge {
+export function useMcpBridge({ configs, onApply, enabled = true }: UseMcpBridgeOptions): McpBridge {
   const [status, setStatus] = useState<McpBridgeStatus>('off')
   const [lastError, setLastError] = useState<string | null>(null)
 
@@ -239,20 +259,21 @@ export function useMcpBridge({ configs, onApply }: UseMcpBridgeOptions): McpBrid
   }, [])
 
   const toggle = useCallback(() => {
+    if (!enabled) return
     if (statusRef.current === 'off') connect()
     else disconnect()
-  }, [connect, disconnect])
+  }, [connect, disconnect, enabled])
 
   // 挂载时尝试连接（用户上次手动断开则保持 off）
   useEffect(() => {
     mountedRef.current = true
-    if (readStored(ENABLED_KEY) !== 'off') connect()
+    if (enabled && readStored(ENABLED_KEY) !== 'off') connect()
     return () => {
       mountedRef.current = false
       esRef.current?.close()
       esRef.current = null
     }
-  }, [connect])
+  }, [connect, enabled])
 
   // 配置变化 → 防抖上报（供 diagram_get 读取）
   useEffect(() => {

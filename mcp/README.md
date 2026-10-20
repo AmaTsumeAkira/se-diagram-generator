@@ -45,6 +45,10 @@ npm run dev            # 另开一个终端，启动编辑器
 - 页面会自动尝试连一次；手动断开的选择会记住（localStorage `diagram-mcp-enabled`）
 
 > 编辑器自身不依赖 MCP：桥接没启动时一切照旧，只是徽标保持灰色。
+>
+> **线上静态站点（GitHub Pages / 腾讯云 Pages）默认隐藏 MCP 徽标**：线上页面无法连接本机桥接，
+> 徽标只会占页眉空间。开发服务器（`npm run dev`）始终显示；如果想用生产构建在本机预览 MCP，
+> 在地址后加 `?mcp=1`（例如 `http://localhost:4173/?mcp=1`）即可启用。
 
 ## 接进 MCP 客户端
 

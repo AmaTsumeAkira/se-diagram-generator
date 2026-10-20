@@ -19,7 +19,7 @@
 - **导入/导出数据** — JSON 完整配置 + Markdown 快速格式，一键导入导出
 - **本地持久化** — localStorage 自动保存，刷新不丢失
 - **国际化** — 中文 / English 切换
-- **MCP 本地服务** — 外部 AI（Claude Desktop / Cursor / Claude Code 等）通过 MCP 工具生成图并实时推送到编辑器，也能读回当前图、导出 SVG / Visio；详见 [mcp/README.md](mcp/README.md)
+- **MCP 本地服务** — 外部 AI（Claude Desktop / Cursor / Claude Code 等）通过 MCP 工具生成图并实时推送到编辑器，也能读回当前图、导出 SVG / Visio；仅本地开发模式显示入口（线上站点默认隐藏，`?mcp=1` 可开启），详见 [mcp/README.md](mcp/README.md)
 
 ## 本地运行
 
