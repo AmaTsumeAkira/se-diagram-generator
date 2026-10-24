@@ -11,6 +11,7 @@
     "mcp": "tsx mcp/server.ts",
     "mcp:bridge": "tsx mcp/bridge-only.ts",
     "mcp:selftest": "tsx mcp/selftest.ts",
+    "test:flowchart": "tsx mcp/flowchart-regression.ts",
     "mcp:smoke": "node mcp/smoke.mjs",
     "typecheck:mcp": "tsc -p tsconfig.mcp.json"
   },

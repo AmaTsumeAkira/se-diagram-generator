@@ -1957,7 +1957,7 @@ const FLOW_AFFIRMATIVE = /^(是|有效|yes|y|true|成功|通过|正常|正确|�
 /** 同层相邻图形的最小间隙 */
 const FLOW_HGAP = 56
 /** 相邻层之间的垂直空白带 */
-const FLOW_VGAP = 70
+const FLOW_VGAP = 36
 /** 分支条件文字字号 */
 const FLOW_EDGE_FS = 10
 
@@ -2046,7 +2046,7 @@ function flowSize(kind: FlowKind, label: string, fs: number): FlowSize {
  *
  * 1) DFS 找出回边（指向"正在访问"节点），回边不参与分层
  * 2) 在剩余 DAG 上取最长路径分层（流程顺序不会乱，汇合节点落在两条分支之下）
- * 3) 主干子节点 = 向下最长路径的那一支（是/有效优先），其余分支挂到左右两侧
+ * 3) 主干子节点优先选是/有效分支，再比较向下路径长度，其余分支挂到左右两侧
  * 4) 逐层占位：同层区间按 FLOW_HGAP 排开 —— 结构上保证同层不重叠、分支左右分明
  */
 function flowLayout(nodes: DNode[], edges: Edge[]): FlowLayout {
@@ -2145,16 +2145,16 @@ function flowLayout(nodes: DNode[], edges: Edge[]): FlowLayout {
     const cands = new Map<string, number>()
     for (const k of outIdx.get(id) || []) {
       const l = links[k]
-      if (l.s === l.t || owned.has(l.t)) continue
+      if (l.s === l.t || back.has(l.i) || owned.has(l.t)) continue
       if (!cands.has(l.t)) cands.set(l.t, k)
     }
     return [...cands.entries()]
       .sort((x, y) => {
-        const dd = (depth.get(y[0]) || 0) - (depth.get(x[0]) || 0)
-        if (dd) return dd
         const ax = FLOW_AFFIRMATIVE.test(edgeLabel(links[x[1]].e).trim()) ? 1 : 0
         const ay = FLOW_AFFIRMATIVE.test(edgeLabel(links[y[1]].e).trim()) ? 1 : 0
         if (ax !== ay) return ay - ax
+        const dd = (depth.get(y[0]) || 0) - (depth.get(x[0]) || 0)
+        if (dd) return dd
         return x[1] - y[1]
       })
       .map((v) => v[0])
@@ -2171,6 +2171,23 @@ function flowLayout(nodes: DNode[], edges: Edge[]): FlowLayout {
       kids.forEach((c) => owned.add(c))
       tree.set(cur, kids)
       for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i])
+    }
+  }
+
+  // A single retry/error node belongs beside its decision, rather than one
+  // level below it. Only lift leaves whose sole outgoing edge is a back edge;
+  // ordinary branches and shared merge nodes keep their topological ranks.
+  const sideRetries = new Set<string>()
+  for (const [parent, kids] of tree) {
+    if (byId.get(parent)?.type !== 'decision') continue
+    for (const child of kids.slice(1)) {
+      const outgoing = links.filter((link) => link.s === child)
+      if (inDeg.get(child) === 1 && outgoing.length === 1 &&
+          back.has(outgoing[0].i) &&
+          (rank.get(outgoing[0].t) ?? 0) < (rank.get(parent) ?? 0)) {
+        rank.set(child, rank.get(parent) ?? 0)
+        sideRetries.add(child)
+      }
     }
   }
 
@@ -2224,6 +2241,9 @@ function flowLayout(nodes: DNode[], edges: Edge[]): FlowLayout {
   }
 
   const placed = new Map<string, FlowBox>()
+  // Use a shared branch column even when consecutive decisions or error labels
+  // have different widths; staggered columns create crossings at their merge.
+  const branchOffset = Math.max(...ids.map((id) => sizeOf(id).w)) + FLOW_HGAP
   const placeNode = (id: string, prefAxis: number, dir: 1 | -1) => {
     if (placed.has(id)) return
     const n = byId.get(id)!
@@ -2245,8 +2265,9 @@ function flowLayout(nodes: DNode[], edges: Edge[]): FlowLayout {
         placeNode(k, x + s.w / 2 - ks.w / 2, 1)
       } else {
         const d: 1 | -1 = i % 2 === 1 ? 1 : -1
-        // 右侧：锚点为"父框右边 + 间隙"；左侧：镜像坐标系下的同一位置
-        placeNode(k, d > 0 ? x + s.w + FLOW_HGAP : FLOW_HGAP - x, d)
+        // 相邻判断的侧分支共用列中心；左侧在镜像坐标系下占位。
+        const offset = sideRetries.has(k) ? (s.w + ks.w) / 2 + FLOW_HGAP : branchOffset
+        placeNode(k, d * (x + s.w / 2) + offset - ks.w / 2, d)
       }
     })
   }
@@ -2403,10 +2424,39 @@ export function flowchartSvg(nodes: DNode[], edges: Edge[]): string {
       return
     }
 
+    // Side-by-side decision branches connect directly at their contours.
+    if (s.kind === 'decision' && Math.abs(s.cy - t.cy) < 0.6 &&
+        !back.has(i) && segHits(s.cx, s.cy, t.cx, [s, t]) === 0) {
+      const right = t.cx > s.cx
+      const ex = right ? s.x + s.w : s.x
+      const tx = right ? t.x : t.x + t.w
+      edgeSvg += polyline('flow-edge flow-edge-branch', e.source, e.target, [[ex, s.cy], [tx, t.cy]])
+      if (cond) {
+        const pos = placeCondLabel(cond, (ex + tx) / 2, s.cy - 6, 'middle')
+        labelSvg.push(condText(cond, pos.x, pos.y, 'middle'))
+      }
+      return
+    }
+
     // —— 回边：从图形外侧通道绕回主干，箭头落在目标轮廓上 ——
     // 出/入的横段若会被同层图形挡住，就改走该层旁侧的空白带（srcGap/tgtBand），
     // 仍被挡时从目标顶边进入 —— 保证回边不穿方框。
     if (back.has(i) || (rank.get(e.target) ?? 0) <= (rank.get(e.source) ?? 0)) {
+      // A side error can return upward directly, without an extra outer lane.
+      const targetX = s.cx > t.cx ? t.x + t.w : t.x
+      if (s.kind === 'process' && t.kind === 'process' && t.cy < s.y &&
+          (s.cx > t.x + t.w || s.cx < t.x) &&
+          corridorClear(s.cx, t.cy, s.y, [s, t]) &&
+          segHits(s.cx, t.cy, targetX, [s, t]) === 0) {
+        edgeSvg += polyline('flow-edge flow-edge-back', e.source, e.target, [
+          [s.cx, s.y], [s.cx, t.cy], [targetX, t.cy],
+        ])
+        if (cond) {
+          const pos = placeCondLabel(cond, s.cx + 6, (s.y + t.cy) / 2, 'start')
+          labelSvg.push(condText(cond, pos.x, pos.y, 'start'))
+        }
+        return
+      }
       const srcRank = rank.get(s.node.id) || 0
       const tgtRank = rank.get(t.node.id) || 0
       const k = entered.get(e.target) || 0
